@@ -10,7 +10,7 @@ import type { StubRecord } from "../../../types/entities";
 const buildClonePayload = (record: StubRecord) => ({
   service: record?.service,
   method: record?.method,
-  priority: record?.priority,
+  enabled: record?.enabled,
   headers: record?.headers,
   input: record?.input,
   inputs: record?.inputs,

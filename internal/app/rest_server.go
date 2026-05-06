@@ -1,10 +1,12 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	stderrors "errors"
 	"fmt"
+	"io"
 	"maps"
 	"net/http"
 	"runtime"
@@ -49,13 +51,17 @@ type Extender interface {
 // RestServer handles HTTP REST API requests for stub management.
 type RestServer struct {
 	ok              atomic.Bool
+	nextPublicID    atomic.Uint64
 	startedAt       time.Time
 	descriptorOpsMu sync.Mutex
+	idMapMu         sync.RWMutex
 	mcpHandlerOnce  sync.Once
 	budgerigar      *stuber.Budgerigar
 	history         history.Reader
 	validator       *validator.Validate
 	restDescriptors *descriptors.Registry
+	publicIDs       map[rest.ID]uuid.UUID
+	privateIDs      map[uuid.UUID]rest.ID
 	mcpHandler      http.Handler
 }
 
@@ -93,6 +99,8 @@ func NewRestServer(
 		history:         historyReader,
 		validator:       v,
 		restDescriptors: r,
+		publicIDs:       make(map[rest.ID]uuid.UUID),
+		privateIDs:      make(map[uuid.UUID]rest.ID),
 	}
 
 	go func() {
@@ -183,18 +191,28 @@ func (h *RestServer) ServiceMethodGet(w http.ResponseWriter, r *http.Request, se
 }
 
 // FindByID returns a stub by ID.
-func (h *RestServer) FindByID(w http.ResponseWriter, r *http.Request, uuid rest.ID) {
-	stub := h.budgerigar.FindByID(uuid)
-	if stub == nil {
+func (h *RestServer) FindByID(w http.ResponseWriter, r *http.Request, id rest.ID) {
+	privateID, ok := h.resolvePrivateID(id)
+	if !ok {
 		w.WriteHeader(http.StatusNotFound)
 		h.writeResponse(r.Context(), w, map[string]string{
-			"error": fmt.Sprintf("Stub with ID '%s' not found", uuid),
+			"error": fmt.Sprintf("Stub with ID '%d' not found", id),
 		})
 
 		return
 	}
 
-	h.writeResponse(r.Context(), w, stub)
+	stub := h.budgerigar.FindByID(privateID)
+	if stub == nil {
+		w.WriteHeader(http.StatusNotFound)
+		h.writeResponse(r.Context(), w, map[string]string{
+			"error": fmt.Sprintf("Stub with ID '%d' not found", id),
+		})
+
+		return
+	}
+
+	h.writeResponse(r.Context(), w, h.toRestStub(stub))
 }
 
 // Readiness handles the readiness probe endpoint.
@@ -1116,6 +1134,7 @@ func decodeMCPStubsArg(raw any) ([]*stuber.Stub, error) {
 }
 
 func listMCPStubs(stubs []*stuber.Stub, args map[string]any) ([]*stuber.Stub, error) {
+	name, _ := args["name"].(string)
 	service, _ := args["service"].(string)
 	method, _ := args["method"].(string)
 	sessionID, _ := args["session"].(string)
@@ -1130,7 +1149,7 @@ func listMCPStubs(stubs []*stuber.Stub, args map[string]any) ([]*stuber.Stub, er
 		return nil, err
 	}
 
-	filtered := filterMCPStubs(stubs, service, method, sessionID)
+	filtered := filterMCPStubs(stubs, name, service, method, sessionID)
 
 	if offset >= len(filtered) {
 		return []*stuber.Stub{}, nil
@@ -1206,11 +1225,11 @@ func mcpSearchNotMatchedResponse(searchErr error) map[string]any {
 	return map[string]any{"matched": false, "error": searchErr.Error()}
 }
 
-func filterMCPStubs(stubs []*stuber.Stub, service, method, sessionID string) []*stuber.Stub {
+func filterMCPStubs(stubs []*stuber.Stub, name, service, method, sessionID string) []*stuber.Stub {
 	filtered := make([]*stuber.Stub, 0, len(stubs))
 
 	for _, stub := range stubs {
-		if !mcpStubMatchesFilters(stub, service, method, sessionID) {
+		if !mcpStubMatchesFilters(stub, name, service, method, sessionID) {
 			continue
 		}
 
@@ -1220,7 +1239,11 @@ func filterMCPStubs(stubs []*stuber.Stub, service, method, sessionID string) []*
 	return filtered
 }
 
-func mcpStubMatchesFilters(stub *stuber.Stub, service, method, sessionID string) bool {
+func mcpStubMatchesFilters(stub *stuber.Stub, name, service, method, sessionID string) bool {
+	if name != "" && stub.Name != name {
+		return false
+	}
+
 	if service != "" && stub.Service != service {
 		return false
 	}
@@ -1376,11 +1399,11 @@ func collectDebugStubs(h *RestServer, service, method, session string, stubsLimi
 		}
 
 		stubRecords = append(stubRecords, map[string]any{
-			"id":       stub.ID.String(),
-			"service":  stub.Service,
-			"method":   stub.Method,
-			"session":  stub.Session,
-			"priority": stub.Priority,
+			"id":      stub.ID.String(),
+			"service": stub.Service,
+			"method":  stub.Method,
+			"session": stub.Session,
+			"enabled": stub.IsEnabled(),
 		})
 	}
 
@@ -1441,7 +1464,7 @@ func filterHistory(h *RestServer, opts history.FilterOpts, limit int) []rest.Cal
 
 	out := make([]rest.CallRecord, len(calls))
 	for i, c := range calls {
-		out[i] = historyCallRecordToRest(c)
+		out[i] = h.historyCallRecordToRest(c)
 	}
 
 	return out
@@ -1483,20 +1506,23 @@ func (h *RestServer) ListHistory(w http.ResponseWriter, r *http.Request) {
 
 	out := make(rest.HistoryList, len(calls))
 	for i, c := range calls {
-		out[i] = historyCallRecordToRest(c)
+		out[i] = h.historyCallRecordToRest(c)
 	}
 
 	h.writeResponse(r.Context(), w, out)
 }
 
-func historyCallRecordToRest(c history.CallRecord) rest.CallRecord {
+func (h *RestServer) historyCallRecordToRest(c history.CallRecord) rest.CallRecord {
+	service := c.Service
+	method := c.Method
+
 	r := rest.CallRecord{
-		Service: new(c.Service),
-		Method:  new(c.Method),
+		Service: &service,
+		Method:  &method,
 	}
 
 	if c.StubID != uuid.Nil {
-		r.StubId = &c.StubID
+		r.StubId = h.publicIDPtr(c.StubID)
 	}
 
 	if len(c.Requests) > 0 {
@@ -1533,7 +1559,8 @@ func historyCallRecordToRest(c history.CallRecord) rest.CallRecord {
 func (h *RestServer) VerifyCalls(w http.ResponseWriter, r *http.Request) {
 	if h.history == nil {
 		w.WriteHeader(http.StatusBadRequest)
-		h.writeResponse(r.Context(), w, rest.VerifyError{Message: new("history is disabled")})
+		message := "history is disabled"
+		h.writeResponse(r.Context(), w, rest.VerifyError{Message: &message})
 
 		return
 	}
@@ -1555,8 +1582,9 @@ func (h *RestServer) VerifyCalls(w http.ResponseWriter, r *http.Request) {
 	actual := len(calls)
 	if actual != req.ExpectedCount {
 		w.WriteHeader(http.StatusBadRequest)
+		message := fmt.Sprintf("expected %s/%s to be called %d times, got %d", req.Service, req.Method, req.ExpectedCount, actual)
 		h.writeResponse(r.Context(), w, rest.VerifyError{
-			Message:  new(fmt.Sprintf("expected %s/%s to be called %d times, got %d", req.Service, req.Method, req.ExpectedCount, actual)),
+			Message:  &message,
 			Expected: &req.ExpectedCount,
 			Actual:   &actual,
 		})
@@ -1576,16 +1604,24 @@ func (h *RestServer) AddStub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var inputs []*stuber.Stub
+	var payload []rest.Stub
 
-	if err := jsondecoder.UnmarshalSlice(byt, &inputs); err != nil {
+	if err := jsondecoder.UnmarshalSlice(byt, &payload); err != nil {
 		h.responseError(r.Context(), w, err)
 
 		return
 	}
 
+	inputs := make([]*stuber.Stub, 0, len(payload))
 	sess := muxmiddleware.FromRequest(r)
-	for _, stub := range inputs {
+	for _, item := range payload {
+		stub, convertErr := h.toDomainStub(item)
+		if convertErr != nil {
+			h.validationError(r.Context(), w, convertErr)
+
+			return
+		}
+
 		stub.Session = sess
 		stub.Source = stuber.SourceRest
 
@@ -1594,9 +1630,17 @@ func (h *RestServer) AddStub(w http.ResponseWriter, r *http.Request) {
 
 			return
 		}
+
+		inputs = append(inputs, stub)
 	}
 
-	h.writeResponse(r.Context(), w, h.budgerigar.PutMany(inputs...))
+	ids := h.budgerigar.PutMany(inputs...)
+	publicIDs := make([]rest.ID, len(ids))
+	for i, privateID := range ids {
+		publicIDs[i] = h.ensurePublicID(privateID)
+	}
+
+	h.writeResponse(r.Context(), w, publicIDs)
 }
 
 // ListDescriptors returns service IDs of descriptors added via POST /descriptors.
@@ -1740,8 +1784,11 @@ func decodeDescriptorFiles(fds *descriptorpb.FileDescriptorSet) ([]protoreflect.
 }
 
 // DeleteStubByID removes a stub by ID.
-func (h *RestServer) DeleteStubByID(w http.ResponseWriter, _ *http.Request, uuid rest.ID) {
-	h.budgerigar.DeleteByID(uuid)
+func (h *RestServer) DeleteStubByID(w http.ResponseWriter, _ *http.Request, id rest.ID) {
+	privateID, ok := h.resolvePrivateID(id)
+	if ok {
+		h.budgerigar.DeleteByID(privateID)
+	}
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -1755,7 +1802,7 @@ func (h *RestServer) BatchStubsDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var inputs []uuid.UUID
+	var inputs []rest.ID
 
 	if err := jsondecoder.UnmarshalSlice(byt, &inputs); err != nil {
 		h.responseError(r.Context(), w, err)
@@ -1764,18 +1811,30 @@ func (h *RestServer) BatchStubsDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(inputs) > 0 {
-		h.budgerigar.DeleteByID(inputs...)
+		ids := make([]uuid.UUID, 0, len(inputs))
+		for _, id := range inputs {
+			privateID, ok := h.resolvePrivateID(id)
+			if !ok {
+				continue
+			}
+
+			ids = append(ids, privateID)
+		}
+
+		if len(ids) > 0 {
+			h.budgerigar.DeleteByID(ids...)
+		}
 	}
 }
 
 // ListUsedStubs returns stubs that have been matched.
 func (h *RestServer) ListUsedStubs(w http.ResponseWriter, r *http.Request) {
-	h.writeResponse(r.Context(), w, h.budgerigar.Used())
+	h.writeResponse(r.Context(), w, h.toRestStubs(h.budgerigar.Used()))
 }
 
 // ListUnusedStubs returns stubs that have never been matched.
 func (h *RestServer) ListUnusedStubs(w http.ResponseWriter, r *http.Request) {
-	h.writeResponse(r.Context(), w, h.budgerigar.Unused())
+	h.writeResponse(r.Context(), w, h.toRestStubs(h.budgerigar.Unused()))
 }
 
 // ListStubs returns all stubs, optionally filtered by source.
@@ -1783,12 +1842,13 @@ func (h *RestServer) ListStubs(w http.ResponseWriter, r *http.Request, params re
 	stubs, total := h.budgerigar.List(listOptionsFromParams(params))
 	w.Header().Set("X-Total-Count", strconv.Itoa(total))
 
-	h.writeResponse(r.Context(), w, stubs)
+	h.writeResponse(r.Context(), w, h.toRestStubs(stubs))
 }
 
 func listOptionsFromParams(params rest.ListStubsParams) stuber.ListOptions {
 	options := stuber.ListOptions{
 		Source:  stringFromPtr(params.Source),
+		Name:    stringFromPtr(params.Name),
 		Service: stringFromPtr(params.Service),
 		Method:  stringFromPtr(params.Method),
 		Sort:    stringFromPtr(params.Sort),
@@ -1813,16 +1873,42 @@ func (h *RestServer) PurgeStubs(w http.ResponseWriter, _ *http.Request) {
 
 // SearchStubs finds a stub matching the query.
 func (h *RestServer) SearchStubs(w http.ResponseWriter, r *http.Request) {
-	query, err := stuber.NewQuery(r)
+	byt, err := httputil.RequestBody(r)
 	if err != nil {
 		h.responseError(r.Context(), w, err)
 
 		return
 	}
 
-	defer func() {
-		_ = r.Body.Close()
-	}()
+	var request map[string]any
+	if err := json.Unmarshal(byt, &request); err == nil {
+		if rawID, exists := request["id"]; exists {
+			switch value := rawID.(type) {
+			case float64:
+				publicID := rest.ID(uint64(value))
+				privateID, ok := h.resolvePrivateID(publicID)
+				if !ok {
+					w.WriteHeader(http.StatusNotFound)
+					h.writeResponseError(r.Context(), w, fmt.Errorf("stub with id %d not found", publicID))
+
+					return
+				}
+
+				request["id"] = privateID.String()
+			}
+		}
+
+		if patched, marshalErr := json.Marshal(request); marshalErr == nil {
+			r.Body = io.NopCloser(bytes.NewReader(patched))
+		}
+	}
+
+	query, err := stuber.NewQuery(r)
+	if err != nil {
+		h.responseError(r.Context(), w, err)
+
+		return
+	}
 
 	if sess := muxmiddleware.FromRequest(r); sess != "" {
 		query.Session = sess
@@ -1863,8 +1949,15 @@ func (h *RestServer) InspectStubs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Id != nil {
-		id := *req.Id
-		query.ID = &id
+		privateID, ok := h.resolvePrivateID(*req.Id)
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			h.writeResponseError(r.Context(), w, fmt.Errorf("stub with id %d not found", *req.Id))
+
+			return
+		}
+
+		query.ID = &privateID
 	}
 
 	if req.Session != nil {
@@ -1900,10 +1993,12 @@ func toRestInspectReport(report stuber.InspectReport) rest.InspectReport {
 
 		candidates[i] = rest.InspectCandidate{
 			Id:               candidate.ID.String(),
+			Name:             nilIfEmpty(candidate.Name),
 			Service:          candidate.Service,
 			Method:           candidate.Method,
 			Session:          candidate.Session,
 			Priority:         candidate.Priority,
+			Enabled:          candidate.Enabled,
 			Times:            candidate.Times,
 			Used:             candidate.Used,
 			Specificity:      candidate.Specificity,
@@ -1931,6 +2026,79 @@ func toRestInspectReport(report stuber.InspectReport) rest.InspectReport {
 	}
 }
 
+func (h *RestServer) toRestStubs(stubs []*stuber.Stub) []rest.Stub {
+	result := make([]rest.Stub, 0, len(stubs))
+	for _, stub := range stubs {
+		result = append(result, h.toRestStub(stub))
+	}
+
+	return result
+}
+
+func (h *RestServer) toRestStub(stub *stuber.Stub) rest.Stub {
+	payload, err := json.Marshal(stub)
+	if err != nil {
+		return rest.Stub{}
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		return rest.Stub{}
+	}
+
+	delete(raw, "id")
+
+	normalized, err := json.Marshal(raw)
+	if err != nil {
+		return rest.Stub{}
+	}
+
+	var out rest.Stub
+	if err := json.Unmarshal(normalized, &out); err != nil {
+		return rest.Stub{}
+	}
+
+	id := h.ensurePublicID(stub.ID)
+	out.Id = &id
+
+	return out
+}
+
+func (h *RestServer) toDomainStub(input rest.Stub) (*stuber.Stub, error) {
+	payload, err := json.Marshal(input)
+	if err != nil {
+		return nil, err
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		return nil, err
+	}
+
+	delete(raw, "id")
+
+	normalized, err := json.Marshal(raw)
+	if err != nil {
+		return nil, err
+	}
+
+	var out stuber.Stub
+	if err := json.Unmarshal(normalized, &out); err != nil {
+		return nil, err
+	}
+
+	if input.Id != nil {
+		privateID, ok := h.resolvePrivateID(*input.Id)
+		if !ok {
+			return nil, fmt.Errorf("stub with id %d not found", *input.Id)
+		}
+
+		out.ID = privateID
+	}
+
+	return &out, nil
+}
+
 func nilIfEmpty(value string) *string {
 	if value == "" {
 		return nil
@@ -1953,6 +2121,54 @@ func intFromPtr(value *int) int {
 	}
 
 	return *value
+}
+
+func (h *RestServer) ensurePublicID(privateID uuid.UUID) rest.ID {
+	h.idMapMu.RLock()
+	if publicID, ok := h.privateIDs[privateID]; ok {
+		h.idMapMu.RUnlock()
+
+		return publicID
+	}
+	h.idMapMu.RUnlock()
+
+	h.idMapMu.Lock()
+	defer h.idMapMu.Unlock()
+
+	if publicID, ok := h.privateIDs[privateID]; ok {
+		return publicID
+	}
+
+	for {
+		candidate := rest.ID(h.nextPublicID.Add(1))
+		if _, exists := h.publicIDs[candidate]; exists {
+			continue
+		}
+
+		h.publicIDs[candidate] = privateID
+		h.privateIDs[privateID] = candidate
+
+		return candidate
+	}
+}
+
+func (h *RestServer) resolvePrivateID(publicID rest.ID) (uuid.UUID, bool) {
+	h.idMapMu.RLock()
+	defer h.idMapMu.RUnlock()
+
+	privateID, ok := h.publicIDs[publicID]
+
+	return privateID, ok
+}
+
+func (h *RestServer) publicIDPtr(privateID uuid.UUID) *rest.ID {
+	if privateID == uuid.Nil {
+		return nil
+	}
+
+	id := h.ensurePublicID(privateID)
+
+	return &id
 }
 
 func stringFromUUIDPtr(value *uuid.UUID) string {

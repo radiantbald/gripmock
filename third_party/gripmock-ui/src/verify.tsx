@@ -21,6 +21,7 @@ import type { VerifyResponse } from "./features/verify/types";
 export const VerifyPage = () => {
   const notify = useNotify();
   const dataProvider = useDataProvider();
+  const [stubName, setStubName] = useState("");
   const [service, setService] = useState("");
   const [method, setMethod] = useState("");
   const [expectedCount, setExpectedCount] = useState(1);
@@ -78,6 +79,8 @@ export const VerifyPage = () => {
             </Box>
 
             <ServiceMethodSelectors
+              stubName={stubName}
+              onStubNameChange={setStubName}
               service={service}
               method={method}
               onServiceChange={setService}

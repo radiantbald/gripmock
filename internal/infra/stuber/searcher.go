@@ -7,10 +7,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// PriorityMultiplier is used to boost stub priority in ranking calculations.
-// Higher values give more weight to explicit priority settings.
-const PriorityMultiplier = 10.0
-
 // parallelProcessingThreshold is the threshold for using parallel processing.
 const parallelProcessingThreshold = 100
 

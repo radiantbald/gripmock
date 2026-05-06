@@ -68,6 +68,9 @@ export const buildBackendListQuery = (params: {
   if (filter.service) {
     search.set("service", String(filter.service));
   }
+  if (filter.name) {
+    search.set("name", String(filter.name));
+  }
   if (filter.method) {
     search.set("method", String(filter.method));
   }
@@ -116,6 +119,7 @@ export const dataProcessing = {
 
     const searchKeys = [
       "id",
+      "name",
       "service",
       "method",
       "headers",

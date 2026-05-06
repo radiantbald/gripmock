@@ -21,8 +21,6 @@ const (
 	smallCollectionThreshold = 10
 	// smallItemsThreshold is the threshold for using simple sorting instead of heap.
 	smallItemsThreshold = 3
-	// twoItemsThreshold is the threshold for two items case.
-	twoItemsThreshold = 2
 	// stringCacheSize is the maximum number of string hashes to cache.
 	stringCacheSize = 10000
 )
@@ -226,30 +224,12 @@ func (s *storage) yieldSmallItemsSorted(indexes []uint64, totalItems int, yield 
 }
 
 func sortSmallItemsByPriority(items []*Stub) {
-	switch len(items) {
-	case twoItemsThreshold:
-		if items[0].Priority < items[1].Priority {
-			items[0], items[1] = items[1], items[0]
-		}
-	case smallItemsThreshold:
-		if items[0].Priority < items[1].Priority {
-			items[0], items[1] = items[1], items[0]
-		}
-
-		if items[1].Priority < items[2].Priority {
-			items[1], items[2] = items[2], items[1]
-		}
-
-		if items[0].Priority < items[1].Priority {
-			items[0], items[1] = items[1], items[0]
-		}
-	}
+	slices.SortFunc(items, compareStubsByPriorityAndID)
 }
 
 // sortItem represents a stub with its score for sorting.
 type sortItem struct {
-	stub  *Stub
-	score int
+	stub *Stub
 }
 
 // countItemsFast provides ultra-fast counting of items without collecting them.
@@ -268,9 +248,11 @@ func (s *storage) countItemsFast(indexes []uint64) int {
 // scoreHeap implements heap.Interface for sorting by score.
 type scoreHeap []sortItem
 
-func (h *scoreHeap) Len() int           { return len(*h) }
-func (h *scoreHeap) Less(i, j int) bool { return (*h)[i].score > (*h)[j].score }
-func (h *scoreHeap) Swap(i, j int)      { (*h)[i], (*h)[j] = (*h)[j], (*h)[i] }
+func (h *scoreHeap) Len() int { return len(*h) }
+func (h *scoreHeap) Less(i, j int) bool {
+	return compareStubsByPriorityAndID((*h)[i].stub, (*h)[j].stub) < 0
+}
+func (h *scoreHeap) Swap(i, j int) { (*h)[i], (*h)[j] = (*h)[j], (*h)[i] }
 func (h *scoreHeap) Push(x any) {
 	item, ok := x.(sortItem)
 	if !ok {
@@ -303,10 +285,12 @@ func (s *storage) yieldSortedValuesHeap(indexes []uint64, yield func(*Stub) bool
 			if len(m) <= smallCollectionThreshold {
 				items := make([]sortItem, 0, len(m))
 				for _, v := range m {
-					items = append(items, sortItem{stub: v, score: v.Priority})
+					items = append(items, sortItem{stub: v})
 				}
 
-				slices.SortFunc(items, func(a, b sortItem) int { return b.score - a.score }) // descending
+				slices.SortFunc(items, func(a, b sortItem) int {
+					return compareStubsByPriorityAndID(a.stub, b.stub)
+				})
 
 				for _, item := range items {
 					if !yield(item.stub) {
@@ -333,7 +317,7 @@ func (s *storage) yieldSortedValuesHeap(indexes []uint64, yield func(*Stub) bool
 	for _, index := range indexes {
 		if m, exists := s.items[index]; exists {
 			for _, v := range m {
-				heap.Push(h, sortItem{stub: v, score: v.Priority})
+				heap.Push(h, sortItem{stub: v})
 			}
 		}
 	}
@@ -735,10 +719,6 @@ func mergeSortedSlices(left, right []*Stub) []*Stub {
 }
 
 func compareStubsByPriorityAndID(a, b *Stub) int {
-	if a.Priority != b.Priority {
-		return b.Priority - a.Priority
-	}
-
 	return bytes.Compare(a.ID[:], b.ID[:])
 }
 

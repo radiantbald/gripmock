@@ -15,7 +15,7 @@ func (s *searcher) resolveSearchCandidates(query Query) ([]*Stub, error) {
 
 	stubs, err := lookup.LookupServiceAvailable(query.Service, query.Method)
 	if err == nil {
-		return collectStubs(stubs), nil
+		return filterEnabledStubs(collectStubs(stubs)), nil
 	}
 
 	if query.StrictService {
@@ -26,12 +26,27 @@ func (s *searcher) resolveSearchCandidates(query Query) ([]*Stub, error) {
 		return nil, ErrStubNotFound
 	}
 
-	candidates := collectStubs(lookup.LookupMethodAvailable(query.Method))
+	candidates := filterEnabledStubs(collectStubs(lookup.LookupMethodAvailable(query.Method)))
 	if len(candidates) == 0 {
 		return nil, ErrStubNotFound
 	}
 
 	return candidates, nil
+}
+
+func filterEnabledStubs(stubs []*Stub) []*Stub {
+	if len(stubs) == 0 {
+		return stubs
+	}
+
+	filtered := make([]*Stub, 0, len(stubs))
+	for _, stub := range stubs {
+		if stub.IsEnabled() {
+			filtered = append(filtered, stub)
+		}
+	}
+
+	return filtered
 }
 
 // processStubs processes the collected stubs with ultra-fast paths.

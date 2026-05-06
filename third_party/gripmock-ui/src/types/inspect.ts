@@ -13,10 +13,11 @@ type InspectCandidateEvent = {
 
 export type InspectCandidate = {
   id: string;
+  name?: string;
   service: string;
   method: string;
   session?: string;
-  priority: number;
+  enabled: boolean;
   times: number;
   used: number;
   visibleBySession: boolean;

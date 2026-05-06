@@ -13,24 +13,83 @@ import {
 } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
 import { InputProps, useInput } from "react-admin";
+import { useFormContext, useWatch } from "react-hook-form";
 
 type JsonTextAreaInputProps = {
   source: string;
   label?: string;
   helperText?: string;
   minRows?: number;
+  syncNestedFields?: string[];
+  visibleKeys?: string[];
+  placeholder?: string;
 } & InputProps;
 
 const prettyJson = (value: unknown) => {
   if (value === undefined || value === null) {
-    return "{}";
+    return "";
   }
 
   return JSON.stringify(value, null, 2);
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+};
+
+const projectVisibleValue = (value: unknown, visibleKeys: string[]): unknown => {
+  if (visibleKeys.length === 0 || !isRecord(value)) {
+    return value;
+  }
+
+  const projected: Record<string, unknown> = {};
+  for (const key of visibleKeys) {
+    if (Object.hasOwn(value, key) && value[key] !== undefined) {
+      projected[key] = value[key];
+    }
+  }
+
+  if (Object.keys(projected).length === 0) {
+    return undefined;
+  }
+
+  return projected;
+};
+
+const mergeVisibleValue = (
+  currentValue: unknown,
+  parsedValue: unknown,
+  visibleKeys: string[],
+): unknown => {
+  if (visibleKeys.length === 0 || !isRecord(parsedValue)) {
+    return parsedValue;
+  }
+
+  const next = isRecord(currentValue) ? { ...currentValue } : {};
+  for (const key of visibleKeys) {
+    delete next[key];
+  }
+
+  for (const key of visibleKeys) {
+    if (Object.hasOwn(parsedValue, key)) {
+      next[key] = parsedValue[key];
+    }
+  }
+
+  return next;
+};
+
 export const JsonTextAreaInput = (props: JsonTextAreaInputProps) => {
-  const { source, label, helperText, minRows = 10 } = props;
+  const {
+    source,
+    label,
+    helperText,
+    minRows = 10,
+    syncNestedFields = [],
+    visibleKeys = [],
+    placeholder = "{}",
+  } = props;
+  const { getValues } = useFormContext();
 
   const {
     field: { value, onChange },
@@ -39,14 +98,57 @@ export const JsonTextAreaInput = (props: JsonTextAreaInputProps) => {
     isRequired,
   } = useInput(props);
 
-  const initialText = useMemo(() => prettyJson(value), [value]);
+  const initialText = useMemo(
+    () => prettyJson(projectVisibleValue(value, visibleKeys)),
+    [value, visibleKeys],
+  );
   const [text, setText] = useState(initialText);
   const [parseError, setParseError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const syncFieldNames = useMemo(
+    () => syncNestedFields.map((field) => `${source}.${field}`),
+    [source, syncNestedFields],
+  );
+  const watchedSyncValues = useWatch({
+    name: syncFieldNames,
+  });
 
   useEffect(() => {
-    setText(initialText);
-  }, [initialText]);
+    if (isFocused) {
+      return;
+    }
+
+    setText((prev) => (prev === initialText ? prev : initialText));
+  }, [initialText, isFocused]);
+
+  useEffect(() => {
+    if (syncFieldNames.length === 0) {
+      return;
+    }
+    if (isFocused) {
+      return;
+    }
+
+    const latest = getValues(source);
+    const nextText = prettyJson(projectVisibleValue(latest, visibleKeys));
+    const currentTextFromValue = prettyJson(projectVisibleValue(value, visibleKeys));
+
+    if (currentTextFromValue !== nextText) {
+      onChange(latest);
+    }
+
+    setText((prev) => (prev === nextText ? prev : nextText));
+  }, [
+    getValues,
+    onChange,
+    source,
+    syncFieldNames.length,
+    value,
+    visibleKeys,
+    watchedSyncValues,
+    isFocused,
+  ]);
 
   const updateValueFromText = (nextText: string) => {
     const trimmed = nextText.trim();
@@ -59,7 +161,7 @@ export const JsonTextAreaInput = (props: JsonTextAreaInputProps) => {
     try {
       const parsed = JSON.parse(nextText);
       setParseError(null);
-      onChange(parsed);
+      onChange(mergeVisibleValue(value, parsed, visibleKeys));
     } catch {
       setParseError("Invalid JSON. Fix syntax and try again.");
     }
@@ -84,7 +186,7 @@ export const JsonTextAreaInput = (props: JsonTextAreaInputProps) => {
       const formatted = JSON.stringify(parsed, null, 2);
       setText(formatted);
       setParseError(null);
-      onChange(parsed);
+      onChange(mergeVisibleValue(value, parsed, visibleKeys));
     } catch {
       setParseError("Beautify failed: JSON is invalid.");
     }
@@ -128,6 +230,13 @@ export const JsonTextAreaInput = (props: JsonTextAreaInputProps) => {
             fullWidth
             rows={minRows}
             value={text}
+            placeholder={placeholder}
+            onFocusCapture={() => {
+              setIsFocused(true);
+            }}
+            onBlurCapture={() => {
+              setIsFocused(false);
+            }}
             onChange={(event) => {
               handleTextChange(event.target.value);
             }}
@@ -237,6 +346,13 @@ export const JsonTextAreaInput = (props: JsonTextAreaInputProps) => {
               multiline
               fullWidth
               value={text}
+              placeholder={placeholder}
+              onFocusCapture={() => {
+                setIsFocused(true);
+              }}
+              onBlurCapture={() => {
+                setIsFocused(false);
+              }}
               onChange={(event) => {
                 handleTextChange(event.target.value);
               }}

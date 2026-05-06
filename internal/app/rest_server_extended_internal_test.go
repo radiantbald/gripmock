@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/google/uuid"
@@ -223,24 +224,26 @@ func (s *RestServerExtendedTestSuite) TestFindStubByIDExtended() {
 	s.server.ListStubs(listW, listReq, rest.ListStubsParams{})
 	s.Require().Equal(http.StatusOK, listW.Code)
 
-	var allStubs []*stuber.Stub
+	var allStubs []rest.Stub
 
 	err := json.Unmarshal(listW.Body.Bytes(), &allStubs)
 	s.Require().NoError(err)
 	s.Require().NotEmpty(allStubs)
 
 	// Find our added stub
-	var stubID uuid.UUID
+	var stubID rest.ID
 
 	for _, stub := range allStubs {
 		if stub.Service == "FindService" && stub.Method == "FindMethod" {
-			stubID = stub.ID
+			if stub.Id != nil {
+				stubID = *stub.Id
+			}
 
 			break
 		}
 	}
 
-	s.Require().NotEqual(uuid.Nil, stubID, "Should find added stub")
+	s.Require().NotZero(stubID, "Should find added stub")
 
 	tests := []struct {
 		name           string
@@ -256,7 +259,7 @@ func (s *RestServerExtendedTestSuite) TestFindStubByIDExtended() {
 		},
 		{
 			name:           "find_non_existing_stub",
-			stubID:         uuid.New(),
+			stubID:         rest.ID(999999),
 			expectedStatus: http.StatusNotFound,
 			description:    "Should return 404 for non-existing stub",
 		},
@@ -264,7 +267,12 @@ func (s *RestServerExtendedTestSuite) TestFindStubByIDExtended() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			req := httptest.NewRequestWithContext(s.T().Context(), http.MethodGet, "/api/stubs/"+tt.stubID.String(), nil)
+			req := httptest.NewRequestWithContext(
+				s.T().Context(),
+				http.MethodGet,
+				"/api/stubs/"+strconv.FormatUint(uint64(tt.stubID), 10),
+				nil,
+			)
 			w := httptest.NewRecorder()
 
 			s.server.FindByID(w, req, tt.stubID)
@@ -324,7 +332,7 @@ func (s *RestServerExtendedTestSuite) TestStubStatistics() {
 			s.Require().Equal(http.StatusOK, w.Code, tt.description)
 			s.Require().NotEmpty(w.Body.String())
 
-			var stubs []*stuber.Stub
+			var stubs []rest.Stub
 
 			err := json.Unmarshal(w.Body.Bytes(), &stubs)
 			s.Require().NoError(err)
@@ -738,16 +746,18 @@ func (s *RestServerExtendedTestSuite) TestBatchOperations() {
 	s.server.ListStubs(listW, listReq, rest.ListStubsParams{})
 	s.Require().Equal(http.StatusOK, listW.Code)
 
-	var allStubs []*stuber.Stub
+	var allStubs []rest.Stub
 
 	err := json.Unmarshal(listW.Body.Bytes(), &allStubs)
 	s.Require().NoError(err)
 	s.Require().Len(allStubs, 3)
 
 	// Test batch deletion
-	stubIDs := make([]string, len(allStubs))
-	for i, stub := range allStubs {
-		stubIDs[i] = stub.ID.String()
+	stubIDs := make([]rest.ID, 0, len(allStubs))
+	for _, stub := range allStubs {
+		if stub.Id != nil {
+			stubIDs = append(stubIDs, *stub.Id)
+		}
 	}
 
 	batchDeleteData, err := json.Marshal(stubIDs)
@@ -786,18 +796,19 @@ func (s *RestServerExtendedTestSuite) TestStubPersistence() {
 	s.server.ListStubs(listW, listReq, rest.ListStubsParams{})
 	s.Require().Equal(http.StatusOK, listW.Code)
 
-	var listedStubs []*stuber.Stub
+	var listedStubs []rest.Stub
 
 	err := json.Unmarshal(listW.Body.Bytes(), &listedStubs)
 	s.Require().NoError(err)
 	s.Require().NotEmpty(listedStubs)
 
 	// Find our stub
-	var foundStub *stuber.Stub
+	var foundStub *rest.Stub
 
-	for _, stub := range listedStubs {
+	for i := range listedStubs {
+		stub := listedStubs[i]
 		if stub.Service == "PersistenceService" && stub.Method == "PersistentMethod" {
-			foundStub = stub
+			foundStub = &listedStubs[i]
 
 			break
 		}

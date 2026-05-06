@@ -53,7 +53,7 @@ func validateInputConfiguration(fl validator.FieldLevel) bool {
 	hasInput := hasValidInputData(v.Input)
 	hasInputs := len(v.Inputs) > 0
 
-	return hasInput != hasInputs
+	return !(hasInput && hasInputs)
 }
 
 func validateOutputConfiguration(fl validator.FieldLevel) bool {
@@ -119,7 +119,7 @@ func getValidationMessage(fe validator.FieldError) string {
 	case "required":
 		return requiredFieldMessage(fe.Field())
 	case "valid_input_config":
-		return "Invalid input configuration: must have either 'input' or 'inputs', but not both"
+		return "Invalid input configuration: cannot define both 'input' and 'inputs' at the same time"
 	case "valid_output_config":
 		return "Invalid output configuration: must have either 'data' or 'stream', but not both"
 	case "valid_effects":

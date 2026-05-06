@@ -1,6 +1,10 @@
 package stuber
 
 import (
+	"encoding/binary"
+	"fmt"
+
+	"github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 
@@ -31,10 +35,12 @@ type StubOptions struct {
 // Stub represents a gRPC service method and its associated data.
 type Stub struct {
 	ID       uuid.UUID   `json:"id"`                                               // The unique identifier of the stub.
+	Name     string      `json:"name,omitempty"`                                   // Optional user-defined stub name.
 	Service  string      `json:"service"           validate:"required"`            // The name of the service.
 	Method   string      `json:"method"            validate:"required"`            // The name of the method.
 	Session  string      `json:"session,omitempty"`                                // Session ID for isolation (empty = global).
-	Priority int         `json:"priority"`                                         // The priority score of the stub.
+	Priority int         `json:"priority"`                                         // Deprecated: kept for backward compatibility.
+	Enabled  *bool       `json:"enabled,omitempty"`                                // Enabled state (nil means enabled for compatibility).
 	Options  StubOptions `json:"options,omitempty"`                                //nolint:modernize
 	Headers  InputHeader `json:"headers"`                                          // The headers of the request.
 	Input    InputData   `json:"input"             validate:"valid_input_config"`  // Unary input (mutually exclusive with Inputs).
@@ -42,6 +48,61 @@ type Stub struct {
 	Output   Output      `json:"output"            validate:"valid_output_config"` // The output data of the response.
 	Effects  []Effect    `json:"effects,omitempty" validate:"valid_effects"`       // Side effects applied after a successful match.
 	Source   string      `json:"source,omitempty"`                                 // Stub source.
+}
+
+// UnmarshalJSON supports legacy UUID IDs and numeric REST IDs.
+func (s *Stub) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	rawID, hasID := raw["id"]
+	delete(raw, "id")
+
+	withoutID, err := json.Marshal(raw)
+	if err != nil {
+		return err
+	}
+
+	type alias Stub
+	var decoded alias
+	if err := json.Unmarshal(withoutID, &decoded); err != nil {
+		return err
+	}
+
+	*s = Stub(decoded)
+	if !hasID || len(rawID) == 0 || string(rawID) == "null" {
+		return nil
+	}
+
+	var stringID string
+	if err := json.Unmarshal(rawID, &stringID); err == nil {
+		parsed, parseErr := uuid.Parse(stringID)
+		if parseErr != nil {
+			return parseErr
+		}
+
+		s.ID = parsed
+
+		return nil
+	}
+
+	var numericID uint64
+	if err := json.Unmarshal(rawID, &numericID); err == nil {
+		s.ID = numericIDToUUID(numericID)
+
+		return nil
+	}
+
+	return fmt.Errorf("id must be either uuid string or uint64 number")
+}
+
+func numericIDToUUID(value uint64) uuid.UUID {
+	var id uuid.UUID
+	binary.BigEndian.PutUint64(id[8:], value)
+
+	return id
 }
 
 const (
@@ -100,6 +161,17 @@ func (s *Stub) Right() string {
 // Score returns the priority score of the stub.
 func (s *Stub) Score() int {
 	return s.Priority
+}
+
+// IsEnabled returns whether stub can participate in matching.
+// Nil is treated as enabled to preserve backward compatibility with old payloads.
+func (s *Stub) IsEnabled() bool {
+	return s.Enabled == nil || *s.Enabled
+}
+
+// SetEnabled updates enabled state and initializes pointer storage.
+func (s *Stub) SetEnabled(enabled bool) {
+	s.Enabled = &enabled
 }
 
 // InputData represents the input data of a gRPC request.

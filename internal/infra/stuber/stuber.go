@@ -1,6 +1,8 @@
 package stuber
 
 import (
+	"strings"
+
 	"github.com/google/uuid"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 )
@@ -40,6 +42,8 @@ func (b *Budgerigar) PutMany(values ...*Stub) []uuid.UUID {
 		}
 	}
 
+	b.ensureSingleEnabledByRoute(values...)
+
 	return b.searcher.upsert(values...)
 }
 
@@ -53,7 +57,56 @@ func (b *Budgerigar) UpdateMany(values ...*Stub) []uuid.UUID {
 		}
 	}
 
+	b.ensureSingleEnabledByRoute(updates...)
+
 	return b.searcher.upsert(updates...)
+}
+
+func (b *Budgerigar) ensureSingleEnabledByRoute(values ...*Stub) {
+	if len(values) == 0 {
+		return
+	}
+
+	latestEnabled := make(map[string]*Stub, len(values))
+	for _, stub := range values {
+		if !stub.IsEnabled() {
+			continue
+		}
+
+		key := routeKey(stub.Service, stub.Method)
+		if previous, ok := latestEnabled[key]; ok && previous.ID != stub.ID {
+			previous.SetEnabled(false)
+		}
+
+		latestEnabled[key] = stub
+	}
+
+	if len(latestEnabled) == 0 {
+		return
+	}
+
+	for _, existing := range b.searcher.all() {
+		if !existing.IsEnabled() {
+			continue
+		}
+
+		candidate, ok := latestEnabled[routeKey(existing.Service, existing.Method)]
+		if !ok || candidate.ID == existing.ID {
+			continue
+		}
+
+		existing.SetEnabled(false)
+	}
+}
+
+func routeKey(service, method string) string {
+	var builder strings.Builder
+	builder.Grow(len(service) + len(method) + 1)
+	builder.WriteString(service)
+	builder.WriteString("/")
+	builder.WriteString(method)
+
+	return builder.String()
 }
 
 // DeleteByID deletes the Stub values with the given IDs from the Budgerigar's searcher.

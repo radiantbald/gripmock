@@ -79,10 +79,12 @@ type InspectStage struct {
 
 type InspectCandidate struct {
 	ID               uuid.UUID               `json:"id"`
+	Name             string                  `json:"name,omitempty"`
 	Service          string                  `json:"service"`
 	Method           string                  `json:"method"`
 	Session          string                  `json:"session,omitempty"`
 	Priority         int                     `json:"priority"`
+	Enabled          bool                    `json:"enabled"`
 	Times            int                     `json:"times"`
 	Used             int                     `json:"used"`
 	VisibleBySession bool                    `json:"visibleBySession"`

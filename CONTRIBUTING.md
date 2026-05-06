@@ -10,6 +10,10 @@ Thank you for your interest in contributing to GripMock! This document provides 
 2. **Set up your development environment**:
    - Install [grpctestify](https://github.com/gripmock/grpctestify-rust) for integration tests (see [grpctestify documentation](https://gripmock.github.io/grpctestify-rust/) for installation instructions)
    - Ensure you have Go installed and configured
+   - If you change files under `third_party/gripmock-ui/src`, rebuild UI assets before running GripMock:
+     ```bash
+     make ui-build
+     ```
 
 ## Testing Requirements
 

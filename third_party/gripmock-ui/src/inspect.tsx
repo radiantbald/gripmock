@@ -24,6 +24,7 @@ import type { StubRecord } from "./types/entities";
 export const InspectPage = () => {
   const notify = useNotify();
   const dataProvider = useDataProvider();
+  const [stubName, setStubName] = useState("");
   const [service, setService] = useState("");
   const [method, setMethod] = useState("");
   const [payload, setPayload] = useState('{\n  "name": "Alex"\n}');
@@ -47,13 +48,20 @@ export const InspectPage = () => {
     }
 
     return result.candidates.filter((candidate) => {
+      if (stubName.trim() !== "") {
+        const name = candidate.name || "";
+        if (!name.toLowerCase().includes(stubName.trim().toLowerCase())) {
+          return false;
+        }
+      }
+
       if (strictRouteOnly && (candidate.service !== service || candidate.method !== method)) {
         return false;
       }
 
       return candidateMatchesFilter(candidate, candidateQuery, onlyMatched, onlyExcluded);
     });
-  }, [candidateQuery, method, onlyExcluded, onlyMatched, result, service, strictRouteOnly]);
+  }, [candidateQuery, method, onlyExcluded, onlyMatched, result, service, strictRouteOnly, stubName]);
 
   const visibleCandidates = showAllCandidates ? filteredCandidates : filteredCandidates.slice(0, 10);
 
@@ -146,6 +154,8 @@ export const InspectPage = () => {
                 The inspect API is experimental and may change or be removed in future releases.
               </Alert>
               <ServiceMethodSelectors
+                stubName={stubName}
+                onStubNameChange={setStubName}
                 service={service}
                 method={method}
                 onServiceChange={setService}

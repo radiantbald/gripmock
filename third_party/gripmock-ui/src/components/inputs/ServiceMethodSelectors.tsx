@@ -3,10 +3,13 @@ import { Autocomplete, TextField } from "@mui/material";
 import { useGetList } from "react-admin";
 
 type ServiceMethodSelectorsProps = {
+  stubName?: string;
+  onStubNameChange?: Dispatch<SetStateAction<string>>;
   service: string;
   method: string;
   onServiceChange: Dispatch<SetStateAction<string>>;
   onMethodChange: Dispatch<SetStateAction<string>>;
+  stubNameLabel?: string;
   serviceLabel?: string;
   methodLabel?: string;
 };
@@ -19,10 +22,13 @@ type ServiceRecord = {
 };
 
 export const ServiceMethodSelectors = ({
+  stubName = "",
+  onStubNameChange,
   service,
   method,
   onServiceChange,
   onMethodChange,
+  stubNameLabel = "Stub Name",
   serviceLabel = "Service",
   methodLabel = "Method",
 }: ServiceMethodSelectorsProps) => {
@@ -50,6 +56,15 @@ export const ServiceMethodSelectors = ({
 
   return (
     <>
+      {onStubNameChange ? (
+        <TextField
+          label={stubNameLabel}
+          placeholder="Enter stub name"
+          value={stubName}
+          onChange={(event) => onStubNameChange(event.target.value)}
+          fullWidth
+        />
+      ) : null}
       <Autocomplete
         freeSolo
         options={services}

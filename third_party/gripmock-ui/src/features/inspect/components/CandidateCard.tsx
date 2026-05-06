@@ -23,7 +23,7 @@ export const CandidateCard = ({
       {candidate.id}
     </Typography>
     <Typography variant="caption">
-      {candidate.service}/{candidate.method} priority={candidate.priority} times={candidate.times} used={candidate.used}
+      {(candidate.name ? `${candidate.name} - ` : "") + `${candidate.service}/${candidate.method}`} enabled={candidate.enabled ? "true" : "false"} times={candidate.times} used={candidate.used}
     </Typography>
     <Typography variant="caption" display="block">
       specificity={candidate.specificity} score={candidate.score.toFixed(3)}

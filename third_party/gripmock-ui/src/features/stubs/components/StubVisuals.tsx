@@ -110,6 +110,13 @@ export const StubDetails = ({ record }: { record?: StubRecord }) => {
                   <strong>ID:</strong> {resolvedRecord.id}
                 </Typography>
               </Box>
+              {resolvedRecord.name ? (
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Typography variant="body2">
+                    <strong>Name:</strong> {resolvedRecord.name}
+                  </Typography>
+                </Box>
+              ) : null}
               <Box display="flex" alignItems="center" gap={1}>
                 <Code fontSize="small" />
                 <Typography variant="body2">
@@ -124,7 +131,7 @@ export const StubDetails = ({ record }: { record?: StubRecord }) => {
               </Box>
               <Box display="flex" alignItems="center" gap={1}>
                 <Typography variant="body2">
-                  <strong>Priority:</strong> {resolvedRecord.priority || 0}
+                  <strong>Enabled:</strong> {resolvedRecord.enabled !== false ? "yes" : "no"}
                 </Typography>
               </Box>
               <MatcherChip record={resolvedRecord} />

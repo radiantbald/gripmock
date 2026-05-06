@@ -88,7 +88,7 @@ func (b *Builder) RestServe(
 		return nil, errors.Wrapf(err, "failed to create rest server")
 	}
 
-	ui, err := b.ui()
+	ui, err := b.ui(ctx)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get UI assets")
 	}

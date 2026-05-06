@@ -325,6 +325,12 @@ paths:
           required: false
           schema:
             type: string
+        - name: name
+          in: query
+          description: Filter by stub name (exact match)
+          required: false
+          schema:
+            type: string
         - name: method
           in: query
           description: Filter by method name (exact match)
@@ -799,13 +805,10 @@ components:
           $ref: '#/components/schemas/ProtoMessageSchema'
     # stubs
     ID:
-      type: string
-      format: uuid
-      x-go-type: uuid.UUID
-      x-go-type-import:
-        name: uuid
-        path: github.com/google/uuid
-      example: 51c50050-ec27-4dae-a583-a32ca71a1dd5
+      type: integer
+      format: uint64
+      minimum: 1
+      example: 101
       x-omitzero: false
     ListID:
       type: array
@@ -880,16 +883,13 @@ components:
           type: string
         method:
           type: string
+        name:
+          type: string
         session:
           type: string
           description: Session ID (empty = global)
         stubId:
-          type: string
-          format: uuid
-          x-go-type: uuid.UUID
-          x-go-type-import:
-            name: uuid
-            path: github.com/google/uuid
+          $ref: '#/components/schemas/ID'
           description: Stub identifier
         timestamp:
           type: string
@@ -960,6 +960,8 @@ components:
           type: string
         method:
           type: string
+        name:
+          type: string
         session:
           type: string
         headers:
@@ -1026,10 +1028,14 @@ components:
           type: string
         method:
           type: string
+        name:
+          type: string
         session:
           type: string
         priority:
           type: integer
+        enabled:
+          type: boolean
         times:
           type: integer
         used:
@@ -1283,10 +1289,18 @@ components:
           type: string
           example: SayHello
           x-omitzero: false
+        name:
+          type: string
+          description: Optional user-defined stub name
+        enabled:
+          type: boolean
+          default: true
+          description: Whether the stub participates in matching.
+          x-go-type-skip-optional-pointer: true
         priority:
           type: integer
           default: 0
-          description: Priority of the stub. Higher priority stubs are matched first.
+          description: Deprecated: kept for backward compatibility and ignored by matcher.
           x-go-type-skip-optional-pointer: true
         headers:
           $ref: '#/components/schemas/StubHeaders'

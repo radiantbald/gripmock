@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/bavix/gripmock/v3/internal/domain/rest"
@@ -55,12 +54,11 @@ func (s *RestComprehensiveTestSuite) TestFindByID() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			// Use a random UUID for non-existing stub test
-			randomUUID := uuid.New()
-			req := httptest.NewRequestWithContext(s.T().Context(), http.MethodGet, "/api/stubs/"+randomUUID.String(), nil)
+			nonExistingID := rest.ID(999999)
+			req := httptest.NewRequestWithContext(s.T().Context(), http.MethodGet, "/api/stubs/999999", nil)
 			w := httptest.NewRecorder()
 
-			s.server.FindByID(w, req, randomUUID)
+			s.server.FindByID(w, req, nonExistingID)
 
 			s.Equal(tt.expectedStatus, w.Code, tt.description)
 			s.Require().NotEmpty(w.Body.String(), "Response should not be empty")
@@ -77,10 +75,10 @@ func (s *RestComprehensiveTestSuite) TestBatchStubsDeleteComprehensive() {
 		description    string
 	}{
 		{
-			name:           "delete_with_valid_UUIDs",
-			requestBody:    `["550e8400-e29b-41d4-a716-446655440000", "550e8400-e29b-41d4-a716-446655440001"]`,
+			name:           "delete_with_valid_numeric_ids",
+			requestBody:    `[101, 102]`,
 			expectedStatus: http.StatusOK,
-			description:    "Should accept valid UUIDs",
+			description:    "Should accept valid numeric IDs",
 		},
 		{
 			name:           "delete_with_empty_array",
@@ -95,16 +93,16 @@ func (s *RestComprehensiveTestSuite) TestBatchStubsDeleteComprehensive() {
 			description:    "Should reject invalid JSON",
 		},
 		{
-			name:           "delete_with_invalid_UUIDs",
+			name:           "delete_with_invalid_ids",
 			requestBody:    `["invalid-uuid", "another-invalid"]`,
 			expectedStatus: http.StatusInternalServerError,
-			description:    "Should reject invalid UUIDs",
+			description:    "Should reject invalid IDs",
 		},
 		{
-			name:           "delete_with_mixed_valid/invalid_UUIDs",
-			requestBody:    `["550e8400-e29b-41d4-a716-446655440000", "invalid-uuid"]`,
+			name:           "delete_with_mixed_valid_invalid_ids",
+			requestBody:    `[101, "invalid-id"]`,
 			expectedStatus: http.StatusInternalServerError,
-			description:    "Should reject mixed valid/invalid UUIDs",
+			description:    "Should reject mixed valid/invalid IDs",
 		},
 	}
 

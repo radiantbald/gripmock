@@ -9,6 +9,8 @@ import (
 const (
 	ListSortPriorityDesc = "priority_desc"
 	ListSortPriorityAsc  = "priority_asc"
+	ListSortEnabledDesc  = "enabled_desc"
+	ListSortEnabledAsc   = "enabled_asc"
 	ListSortServiceAsc   = "service_asc"
 	ListSortMethodAsc    = "method_asc"
 )
@@ -16,6 +18,7 @@ const (
 // ListOptions controls filtering, sorting and pagination for stubs listing.
 type ListOptions struct {
 	Source  string
+	Name    string
 	Service string
 	Method  string
 
@@ -53,6 +56,13 @@ func filterStubs(stubs iter.Seq[*Stub], options ListOptions) []*Stub {
 		service := options.Service
 		seq = whereStubs(seq, func(stub *Stub) bool {
 			return stub.Service == service
+		})
+	}
+
+	if options.Name != "" {
+		name := options.Name
+		seq = whereStubs(seq, func(stub *Stub) bool {
+			return stub.Name == name
 		})
 	}
 
@@ -105,13 +115,25 @@ func paginateStubs(stubs []*Stub, options ListOptions) []*Stub {
 
 func sortStubs(stubs []*Stub, mode string) {
 	less := func(i, j int) bool {
-		return stubs[i].Priority > stubs[j].Priority
+		leftEnabled := stubs[i].IsEnabled()
+		rightEnabled := stubs[j].IsEnabled()
+		if leftEnabled != rightEnabled {
+			return leftEnabled
+		}
+
+		return stubs[i].ID.String() < stubs[j].ID.String()
 	}
 
 	switch mode {
-	case ListSortPriorityAsc:
+	case ListSortPriorityAsc, ListSortEnabledAsc:
 		less = func(i, j int) bool {
-			return stubs[i].Priority < stubs[j].Priority
+			leftEnabled := stubs[i].IsEnabled()
+			rightEnabled := stubs[j].IsEnabled()
+			if leftEnabled != rightEnabled {
+				return !leftEnabled
+			}
+
+			return stubs[i].ID.String() < stubs[j].ID.String()
 		}
 	case ListSortServiceAsc:
 		less = func(i, j int) bool {

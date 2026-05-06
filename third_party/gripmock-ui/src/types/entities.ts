@@ -59,9 +59,10 @@ export type HistoryRecord = {
 
 export type StubRecord = {
   id: string;
+  name?: string;
   service?: string;
   method?: string;
-  priority?: number;
+  enabled?: boolean;
   headers?: Record<string, unknown>;
   input?: {
     ignoreArrayOrder?: boolean;

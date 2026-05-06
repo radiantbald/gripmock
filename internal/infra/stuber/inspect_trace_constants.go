@@ -25,6 +25,7 @@ const (
 	traceReasonMethod    = "method"
 	traceReasonSession   = "session"
 	traceReasonTimes     = "times"
+	traceReasonDisabled  = "disabled"
 	traceReasonHeaders   = "headers"
 	traceReasonInput     = "input"
 )

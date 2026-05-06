@@ -63,7 +63,7 @@ func (br *BidiResult) ensureMatchingStubs(messageData map[string]any) (bool, int
 		}
 
 		for stub := range allStubs {
-			if matchBidiStubMessage(stub, messageData) {
+			if stub.IsEnabled() && matchBidiStubMessage(stub, messageData) {
 				br.matchingStubs = append(br.matchingStubs, stub)
 			}
 		}
@@ -79,7 +79,7 @@ func (br *BidiResult) filterMatchingStubs(messageData map[string]any) {
 	filtered := br.matchingStubs[:0]
 
 	for _, stub := range br.matchingStubs {
-		if matchBidiStubMessage(stub, messageData) {
+		if stub.IsEnabled() && matchBidiStubMessage(stub, messageData) {
 			filtered = append(filtered, stub)
 		}
 	}
@@ -96,8 +96,7 @@ func (br *BidiResult) selectBestStub(itemQuery Query, messageIndex int) (*Stub, 
 
 	for i, stub := range br.matchingStubs {
 		rank := scoreBidiStubMessage(itemQuery, stub, messageIndex)
-		priorityBonus := float64(stub.Priority) * PriorityMultiplier
-		totalRank := rank + priorityBonus
+		totalRank := rank
 
 		if bestStub == nil || totalRank > bestRank {
 			bestStub = stub
@@ -170,7 +169,7 @@ func (s *searcher) searchByIDBidi(query QueryBidi) (*BidiResult, error) {
 	}
 
 	lookup, found := s.lookupVisibleByID(query.Session, *query.ID)
-	if found == nil {
+	if found == nil || !found.IsEnabled() {
 		// Return an error if the Stub value is not found
 		return nil, ErrServiceNotFound
 	}

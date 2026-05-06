@@ -61,9 +61,10 @@ export const StubsDatagrid = ({
     }
   >
     <IdField />
+    <TextField source="name" label="name" sortable />
     <TextField source="service" sortable />
     <TextField source="method" sortable />
-    <TextField source="priority" sortable />
+    <BooleanField source="enabled" sortable />
     <NumberField source="options.times" label="times" sortable />
     <BooleanField source="input.ignoreArrayOrder" label="unordered" />
     <FunctionField label="matcher" render={() => <MatcherField />} />

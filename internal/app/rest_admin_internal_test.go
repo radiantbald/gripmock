@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/bavix/gripmock/v3/internal/domain/rest"
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
 )
 
@@ -60,7 +61,7 @@ func (s *AdminPanelTestSuite) TestSearchStubsWithRequestInternalHeader() {
 	s.server.ListUnusedStubs(unusedW, unusedReq)
 	s.Require().Equal(http.StatusOK, unusedW.Code)
 
-	var unusedStubs []*stuber.Stub
+	var unusedStubs []rest.Stub
 
 	err := json.Unmarshal(unusedW.Body.Bytes(), &unusedStubs)
 	s.Require().NoError(err)
@@ -101,7 +102,7 @@ func (s *AdminPanelTestSuite) TestSearchStubsWithRequestInternalHeader() {
 	s.server.ListUnusedStubs(unusedW2, unusedReq2)
 	s.Require().Equal(http.StatusOK, unusedW2.Code)
 
-	var unusedStubsAfter []*stuber.Stub
+	var unusedStubsAfter []rest.Stub
 
 	err = json.Unmarshal(unusedW2.Body.Bytes(), &unusedStubsAfter)
 	s.Require().NoError(err)
@@ -114,7 +115,7 @@ func (s *AdminPanelTestSuite) TestSearchStubsWithRequestInternalHeader() {
 	s.server.ListUsedStubs(usedW, usedReq)
 	s.Require().Equal(http.StatusOK, usedW.Code)
 
-	var usedStubs []*stuber.Stub
+	var usedStubs []rest.Stub
 
 	err = json.Unmarshal(usedW.Body.Bytes(), &usedStubs)
 	s.Require().NoError(err)
@@ -161,7 +162,7 @@ func (s *AdminPanelTestSuite) TestSearchStubsWithoutRequestInternalHeader() {
 	s.server.ListUsedStubs(usedW, usedReq)
 	s.Require().Equal(http.StatusOK, usedW.Code)
 
-	var usedStubs []*stuber.Stub
+	var usedStubs []rest.Stub
 
 	err := json.Unmarshal(usedW.Body.Bytes(), &usedStubs)
 	s.Require().NoError(err)
@@ -174,7 +175,7 @@ func (s *AdminPanelTestSuite) TestSearchStubsWithoutRequestInternalHeader() {
 	s.server.ListUnusedStubs(unusedW, unusedReq)
 	s.Require().Equal(http.StatusOK, unusedW.Code)
 
-	var unusedStubs []*stuber.Stub
+	var unusedStubs []rest.Stub
 
 	err = json.Unmarshal(unusedW.Body.Bytes(), &unusedStubs)
 	s.Require().NoError(err)
@@ -235,7 +236,7 @@ func (s *AdminPanelTestSuite) TestMultipleInternalSearches() {
 	s.server.ListUnusedStubs(unusedW, unusedReq)
 	s.Require().Equal(http.StatusOK, unusedW.Code)
 
-	var unusedStubs []*stuber.Stub
+	var unusedStubs []rest.Stub
 
 	err := json.Unmarshal(unusedW.Body.Bytes(), &unusedStubs)
 	s.Require().NoError(err)
@@ -248,7 +249,7 @@ func (s *AdminPanelTestSuite) TestMultipleInternalSearches() {
 	s.server.ListUsedStubs(usedW, usedReq)
 	s.Require().Equal(http.StatusOK, usedW.Code)
 
-	var usedStubs []*stuber.Stub
+	var usedStubs []rest.Stub
 
 	err = json.Unmarshal(usedW.Body.Bytes(), &usedStubs)
 	s.Require().NoError(err)
@@ -312,7 +313,7 @@ func (s *AdminPanelTestSuite) TestMixedInternalAndNormalSearches() {
 	s.server.ListUnusedStubs(unusedW, unusedReq)
 	s.Require().Equal(http.StatusOK, unusedW.Code)
 
-	var unusedStubs []*stuber.Stub
+	var unusedStubs []rest.Stub
 
 	err := json.Unmarshal(unusedW.Body.Bytes(), &unusedStubs)
 	s.Require().NoError(err)
@@ -326,7 +327,7 @@ func (s *AdminPanelTestSuite) TestMixedInternalAndNormalSearches() {
 	s.server.ListUsedStubs(usedW, usedReq)
 	s.Require().Equal(http.StatusOK, usedW.Code)
 
-	var usedStubs []*stuber.Stub
+	var usedStubs []rest.Stub
 
 	err = json.Unmarshal(usedW.Body.Bytes(), &usedStubs)
 	s.Require().NoError(err)

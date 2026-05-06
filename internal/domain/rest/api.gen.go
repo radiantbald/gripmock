@@ -10,7 +10,6 @@ import (
 	"time"
 
 	gptypes "github.com/bavix/gripmock/v3/internal/infra/types"
-	uuid "github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/oapi-codegen/runtime"
 	codes "google.golang.org/grpc/codes"
@@ -114,7 +113,7 @@ type CallRecord struct {
 	Session *string `json:"session,omitempty"`
 
 	// StubId Stub identifier
-	StubId    *uuid.UUID `json:"stubId,omitempty"`
+	StubId    *ID        `json:"stubId,omitempty"`
 	Timestamp *time.Time `json:"timestamp,omitempty"`
 }
 
@@ -182,10 +181,11 @@ type DescriptorServiceIDs struct {
 type HistoryList = []CallRecord
 
 // ID defines model for ID.
-type ID = uuid.UUID
+type ID = uint64
 
 // InspectCandidate defines model for InspectCandidate.
 type InspectCandidate struct {
+	Enabled          bool                    `json:"enabled"`
 	Events           []InspectCandidateEvent `json:"events"`
 	ExcludedBy       []string                `json:"excludedBy"`
 	HeadersMatched   bool                    `json:"headersMatched"`
@@ -193,6 +193,7 @@ type InspectCandidate struct {
 	InputMatched     bool                    `json:"inputMatched"`
 	Matched          bool                    `json:"matched"`
 	Method           string                  `json:"method"`
+	Name             *string                 `json:"name,omitempty"`
 	Priority         int                     `json:"priority"`
 	Score            float64                 `json:"score"`
 	Service          string                  `json:"service"`
@@ -353,10 +354,14 @@ type Stub struct {
 	// Inputs Inputs to match against. If multiple inputs are provided, the stub will be matched if any of the inputs match.
 	Inputs []StubInput `json:"inputs,omitempty"`
 	Method string      `json:"method"`
+	Name   *string     `json:"name,omitempty"`
 
 	// Options Optional behavior settings for a stub
 	Options *StubOptions `json:"options,omitempty"`
 	Output  StubOutput   `json:"output"`
+
+	// Enabled Whether the stub participates in matching. Defaults to true when omitted.
+	Enabled *bool `json:"enabled,omitempty"`
 
 	// Priority Priority of the stub. Higher priority stubs are matched first.
 	Priority int    `json:"priority,omitempty"`
@@ -463,6 +468,9 @@ type VerifyRequest struct {
 type ListStubsParams struct {
 	// Source Filter by source (file, rest, mcp, proxy)
 	Source *string `form:"source,omitempty" json:"source,omitempty"`
+
+	// Name Filter by stub name (exact match)
+	Name *string `form:"name,omitempty" json:"name,omitempty"`
 
 	// Service Filter by service name (exact match)
 	Service *string `form:"service,omitempty" json:"service,omitempty"`
@@ -944,6 +952,14 @@ func (siw *ServerInterfaceWrapper) ListStubs(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// ------------- Optional query parameter "name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "name", r.URL.Query(), &params.Name, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
 	// ------------- Optional query parameter "method" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "method", r.URL.Query(), &params.Method, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -1087,7 +1103,7 @@ func (siw *ServerInterfaceWrapper) DeleteStubByID(w http.ResponseWriter, r *http
 	// ------------- Path parameter "uuid" -------------
 	var uuid ID
 
-	err = runtime.BindStyledParameterWithOptions("simple", "uuid", mux.Vars(r)["uuid"], &uuid, runtime.BindStyledParameterOptions{Explode: false, Required: true, Type: "string", Format: "uuid"})
+	err = runtime.BindStyledParameterWithOptions("simple", "uuid", mux.Vars(r)["uuid"], &uuid, runtime.BindStyledParameterOptions{Explode: false, Required: true, Type: "integer", Format: "uint64"})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uuid", Err: err})
 		return
@@ -1112,7 +1128,7 @@ func (siw *ServerInterfaceWrapper) FindByID(w http.ResponseWriter, r *http.Reque
 	// ------------- Path parameter "uuid" -------------
 	var uuid ID
 
-	err = runtime.BindStyledParameterWithOptions("simple", "uuid", mux.Vars(r)["uuid"], &uuid, runtime.BindStyledParameterOptions{Explode: false, Required: true, Type: "string", Format: "uuid"})
+	err = runtime.BindStyledParameterWithOptions("simple", "uuid", mux.Vars(r)["uuid"], &uuid, runtime.BindStyledParameterOptions{Explode: false, Required: true, Type: "integer", Format: "uint64"})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uuid", Err: err})
 		return

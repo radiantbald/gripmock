@@ -149,7 +149,7 @@ func (s *searcher) searchByID(query Query) (*Result, error) {
 	}
 
 	_, found := s.lookupVisibleByID(query.Session, *query.ID)
-	if found != nil && s.tryReserve(query, found) {
+	if found != nil && found.IsEnabled() && s.tryReserve(query, found) {
 		return &Result{found: found}, nil
 	}
 
@@ -160,6 +160,10 @@ func (s *searcher) searchByID(query Query) (*Result, error) {
 // When query.Session is set, the count is per-session (parallel test isolation).
 // Returns true if the reservation succeeded, false if the stub is exhausted.
 func (s *searcher) tryReserve(query Query, stub *Stub) bool {
+	if !stub.IsEnabled() {
+		return false
+	}
+
 	if query.RequestInternal() {
 		return true
 	}

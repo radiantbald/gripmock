@@ -8,9 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 )
@@ -184,7 +182,7 @@ func TestHandlerRoutes(t *testing.T) {
 	handler := Handler(mock)
 	require.NotNil(t, handler)
 
-	validUUID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	validID := "101"
 
 	tests := []struct {
 		method string
@@ -212,8 +210,8 @@ func TestHandlerRoutes(t *testing.T) {
 		{http.MethodPost, "/stubs/inspect", "InspectStubs"},
 		{http.MethodGet, "/stubs/unused", "ListUnusedStubs"},
 		{http.MethodGet, "/stubs/used", "ListUsedStubs"},
-		{http.MethodDelete, "/stubs/" + validUUID.String(), "DeleteStubByID"},
-		{http.MethodGet, "/stubs/" + validUUID.String(), "FindByID"},
+		{http.MethodDelete, "/stubs/" + validID, "DeleteStubByID"},
+		{http.MethodGet, "/stubs/" + validID, "FindByID"},
 	}
 
 	for _, tt := range tests {
@@ -233,8 +231,8 @@ func TestHandlerRoutes(t *testing.T) {
 				req = mux.SetURLVars(req, map[string]string{"serviceID": "myservice", "methodID": "mymethod"})
 			}
 
-			if tt.path == "/stubs/"+validUUID.String() {
-				req = mux.SetURLVars(req, map[string]string{"uuid": validUUID.String()})
+			if tt.path == "/stubs/"+validID {
+				req = mux.SetURLVars(req, map[string]string{"uuid": validID})
 			}
 
 			h.ServeHTTP(rec, req)
@@ -318,7 +316,7 @@ func TestHandlerWithOptionsCustomErrorHandler(t *testing.T) {
 	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 }
 
-func TestDeleteStubByIDInvalidUUID(t *testing.T) {
+func TestDeleteStubByIDInvalidID(t *testing.T) {
 	t.Parallel()
 
 	handler := HandlerWithOptions(newMockServer(), GorillaServerOptions{})
@@ -329,7 +327,7 @@ func TestDeleteStubByIDInvalidUUID(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestFindByIDInvalidUUID(t *testing.T) {
+func TestFindByIDInvalidID(t *testing.T) {
 	t.Parallel()
 
 	handler := HandlerWithOptions(newMockServer(), GorillaServerOptions{})
@@ -443,7 +441,7 @@ func TestTypesService(t *testing.T) {
 func TestTypesSearchRequest(t *testing.T) {
 	t.Parallel()
 
-	id := openapi_types.UUID(uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")) //nolint:unconvert
+	id := ID(101)
 	req := SearchRequest{
 		Service: "Svc",
 		Method:  "Get",
@@ -499,8 +497,8 @@ func TestTypesStubHeaders(t *testing.T) {
 func TestTypesListID(t *testing.T) {
 	t.Parallel()
 
-	id1 := openapi_types.UUID(uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")) //nolint:unconvert
-	id2 := openapi_types.UUID(uuid.MustParse("550e8400-e29b-41d4-a716-446655440001")) //nolint:unconvert
+	id1 := ID(101)
+	id2 := ID(102)
 	list := ListID{id1, id2}
 	require.Len(t, list, 2)
 }

@@ -14,6 +14,23 @@ import type { Row } from "./types";
 
 type RAResult<T> = { data: T };
 
+const toNumericId = (value: unknown): number => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.length > 0) {
+    let hash = 0;
+    for (let index = 0; index < value.length; index += 1) {
+      hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+    }
+
+    return hash;
+  }
+
+  return Date.now();
+};
+
 const dataProvider: DataProvider = {
   getList: async (resource, params) => {
     const canonical = canonicalResource(resource);
@@ -167,10 +184,23 @@ const dataProvider: DataProvider = {
 
     const requestBody = Array.isArray(params.data) ? params.data : [params.data];
 
-    await apiClient.request(`/${canonical}`, {
+    const response = await apiClient.request<unknown>(`/${canonical}`, {
       method: "POST",
       body: JSON.stringify(requestBody),
     });
+
+    if (canonical === "stubs") {
+      const createdIDs = ensureArray<unknown>(response);
+      const firstBackendID = createdIDs[0] ?? (params.data as Row | undefined)?.id;
+
+      return {
+        data: {
+          ...(asRow(params.data as Row)),
+          id: toNumericId(firstBackendID),
+          backendId: firstBackendID,
+        },
+      } as RAResult<any>;
+    }
 
     return { data: params.data as any };
   },

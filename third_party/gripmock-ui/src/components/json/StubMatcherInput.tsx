@@ -26,11 +26,51 @@ type StubMatcherInputProps = {
 
 const prettyJson = (value: unknown) => {
   if (value === undefined || value === null) {
-    return "{}";
+    return "";
+  }
+
+  if (Array.isArray(value) && value.length === 0) {
+    return "";
+  }
+
+  if (typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0) {
+    return "";
   }
 
   return JSON.stringify(value, null, 2);
 };
+
+const matcherPlaceholder = `{
+  "ignoreArrayOrder": true,
+  "equals": {
+    "userId": "42"
+  },
+  "contains": {
+    "profile": {
+      "name": "john"
+    }
+  },
+  "matches": {
+    "email": ".*@example\\\\.com$"
+  },
+  "glob": {
+    "path": "/api/*"
+  },
+  "anyOf": [
+    {
+      "equals": {
+        "role": "admin"
+      }
+    },
+    {
+      "contains": {
+        "tags": [
+          "beta"
+        ]
+      }
+    }
+  ]
+}`;
 
 export const StubMatcherInput = ({
   inputSource = "input",
@@ -42,7 +82,7 @@ export const StubMatcherInput = ({
 }: StubMatcherInputProps) => {
   const record = useRecordContext();
   const { setValue } = useFormContext();
-  const [text, setText] = useState("{}");
+  const [text, setText] = useState("");
   const [parseError, setParseError] = useState<string | null>(null);
   const [isInitialized, setInitialized] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -60,7 +100,7 @@ export const StubMatcherInput = ({
       return record[inputSource];
     }
 
-    return {};
+    return undefined;
   }, [inputSource, inputsSource, record]);
 
   useEffect(() => {
@@ -72,8 +112,12 @@ export const StubMatcherInput = ({
       return;
     }
 
-    const nextText = prettyJson(initialValue);
+    const nextText =
+      mode === "create" && prettyJson(initialValue).trim().length === 0
+        ? matcherPlaceholder
+        : prettyJson(initialValue);
     setText(nextText);
+    applyParsedValue(nextText);
     setInitialized(true);
   }, [initialValue, isInitialized, mode, record]);
 
@@ -177,6 +221,7 @@ export const StubMatcherInput = ({
             fullWidth
             rows={minRows}
             value={text}
+            placeholder={matcherPlaceholder}
             onChange={(event) => {
               handleChange(event.target.value);
             }}
@@ -283,6 +328,7 @@ export const StubMatcherInput = ({
               multiline
               fullWidth
               value={text}
+              placeholder={matcherPlaceholder}
               onChange={(event) => {
                 handleChange(event.target.value);
               }}

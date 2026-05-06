@@ -36,7 +36,7 @@ func (s *searcher) buildSimilarCandidateFromRanked(stub *Stub, ranked rankedMatc
 }
 
 func (s *searcher) scoreWithPriority(query Query, stub *Stub) float64 {
-	return s.ranker.Score(query, stub) + float64(stub.Priority)*PriorityMultiplier
+	return s.ranker.Score(query, stub)
 }
 
 func betterSimilar(current, candidate similarCandidate) bool {

@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/protobuf/proto"
@@ -175,15 +174,12 @@ func (s *RestServerTestSuite) TestAddStub() {
 			s.Equal(tt.expectedStatus, w.Code)
 
 			if tt.expectedStatus == http.StatusOK {
-				// AddStub returns array of UUIDs
-				var response []string
+				var response []rest.ID
 
 				err := json.Unmarshal(w.Body.Bytes(), &response)
 				s.Require().NoError(err)
 				s.NotEmpty(response)
-				// Check that it's a valid UUID
-				_, err = uuid.Parse(response[0])
-				s.Require().NoError(err)
+				s.Greater(response[0], rest.ID(0))
 			}
 		})
 	}
@@ -207,7 +203,7 @@ func (s *RestServerTestSuite) TestDeleteStubByID() {
 	// Get the stub ID
 	stubs := s.budgerigar.All()
 	s.Require().NotEmpty(stubs)
-	stubID := stubs[0].ID
+	stubID := s.server.ensurePublicID(stubs[0].ID)
 
 	w := httptest.NewRecorder()
 	s.server.DeleteStubByID(w, httptest.NewRequestWithContext(s.T().Context(), http.MethodDelete, "/", nil), stubID)
@@ -250,7 +246,10 @@ func (s *RestServerTestSuite) TestBatchStubsDelete() {
 	stubs := s.budgerigar.All()
 	s.Require().Len(stubs, 2)
 
-	stubIDs := []uuid.UUID{stubs[0].ID, stubs[1].ID}
+	stubIDs := []rest.ID{
+		s.server.ensurePublicID(stubs[0].ID),
+		s.server.ensurePublicID(stubs[1].ID),
+	}
 	jsonData, err := json.Marshal(stubIDs)
 	s.Require().NoError(err)
 
@@ -291,7 +290,7 @@ func (s *RestServerTestSuite) TestListStubs() {
 	s.Equal(http.StatusOK, w.Code)
 
 	// ListStubs returns array of stubs
-	var response []*stuber.Stub
+	var response []rest.Stub
 
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	s.Require().NoError(err)
@@ -328,10 +327,11 @@ func (s *RestServerTestSuite) TestListStubsParams() {
 	s.Equal(http.StatusOK, w.Code)
 	s.Equal("1", w.Header().Get("X-Total-Count"))
 
-	var response []*stuber.Stub
+	var response []rest.Stub
 	s.Require().NoError(json.Unmarshal(w.Body.Bytes(), &response))
 	s.Require().Len(response, 1)
-	s.Equal("proxy", response[0].Source)
+	s.Require().NotNil(response[0].Source)
+	s.Equal("proxy", *response[0].Source)
 	s.Equal("svc.A", response[0].Service)
 	s.Equal("Ping", response[0].Method)
 }
@@ -945,7 +945,7 @@ func (s *RestServerTestSuite) TestListStubs_EmptyByUsage() {
 			// Assert
 			s.Equal(http.StatusOK, w.Code)
 
-			var response []*stuber.Stub
+			var response []rest.Stub
 
 			err := json.Unmarshal(w.Body.Bytes(), &response)
 			s.Require().NoError(err)
@@ -1495,11 +1495,11 @@ func (s *RestServerTestSuite) TestAddStubWithDelay() {
 
 			if tt.expectedStatus == http.StatusOK {
 				// Verify that stub was added successfully
-				var response []string
+				var response []rest.ID
 
 				err := json.Unmarshal(w.Body.Bytes(), &response)
-				s.Require().NoError(err, "should unmarshal response as array of UUIDs")
-				s.Len(response, 1, "should return exactly one UUID")
+				s.Require().NoError(err, "should unmarshal response as array of numeric IDs")
+				s.Len(response, 1, "should return exactly one ID")
 
 				// Verify that the stub exists in storage
 				stubs := s.budgerigar.All()

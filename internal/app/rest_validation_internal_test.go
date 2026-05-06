@@ -73,7 +73,7 @@ func (s *RestValidationTestSuite) TestAddStubValidationErrors() {
 				"output": {"data": {"result": "success"}}
 			}]`,
 			expectedStatus: http.StatusBadRequest,
-			expectedError:  "must have either 'input' or 'inputs', but not both",
+			expectedError:  "cannot define both 'input' and 'inputs'",
 		},
 		{
 			name: "both output.data and output.stream provided (invalid configuration)",
@@ -87,16 +87,6 @@ func (s *RestValidationTestSuite) TestAddStubValidationErrors() {
 			expectedError:  "must have either 'data' or 'stream', but not both",
 		},
 		{
-			name: "unary stub without input",
-			jsonData: `[{
-				"service": "TestService",
-				"method": "TestMethod",
-				"output": {"data": {"result": "success"}}
-			}]`,
-			expectedStatus: http.StatusBadRequest,
-			expectedError:  "must have either 'input' or 'inputs', but not both",
-		},
-		{
 			name: "unary stub without output",
 			jsonData: `[{
 				"service": "TestService",
@@ -105,26 +95,6 @@ func (s *RestValidationTestSuite) TestAddStubValidationErrors() {
 			}]`,
 			expectedStatus: http.StatusBadRequest,
 			expectedError:  "must have either 'data' or 'stream', but not both",
-		},
-		{
-			name: "client streaming stub without inputs",
-			jsonData: `[{
-				"service": "TestService",
-				"method": "TestMethod",
-				"output": {"data": {"result": "success"}}
-			}]`,
-			expectedStatus: http.StatusBadRequest,
-			expectedError:  "must have either 'input' or 'inputs', but not both",
-		},
-		{
-			name: "server streaming stub without input",
-			jsonData: `[{
-				"service": "TestService",
-				"method": "TestMethod",
-				"output": {"stream": [{"result": "response1"}]}
-			}]`,
-			expectedStatus: http.StatusBadRequest,
-			expectedError:  "must have either 'input' or 'inputs', but not both",
 		},
 		{
 			name: "empty service name",
@@ -147,28 +117,6 @@ func (s *RestValidationTestSuite) TestAddStubValidationErrors() {
 			}]`,
 			expectedStatus: http.StatusBadRequest,
 			expectedError:  "method name is missing",
-		},
-		{
-			name: "input with all empty matchers",
-			jsonData: `[{
-				"service": "TestService",
-				"method": "TestMethod",
-				"input": {"contains": null, "equals": null, "matches": null},
-				"output": {"data": {"result": "success"}}
-			}]`,
-			expectedStatus: http.StatusBadRequest,
-			expectedError:  "must have either 'input' or 'inputs', but not both",
-		},
-		{
-			name: "input with empty anyOf element",
-			jsonData: `[{ 
-				"service": "TestService",
-				"method": "TestMethod",
-				"input": {"anyOf": [{}]},
-				"output": {"data": {"result": "success"}}
-			}]`,
-			expectedStatus: http.StatusBadRequest,
-			expectedError:  "must have either 'input' or 'inputs', but not both",
 		},
 		{
 			name: "output with empty data and error",
@@ -248,6 +196,42 @@ func (s *RestValidationTestSuite) TestAddStubValidConfigurations() {
 				"service": "test.Service",
 				"method": "TestMethod",
 				"input": {"contains": {"key": "value"}},
+				"output": {"data": {"result": "success"}}
+			}]`,
+		},
+		{
+			name: "valid unary stub without input matcher (match all)",
+			jsonData: `[{
+				"service": "test.Service",
+				"method": "TestMethod",
+				"output": {"data": {"result": "success"}}
+			}]`,
+		},
+		{
+			name: "valid server streaming stub without input matcher (match all)",
+			jsonData: `[{
+				"service": "test.Service",
+				"method": "TestServerStream",
+				"output": {"stream": [
+					{"result": "response1"}
+				]}
+			}]`,
+		},
+		{
+			name: "valid unary stub with empty input object (match all)",
+			jsonData: `[{
+				"service": "test.Service",
+				"method": "TestMethod",
+				"input": {},
+				"output": {"data": {"result": "success"}}
+			}]`,
+		},
+		{
+			name: "valid unary stub with empty input anyOf element (match all)",
+			jsonData: `[{
+				"service": "test.Service",
+				"method": "TestMethod",
+				"input": {"anyOf": [{}]},
 				"output": {"data": {"result": "success"}}
 			}]`,
 		},

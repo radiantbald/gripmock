@@ -27,6 +27,7 @@ type StubBuilder interface {
 	Delay(d time.Duration) StubBuilder
 	IgnoreArrayOrder() StubBuilder
 	Priority(p int) StubBuilder
+	Enabled(v bool) StubBuilder
 	Times(n int) StubBuilder
 	Unary(inKey string, inVal any, outKey string, outVal any) StubBuilder
 	Commit()
@@ -38,6 +39,7 @@ type stubBuilderData struct {
 	headers  stuber.InputHeader
 	output   stuber.Output
 	priority int
+	enabled  *bool
 	options  stuber.StubOptions
 }
 
@@ -149,6 +151,11 @@ func (c *stubBuilderCore) Priority(p int) StubBuilder {
 	return c
 }
 
+func (c *stubBuilderCore) Enabled(v bool) StubBuilder {
+	c.data.enabled = &v
+	return c
+}
+
 func (c *stubBuilderCore) Times(n int) StubBuilder {
 	c.data.options.Times = n
 	return c
@@ -164,6 +171,7 @@ func (c *stubBuilderCore) Commit() {
 		Headers:  c.data.headers,
 		Output:   c.data.output,
 		Priority: c.data.priority,
+		Enabled:  c.data.enabled,
 		Options:  c.data.options,
 	}
 	c.onCommit(stub)

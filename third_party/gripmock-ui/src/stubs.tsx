@@ -5,8 +5,10 @@ import {
   Create,
   Edit,
   SimpleForm,
+  Toolbar,
+  SaveButton,
   TextInput,
-  NumberInput,
+  BooleanInput,
   NumberField,
   BooleanField,
   Show,
@@ -18,6 +20,7 @@ import {
   CreateButton,
   AutocompleteInput,
   useGetList,
+  NumberInput,
 } from "react-admin";
 import { JsonField } from "./components/json/JsonField";
 import { JsonTextAreaInput } from "./components/json/JsonTextAreaInput";
@@ -45,6 +48,78 @@ const exportStubs = (stubs: object[]) => {
 };
 
 const STUB_GRID_DENSITY_KEY = "gripmock.ui.stubs.density";
+const PLAIN_MILLISECONDS_RE = /^\d+(\.\d+)?$/;
+
+const normalizeDelayValue = (value: unknown): unknown => {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return "";
+  }
+
+  return PLAIN_MILLISECONDS_RE.test(trimmed) ? `${trimmed}ms` : trimmed;
+};
+
+const normalizeStubDelay = <T extends Record<string, unknown>>(data: T): T => {
+  const output = data.output;
+  if (!output || typeof output !== "object") {
+    return data;
+  }
+
+  return {
+    ...data,
+    output: {
+      ...(output as Record<string, unknown>),
+      delay: normalizeDelayValue((output as Record<string, unknown>).delay),
+    },
+  };
+};
+
+const DEFAULT_OUTPUT_TEMPLATE = {
+  data: {
+    message: "ok",
+    userId: "42",
+  },
+  stream: [
+    {
+      message: "part-1",
+    },
+    {
+      message: "part-2",
+    },
+  ],
+  headers: {},
+  error: "",
+  code: 0,
+  details: [
+    {
+      type: "type.googleapis.com/google.rpc.ErrorInfo",
+      reason: "EXAMPLE_REASON",
+      domain: "example.service",
+    },
+  ],
+};
+
+const OUTPUT_PLACEHOLDER_TEMPLATE = `{
+  "data": {
+    "message": "ok"
+  },
+  "stream": [
+    {
+      "message": "part-1"
+    }
+  ],
+  "details": [
+    {
+      "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+      "reason": "EXAMPLE_REASON",
+      "domain": "example.service"
+    }
+  ]
+}`;
 
 const readStubsGridDensity = (): GridDensity => {
   return readStoredGridDensity(STUB_GRID_DENSITY_KEY);
@@ -59,6 +134,28 @@ const useGridDensity = () => {
   };
 
   return { density, setNextDensity };
+};
+
+// Service Autocomplete Filter
+const NameFilter = (props: Record<string, unknown>) => {
+  const { data: stubs, isLoading } = useGetList<StubRecord>("stubs", {
+    pagination: { page: 1, perPage: 1000 },
+  });
+
+  if (isLoading) return <TextInput {...props} source="name" label="Name" />;
+
+  const names = Array.from(
+    new Set(stubs?.map((stub) => stub.name).filter(Boolean) || []),
+  );
+
+  return (
+    <AutocompleteInput
+      {...props}
+      source="name"
+      label="Name"
+      choices={names.map((name) => ({ id: name, name }))}
+    />
+  );
 };
 
 // Service Autocomplete Filter
@@ -115,6 +212,7 @@ const stubFilters = [
     placeholder="Search stubs..."
     alwaysOn
   />,
+  <NameFilter key="name" source="name" label="Name" />,
   <ServiceFilter key="service" source="service" label="Service" />,
   <MethodFilter key="method" source="method" label="Method" />,
 ];
@@ -147,6 +245,50 @@ const UsedUnusedStubListActions = ({
     <ExportButton />
     <DensityToolbarControl density={density} onChange={onDensityChange} />
   </TopToolbar>
+);
+
+const CreateStubToolbar = () => (
+  <Toolbar
+    sx={{
+      width: "100%",
+      display: "flex",
+      justifyContent: "flex-end",
+      alignItems: "center",
+      height: 72,
+      py: 0,
+      gap: 2,
+      "& .ra-input": {
+        my: 0,
+      },
+      "& .ra-input-enable": {
+        my: 0,
+        display: "flex",
+        alignItems: "center",
+        height: "100%",
+      },
+      "& .MuiFormControlLabel-root": {
+        my: 0,
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+      },
+      "& .MuiSwitch-root": {
+        my: 0,
+      },
+      "& .MuiFormControlLabel-label": {
+        lineHeight: 1,
+      },
+    }}
+  >
+    <BooleanInput
+      source="enabled"
+      label="Enable Stub"
+      helperText={false}
+      defaultValue
+      sx={{ my: 0 }}
+    />
+    <SaveButton sx={{ ml: 0 }} />
+  </Toolbar>
 );
 
 const StubsListPage = ({
@@ -232,8 +374,13 @@ export const UnusedStubList = () => {
 // Stub Create component
 export const StubCreate = () => {
   return (
-    <Create>
+    <Create redirect="list">
       <SimpleForm
+        toolbar={<CreateStubToolbar />}
+        transform={normalizeStubDelay}
+        defaultValues={{
+          output: DEFAULT_OUTPUT_TEMPLATE,
+        }}
         sx={{
           height: "100%",
           minHeight: 0,
@@ -246,12 +393,13 @@ export const StubCreate = () => {
           sx={{
             width: "100%",
             display: "grid",
-            gridTemplateColumns: { xs: "1fr", md: "repeat(2, minmax(280px, 420px))" },
+            gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(220px, 320px))" },
             gap: 2,
             alignItems: "start",
             justifyContent: "start",
           }}
         >
+          <TextInput source="name" label="Stub Name" fullWidth />
           <TextInput source="service" fullWidth />
           <TextInput source="method" fullWidth />
         </Box>
@@ -299,7 +447,10 @@ export const StubCreate = () => {
               helperText="Matcher for incoming request metadata."
               maxTableHeight={140}
             />
-            <StubMatcherInput mode="create" minRows={8} />
+            <StubMatcherInput
+              mode="create"
+              minRows={8}
+            />
           </Box>
         </Box>
         <Box
@@ -322,26 +473,54 @@ export const StubCreate = () => {
           <Box
             sx={{
               width: "100%",
-              display: "grid",
-              gridTemplateColumns: { xs: "1fr", md: "minmax(220px, 320px)" },
+              display: "flex",
+              flexDirection: "column",
               gap: 2,
-              alignItems: "start",
-              justifyContent: "start",
-            }}
-          >
-            <NumberInput source="priority" fullWidth />
-          </Box>
-          <Box
-            sx={{
-              width: "100%",
-              display: "grid",
-              gridTemplateColumns: { xs: "1fr", md: "2fr 3fr" },
-              gap: 2,
-              alignItems: "start",
               minHeight: 0,
-              "& > *": { minHeight: 0 },
             }}
           >
+            <Box
+              sx={{
+                width: "100%",
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(180px, 1fr))" },
+                gap: 2,
+                alignItems: "start",
+              }}
+            >
+              <NumberInput
+                source="output.code"
+                label="gRPC status code"
+                min={0}
+                max={16}
+                step={1}
+                helperText="Optional status code (0..16). Use non-zero with error responses."
+                fullWidth
+              />
+              <TextInput
+                source="output.error"
+                label="gRPC error"
+                helperText="Optional error text (for non-zero status codes)."
+                fullWidth
+              />
+              <TextInput
+                source="output.delay"
+                label="Delay"
+                helperText="Optional response delay in ms (e.g. 100) or duration string (e.g. 2s, 1m)."
+                fullWidth
+              />
+            </Box>
+            <Box
+              sx={{
+                width: "100%",
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", md: "2fr 3fr" },
+                gap: 2,
+                alignItems: "start",
+                minHeight: 0,
+                "& > *": { minHeight: 0 },
+              }}
+            >
             <KeyValueTableInput
               source="output.headers"
               label="Response headers"
@@ -350,9 +529,13 @@ export const StubCreate = () => {
             />
             <JsonTextAreaInput
               source="output"
-              label="Output"
+              label="Data / Stream / Details"
               minRows={8}
+              syncNestedFields={["code", "error", "delay", "headers"]}
+              visibleKeys={["data", "stream", "details"]}
+              placeholder={OUTPUT_PLACEHOLDER_TEMPLATE}
             />
+            </Box>
           </Box>
         </Box>
         </Box>
@@ -366,6 +549,7 @@ export const StubEdit = () => {
   return (
     <Edit>
       <SimpleForm
+        transform={normalizeStubDelay}
         sx={{
           height: "100%",
           minHeight: 0,
@@ -379,12 +563,13 @@ export const StubEdit = () => {
           sx={{
             width: "100%",
             display: "grid",
-            gridTemplateColumns: { xs: "1fr", md: "repeat(2, minmax(280px, 420px))" },
+            gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(220px, 320px))" },
             gap: 2,
             alignItems: "start",
             justifyContent: "start",
           }}
         >
+          <TextInput source="name" label="Stub Name" fullWidth />
           <TextInput source="service" fullWidth />
           <TextInput source="method" fullWidth />
         </Box>
@@ -431,7 +616,10 @@ export const StubEdit = () => {
               helperText="Matcher for incoming request metadata."
               maxTableHeight={140}
             />
-            <StubMatcherInput mode="edit" minRows={8} />
+            <StubMatcherInput
+              mode="edit"
+              minRows={8}
+            />
           </Box>
         </Box>
         <Box
@@ -454,13 +642,45 @@ export const StubEdit = () => {
             sx={{
               width: "100%",
               display: "grid",
-              gridTemplateColumns: { xs: "1fr", md: "minmax(220px, 320px)" },
+              gridTemplateColumns: { xs: "1fr", md: "repeat(2, minmax(220px, 320px))" },
               gap: 2,
               alignItems: "start",
               justifyContent: "start",
             }}
           >
-            <NumberInput source="priority" fullWidth />
+            <BooleanInput source="enabled" fullWidth />
+            <NumberInput
+              source="output.code"
+              label="gRPC status code"
+              min={0}
+              max={16}
+              step={1}
+              helperText="Optional status code (0..16). Use non-zero with error responses."
+              fullWidth
+            />
+          </Box>
+          <Box
+            sx={{
+              width: "100%",
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", md: "repeat(2, minmax(220px, 420px))" },
+              gap: 2,
+              alignItems: "start",
+              justifyContent: "start",
+            }}
+          >
+            <TextInput
+              source="output.error"
+              label="gRPC error"
+              helperText="Optional error text (for non-zero status codes)."
+              fullWidth
+            />
+            <TextInput
+              source="output.delay"
+              label="Delay"
+              helperText="Optional response delay in ms (e.g. 100) or duration string (e.g. 2s, 1m)."
+              fullWidth
+            />
           </Box>
           <Box
             sx={{
@@ -481,8 +701,11 @@ export const StubEdit = () => {
             />
             <JsonTextAreaInput
               source="output"
-              label="Output"
+              label="Data / Stream / Details"
               minRows={8}
+              syncNestedFields={["code", "error", "delay", "headers"]}
+              visibleKeys={["data", "stream", "details"]}
+              placeholder={OUTPUT_PLACEHOLDER_TEMPLATE}
             />
           </Box>
         </Box>
@@ -500,9 +723,10 @@ export const StubShow = () => {
     <Show>
       <SimpleShowLayout>
         <TextField source="id" />
+        <TextField source="name" />
         <TextField source="service" />
         <TextField source="method" />
-        <TextField source="priority" />
+        <BooleanField source="enabled" />
         <NumberField source="options.times" label="times" />
         <BooleanField
           source="input.ignoreArrayOrder"

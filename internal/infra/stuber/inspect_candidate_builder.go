@@ -27,6 +27,7 @@ type traceEval struct {
 	times          int
 	score          float64
 	specificity    int
+	enabled        bool
 	withinTimes    bool
 	visible        bool
 	headersMatched bool
@@ -46,10 +47,12 @@ func (s *searcher) buildTraceCandidate(
 
 	return InspectCandidate{
 		ID:               stub.ID,
+		Name:             stub.Name,
 		Service:          stub.Service,
 		Method:           stub.Method,
 		Session:          stub.Session,
 		Priority:         stub.Priority,
+		Enabled:          eval.enabled,
 		Times:            eval.times,
 		Used:             eval.used,
 		VisibleBySession: eval.visible,
@@ -73,6 +76,7 @@ func (s *searcher) evalTraceCandidate(
 ) traceEval {
 	used := s.stubCallCount[callCountKey{id: stub.ID, session: query.Session}]
 	times := stub.EffectiveTimes()
+	enabled := stub.IsEnabled()
 	withinTimes := times <= 0 || used < times
 	visible := isStubVisibleForSession(stub.Session, query.Session)
 	headersMatched := doesQueryMatchStubHeaders(query, stub)
@@ -82,6 +86,7 @@ func (s *searcher) evalTraceCandidate(
 	routeStage, routePassed, routeReason, reasonCount := evalRoute(query, stub, fallbackToMethod, reasons)
 	reasonCount = appendReasonToBuffer(reasons, reasonCount, !visible, traceReasonSession)
 	reasonCount = appendReasonToBuffer(reasons, reasonCount, !withinTimes, traceReasonTimes)
+	reasonCount = appendReasonToBuffer(reasons, reasonCount, !enabled, traceReasonDisabled)
 	reasonCount = appendReasonToBuffer(reasons, reasonCount, query.ID == nil && !headersMatched, traceReasonHeaders)
 	reasonCount = appendReasonToBuffer(reasons, reasonCount, query.ID == nil && !inputMatched, traceReasonInput)
 
@@ -92,6 +97,7 @@ func (s *searcher) evalTraceCandidate(
 		times:          times,
 		score:          ranked.totalScore,
 		specificity:    ranked.specificity,
+		enabled:        enabled,
 		withinTimes:    withinTimes,
 		visible:        visible,
 		headersMatched: headersMatched,

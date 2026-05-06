@@ -8,6 +8,9 @@ GOLANGCI_LINT=go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1
 build:
 	docker buildx build --load -t bavix/gripmock:${version} .
 
+ui-build:
+	npm --prefix third_party/gripmock-ui run build
+
 test:
 	go test -tags mock -race -cover ./...
 

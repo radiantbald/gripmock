@@ -69,6 +69,11 @@ const valueFromRows = (rows: KeyValueRow[]) => {
   return Object.keys(payload).length > 0 ? payload : undefined;
 };
 
+const normalizedJson = (value: unknown) => JSON.stringify(value ?? {});
+const canonicalObjectValue = (value: unknown) => valueFromRows(rowsFromValue(value));
+
+const normalizeKey = (key: string) => key.trim().toLowerCase();
+
 export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
   const {
     source,
@@ -89,10 +94,39 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
   const initialRows = useMemo(() => rowsFromValue(value), [value]);
   const [rows, setRows] = useState<KeyValueRow[]>(initialRows);
   const [expanded, setExpanded] = useState(false);
+  const duplicateKeySet = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const row of rows) {
+      const key = normalizeKey(row.key);
+      if (!key) {
+        continue;
+      }
+
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+
+    const duplicates = new Set<string>();
+    for (const [key, count] of counts) {
+      if (count > 1) {
+        duplicates.add(key);
+      }
+    }
+
+    return duplicates;
+  }, [rows]);
 
   useEffect(() => {
+    const normalizedIncomingValue = normalizedJson(canonicalObjectValue(value));
+
+    // Do not reset local editing rows when form value is semantically unchanged.
+    // This keeps newly added empty rows visible until user fills them.
+    if (normalizedJson(valueFromRows(rows)) === normalizedIncomingValue) {
+      return;
+    }
+
     setRows(initialRows);
-  }, [initialRows]);
+  }, [initialRows, rows, value]);
 
   const commitRows = (nextRows: KeyValueRow[]) => {
     setRows(nextRows);
@@ -116,6 +150,8 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
     const filteredRows = rows.filter((row) => row.id !== id);
     commitRows(filteredRows.length > 0 ? filteredRows : [{ id: 1, key: "", value: "" }]);
   };
+
+  const isDuplicateRowKey = (key: string) => duplicateKeySet.has(normalizeKey(key));
 
   return (
     <div>
@@ -223,6 +259,7 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
                         sx={{
                           fontSize: 13,
                           lineHeight: 1.2,
+                          color: isDuplicateRowKey(row.key) ? "error.main" : "inherit",
                           "& input": { py: 0.5 },
                         }}
                       />
@@ -269,6 +306,7 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
           <Box>
             <Button
               variant="text"
+              type="button"
               onClick={addRow}
               sx={{ minWidth: 0, px: 0.5, fontSize: 18, lineHeight: 1, color: "text.secondary" }}
             >
@@ -280,6 +318,11 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
       <FormHelperText error={(isTouched || isSubmitted) && !!error}>
         {error?.message || helperText}
       </FormHelperText>
+      {duplicateKeySet.size > 0 ? (
+        <FormHelperText error>
+          Duplicate keys detected. Header keys must be unique.
+        </FormHelperText>
+      ) : null}
       <Modal
         open={expanded}
         onClose={() => {
@@ -380,6 +423,7 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
                           sx={{
                             fontSize: 13,
                             lineHeight: 1.2,
+                            color: isDuplicateRowKey(row.key) ? "error.main" : "inherit",
                             "& input": { py: 0.5 },
                           }}
                         />
@@ -425,6 +469,7 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
             <Box>
               <Button
                 variant="text"
+                type="button"
                 onClick={addRow}
                 sx={{ minWidth: 0, px: 0.5, fontSize: 18, lineHeight: 1, color: "text.secondary" }}
               >

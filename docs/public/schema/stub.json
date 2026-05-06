@@ -142,6 +142,10 @@
           "type": "string",
           "minLength": 1
         },
+        "name": {
+          "description": "Optional user-defined stub name",
+          "type": "string"
+        },
         "method": {
           "description": "gRPC method name (e.g., 'SayHello', 'SendMessage')",
           "type": "string",
@@ -201,6 +205,10 @@
             "description": "gRPC service name (e.g., 'Gripmock', 'com.bavix.echo.v1.EchoService')",
             "type": "string",
             "minLength": 1
+          },
+          "name": {
+            "description": "Optional user-defined stub name",
+            "type": "string"
           },
           "method": {
             "description": "gRPC method name (e.g., 'SayHello', 'SendMessage')",
