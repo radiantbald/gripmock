@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+- service: GreetingService
+  method: Greet
+  input:
+    equals:
+      name: "Alice"
+  output:
+    data:
+      message: "Hello, Alice!"

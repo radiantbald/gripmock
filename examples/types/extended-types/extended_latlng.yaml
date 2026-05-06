@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+- service: LocationService
+  method: GetCoordinates
+  input:
+    equals:
+      address: "Eiffel Tower"
+  output:
+    data:
+      coordinates:
+        latitude: 48.8584
+        longitude: 2.2945

@@ -1,0 +1,15 @@
+--- ENDPOINT ---
+unitconverter.v1.UnitConversionService/ConvertWeight
+
+--- REQUEST ---
+{
+  "fromUnit": "KILOGRAMS",
+  "toUnit": "POUNDS",
+  "value": -5
+}
+
+--- ERROR ---
+{
+  "code": 3,
+  "message": "Value cannot be negative"
+}

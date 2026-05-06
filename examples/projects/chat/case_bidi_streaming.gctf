@@ -1,0 +1,26 @@
+--- ENDPOINT ---
+chat.ChatService/Chat
+
+--- REQUEST ---
+{
+  "text": "Hi everyone!",
+  "user": "Charlie"
+}
+
+--- RESPONSE ---
+{
+  "text": "Hello Charlie!",
+  "user": "Bot"
+}
+
+--- REQUEST ---
+{
+  "text": "Anyone there?",
+  "user": "Charlie"
+}
+
+--- RESPONSE ---
+{
+  "text": "We're here!",
+  "user": "Bot"
+}

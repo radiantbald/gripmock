@@ -1,0 +1,15 @@
+--- ENDPOINT ---
+validator.Validator/Validate
+
+--- REQUEST ---
+{
+  "max": 10022999,
+  "min": 10011,
+  "number": 10012,
+  "validation_type": "NUMBER_RANGE"
+}
+
+--- RESPONSE ---
+{
+  "is_valid": true
+}

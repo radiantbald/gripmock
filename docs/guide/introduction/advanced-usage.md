@@ -1,0 +1,300 @@
+# Advanced Usage
+
+## Working with Multiple Proto Files
+
+### Project Structure
+```
+src/proto
+├── common
+│   └── address.proto  # Shared definitions
+└── user
+    └── user.proto     # Main service
+```
+
+### Docker Configuration
+```yaml
+services:
+  gripmock:
+    image: bavix/gripmock
+    volumes:
+      - ./src/proto:/proto:ro
+      - ./mocks/user:/stubs:ro
+    command: |
+      --stub=/stubs \
+      --imports=/proto \
+      /proto/user/user.proto \
+      /proto/common/address.proto
+```
+
+### Key Guidelines
+- **Imports**: Use `--imports=/proto` to define the root directory for proto imports  
+- **Explicit Files**: List all required `.proto` files in the command to prevent `File not found` errors  
+- **Path Consistency**: Ensure volume paths (`./src/proto:/proto`) match import paths in your `.proto` files  
+
+## Using Proto Descriptors (Binary Support) <VersionTag version="v3.7.0" />
+
+GripMock supports compiled Protocol Buffers descriptors (`.pb` files) for improved performance and simplified dependency management. This is especially useful for projects with multiple interdependent proto files.
+
+For dynamic descriptor loading over HTTP (without restarting GripMock), see [Descriptor API (`/api/descriptors`)](/guide/api/descriptors).
+
+### Descriptor Generation
+**Using Protocol Buffers Compiler (`protoc`)**:
+```bash
+protoc \
+  --proto_path=./src/proto \
+  --descriptor_set_out=service.pb \
+  --include_imports \
+  user/user.proto
+```
+
+**Using Buf (Modern Build Tool)**:
+1. Create `buf.yaml` in project root:
+   ```yaml
+   version: v1
+   name: buf.build/your-module
+   deps:
+     - buf.build/googleapis
+   lint:
+     use:
+       - DEFAULT
+   breaking:
+     use:
+       - FILE
+   ```
+2. Build descriptor:
+   ```bash
+   buf build -o service.pb
+   ```
+
+### Docker Configuration
+```yaml
+services:
+  gripmock:
+    image: bavix/gripmock
+    volumes:
+      - ./service.pb:/proto/service.pb:ro
+      - ./mocks/user:/stubs:ro
+    command: |
+      --stub=/stubs \
+      /proto/service.pb
+```
+
+### Key Advantages
+- ✅ **Single artifact**: Bundle all services and dependencies into one `.pb` file
+- ✅ **Faster startup**: Pre-compiled definitions eliminate parsing overhead
+- ✅ **Version control**: Commit the binary descriptor for reproducible mocks
+- ✅ **Cross-platform**: Works seamlessly across different OS/architectures
+- ✅ **Dependency management**: Buf automatically resolves transitive dependencies
+
+### Important Considerations
+1. **Conflict Prevention**:  
+   Avoid mixing `.proto` and `.pb` files in the same directory when using auto-load mode (`/proto` directory mount). GripMock will fail if duplicate service definitions exist in both formats.
+
+2. **Build Tools**:  
+   - With `protoc`: Always use `--include_imports`  
+   - With Buf: Dependencies are automatically included, no extra flags needed
+
+3. **Stub Compatibility**:  
+   All stubbing features work identically with descriptors - no changes needed in stub definitions.
+
+### Example Workflow
+**Using Buf**:
+1. **Compile Descriptor**:
+   ```bash
+   buf build -o api.pb
+   ```
+
+2. **Run with Descriptor**:
+   ```bash
+   docker run \
+     -v $(pwd)/api.pb:/proto/api.pb \
+     -v $(pwd)/stubs:/stubs \
+     bavix/gripmock \
+     --stub=/stubs \
+     /proto/api.pb
+   ```
+
+**Using Protoc**:
+1. **Compile Descriptor**:
+   ```bash
+   protoc \
+     -I ./protos \
+     --descriptor_set_out=api.pb \
+     --include_imports \
+     common/*.proto services/*.proto
+   ```
+
+2. **Run with Descriptor**:
+   ```bash
+   docker run \
+     -v $(pwd)/api.pb:/proto/api.pb \
+     -v $(pwd)/stubs:/stubs \
+     bavix/gripmock \
+     --stub=/stubs \
+     /proto/api.pb
+   ```
+
+This approach ensures all proto definitions are pre-compiled and validated before runtime.
+
+## TLS Configuration 🔒 <VersionTag version="v3.8.1" />
+
+GripMock supports native TLS/mTLS via environment variables and also supports reverse-proxy TLS termination.
+
+For complete setup and examples, see [TLS and mTLS](/guide/introduction/tls).
+
+## OpenTelemetry and Metrics <VersionTag version="v3.10.0" />
+
+GripMock supports OpenTelemetry tracing and Prometheus-compatible metrics.
+
+### Metrics endpoint
+
+- `GET /metrics` is always available.
+- Includes Go runtime/process metrics (`go_*`, `process_*`) and GripMock metrics.
+
+### Tracing configuration (OTLP gRPC)
+
+Enable tracing with environment variables:
+
+```bash
+OTEL_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=localhost:4317
+OTEL_EXPORTER_OTLP_INSECURE=true
+```
+
+When enabled, GripMock instruments:
+
+- gRPC server requests (`otelgrpc`)
+- HTTP REST/MCP handlers (`otelhttp`)
+
+Tracing initialization is fail-safe: if collector is unavailable, GripMock continues running.
+
+## Advanced Stub Configuration
+
+### Parameterless Methods
+For RPC methods with empty input (e.g., `rpc GetData(google.protobuf.Empty)`):
+```json
+{
+  "service": "user.UserService",
+  "method": "GetData",
+  "input": { "matches": {} },
+  "output": { 
+    "data": { "content": "test" },
+    "code": 0
+  }
+}
+```
+
+### Array Order Flexibility <VersionTag version="v2.6.0" />
+Disable array sorting checks with `ignoreArrayOrder`:
+```json
+{
+  "input": {
+    "ignoreArrayOrder": true,
+    "equals": {
+      "ids": ["id2", "id1"]
+    }
+  }
+}
+```
+
+### Custom gRPC Error Codes <VersionTag version="v2.0.0" />
+Return errors with specific status codes:
+```json
+{
+  "output": {
+    "error": "Unauthorized",
+    "code": 16  // gRPC 'Unauthenticated' code
+  }
+}
+```
+
+### gRPC Error Details <VersionTag version="v3.8.0" />
+Return rich gRPC status details (packed into `google.protobuf.Any`):
+
+```json
+{
+  "output": {
+    "error": "Validation failed",
+    "code": 3,
+    "details": [
+      {
+        "type": "type.googleapis.com/google.rpc.BadRequest",
+        "field_violations": [
+          {
+            "field": "email",
+            "description": "Invalid email format"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Header Matching <VersionTag version="v2.1.0" />
+Match requests based on headers:
+```json
+{
+  "headers": {
+    "contains": {
+      "authorization": "Bearer token123"
+    },
+    "matches": {
+      "user-agent": "^Mozilla.*$"
+    }
+  }
+}
+```
+
+## Input/Output Matching Rules
+
+### Input Matchers
+| Rule       | Description                                                                 |
+|------------|-----------------------------------------------------------------------------|
+| `equals`   | Exact match for fields (case-sensitive)                                    |
+| `contains` | Check for presence of fields (values ignored)                              |
+| `matches`  | Regex matching for string fields (e.g., `"name": "^user_\\d+$"`)           |
+
+### Output Configuration
+| Field   | Description                                                                 |
+|---------|-----------------------------------------------------------------------------|
+| `data`  | Response payload matching your protobuf `message` structure                |
+| `error` | gRPC error message (overrides `data` if `code` ≠ 0)                        |
+| `code`  | gRPC status code (e.g., `3` for `InvalidArgument`, `5` for `NotFound`)     |
+
+## Troubleshooting
+
+### Common Issues
+
+#### 1. Proto Import Errors
+- **Error**: `common/address.proto: File not found`  
+  **Fix**:  
+  - Add `--imports=/proto` to specify the root directory  
+  - Verify all dependencies are listed in the command  
+
+#### 2. Docker Command Syntax
+- **Error**: `unknown flag: --stub`  
+  **Fix**: Use proper YAML formatting in `docker-compose.yml`:  
+  ```yaml
+  command: |
+    --stub=/stubs \
+    --imports=/proto \
+    /proto/service.proto
+  ```
+
+#### 3. Path Mismatch
+- **Error**: `File does not reside within any path specified using --proto_path`  
+  **Fix**: Ensure all imported files are under directories specified in `--imports`
+
+### Validation Steps
+1. Check logs: `docker logs gripmock_container_id`  
+2. Test proto compilation locally:  
+   ```bash
+   protoc --proto_path=./src/proto --go_out=. ./src/proto/user/user.proto
+   ```
+3. Validate runtime descriptor loading with the API walkthrough: [Descriptor API (`/api/descriptors`)](/guide/api/descriptors)
+
+## Performance Tips
+- **Stub Prioritization**: GripMock returns the **first matching stub**. Order stubs from most to least specific.  
+- **Batch Operations**: Use `POST /api/stubs/batchDelete` for bulk deletions instead of individual API calls.  
+- **Health checks**: Monitor with `GET /api/health/readiness` for production deployments.

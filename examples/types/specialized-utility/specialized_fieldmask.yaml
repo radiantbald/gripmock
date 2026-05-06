@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+- service: ResourceService
+  method: UpdateResource
+  input:
+    ignoreArrayOrder: true
+    equals:
+      resourceId: "resource_123"
+      updateMask:
+        paths: ["name", "description"]
+  output:
+    data:
+      success: true

@@ -1,0 +1,22 @@
+--- ENDPOINT ---
+extended.ScheduleService/GetBirthday
+
+--- REQUEST ---
+{
+  "userId": "user_123"
+}
+
+--- RESPONSE ---
+{
+  "date": {
+    "day": 15,
+    "month": 5,
+    "year": 1990
+  },
+  "reminderTime": {
+    "hours": 9,
+    "minutes": 1,
+    "nanos": 3000000,
+    "seconds": 2
+  }
+}

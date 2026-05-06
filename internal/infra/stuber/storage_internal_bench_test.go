@@ -1,0 +1,235 @@
+package stuber //nolint:testpackage // Uses internal functions
+
+import (
+	"iter"
+	"testing"
+
+	"github.com/google/uuid"
+)
+
+//nolint:gochecknoinits
+func init() {
+	uuid.EnableRandPool()
+}
+
+func BenchmarkStorageValues(b *testing.B) {
+	items := make([]*Stub, 0, b.N)
+	for range b.N {
+		items = append(items, newTestStub("A", "B", 0))
+	}
+
+	s := newStorage()
+	s.upsert(items...)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for range b.N {
+		for range s.values() { //nolint:revive
+		}
+	}
+}
+
+func BenchmarkStorageFindAll(b *testing.B) {
+	items := make([]*Stub, 0, b.N)
+	for range b.N {
+		items = append(items, newTestStub("A", "B", 0))
+	}
+
+	s := newStorage()
+	s.upsert(items...)
+
+	var all iter.Seq[*Stub]
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for range b.N {
+		all, _ = s.findAll("A", "B")
+		for range all { //nolint:revive
+		}
+	}
+}
+
+func BenchmarkStorageFindByID(b *testing.B) {
+	items := make([]*Stub, 0, b.N)
+	for range b.N {
+		items = append(items, newTestStub("A", "B", 0))
+	}
+
+	s := newStorage()
+	s.upsert(items...)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for range b.N {
+		_ = s.findByID(uuid.New())
+	}
+}
+
+func BenchmarkStorageDel(b *testing.B) {
+	items := make([]*Stub, 0, b.N)
+	for range b.N {
+		items = append(items, newTestStub("A", "B", 0))
+	}
+
+	s := newStorage()
+	s.upsert(items...)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for range b.N {
+		_ = s.del(uuid.New())
+	}
+}
+
+func BenchmarkStoragePosByN(b *testing.B) {
+	s := newStorage()
+	s.upsert(newTestStub("A", "B", 0))
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_, _ = s.posByN("A", "B")
+	}
+}
+
+func BenchmarkStoragePos(b *testing.B) {
+	s := newStorage()
+
+	left := s.id("A")
+	right := s.id("B")
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_ = s.pos(left, right)
+	}
+}
+
+func BenchmarkStorageLeftID(b *testing.B) {
+	s := newStorage()
+	s.upsert(newTestStub("A", "B", 0))
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_ = s.id("A")
+	}
+}
+
+func BenchmarkStorageLeftIDOrNew(b *testing.B) {
+	s := newStorage()
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_ = s.id(uuid.NewString())
+	}
+}
+
+func BenchmarkStorageRightID(b *testing.B) {
+	s := newStorage()
+	s.upsert(newTestStub("A", "B", 0))
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_ = s.id("B")
+	}
+}
+
+func BenchmarkStorageRightIDOrNew(b *testing.B) {
+	s := newStorage()
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_ = s.id(uuid.NewString())
+	}
+}
+
+func BenchmarkStorageFindAllSorted(b *testing.B) {
+	items := make([]*Stub, 0, b.N)
+	for i := range b.N {
+		items = append(items, newTestStub("A", "B", i%100))
+	}
+
+	s := newStorage()
+	s.upsert(items...)
+
+	var all iter.Seq[*Stub]
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for range b.N {
+		all, _ = s.findAll("A", "B")
+		for range all { //nolint:revive
+		}
+	}
+}
+
+func BenchmarkStorageFindByMethodAvailableGlobal(b *testing.B) {
+	items := make([]*Stub, 0, b.N)
+	for i := range b.N {
+		method := "MethodA"
+		if i%2 == 0 {
+			method = "MethodB"
+		}
+
+		items = append(items, newTestStub("Svc", method, i%100))
+	}
+
+	s := newStorage()
+	s.upsert(items...)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for range b.N {
+		for range s.findByMethodAvailable("MethodB", "") { //nolint:revive
+		}
+	}
+}
+
+func BenchmarkStorageFindByMethodAvailable(b *testing.B) {
+	items := make([]*Stub, 0, b.N)
+	for i := range b.N {
+		stub := newTestStub("Svc", "Method", i%100)
+		if i%3 == 0 {
+			stub.Session = "A"
+		}
+
+		items = append(items, stub)
+	}
+
+	s := newStorage()
+	s.upsert(items...)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for range b.N {
+		for range s.findByMethodAvailable("Method", "A") { //nolint:revive
+		}
+	}
+}
+
+func BenchmarkStorageUpsert(b *testing.B) {
+	items := make([]*Stub, 0, b.N)
+	for i := range b.N {
+		items = append(items, newTestStub("A", "B", i%100))
+	}
+
+	s := newStorage()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for range b.N {
+		s.upsert(items...)
+	}
+}

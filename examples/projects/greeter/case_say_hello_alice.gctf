@@ -1,0 +1,12 @@
+--- ENDPOINT ---
+helloworld.Greeter/SayHello
+
+--- REQUEST ---
+{
+  "name": "Alice"
+}
+
+--- RESPONSE ---
+{
+  "message": "Hello, Alice!"
+}

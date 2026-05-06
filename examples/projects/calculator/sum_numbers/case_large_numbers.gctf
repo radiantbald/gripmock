@@ -1,0 +1,28 @@
+--- ENDPOINT ---
+calculator.CalculatorService/SumNumbers
+
+--- REQUEST ---
+{
+  "value": 1000.0
+}
+
+--- REQUEST ---
+{
+  "value": 2000.0
+}
+
+--- REQUEST ---
+{
+  "value": 3000.0
+}
+
+--- REQUEST ---
+{
+  "value": 4000.0
+}
+
+--- RESPONSE ---
+{
+  "count": 4,
+  "result": 10000
+}

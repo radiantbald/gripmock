@@ -1,0 +1,50 @@
+--- ENDPOINT ---
+multiverse.v1.MultiverseService/Chat
+
+--- REQUEST ---
+{
+  "content": "Hello",
+  "room_id": "room_001",
+  "type": "MESSAGE_TYPE_TEXT",
+  "user_id": "alice"
+}
+
+--- RESPONSE ---
+{
+  "content": "Hello Alice!",
+  "room_id": "room_001",
+  "type": "MESSAGE_TYPE_TEXT",
+  "user_id": "bob"
+}
+
+--- REQUEST ---
+{
+  "content": "How are you?",
+  "room_id": "room_001",
+  "type": "MESSAGE_TYPE_TEXT",
+  "user_id": "alice"
+}
+
+--- RESPONSE ---
+{
+  "content": "I'm doing great!",
+  "room_id": "room_001",
+  "type": "MESSAGE_TYPE_TEXT",
+  "user_id": "bob"
+}
+
+--- REQUEST ---
+{
+  "content": "Let's chat",
+  "room_id": "room_001",
+  "type": "MESSAGE_TYPE_TEXT",
+  "user_id": "alice"
+}
+
+--- RESPONSE ---
+{
+  "content": "Sure, let's chat!",
+  "room_id": "room_001",
+  "type": "MESSAGE_TYPE_TEXT",
+  "user_id": "bob"
+}

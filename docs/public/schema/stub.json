@@ -1,0 +1,585 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bavix.github.io/gripmock/schema/stub.json",
+  "title": "GripMock Stub Schema",
+  "description": "Unified schema for GripMock stub definitions (supports both JSON and YAML formats)",
+  "examples": [
+    {
+      "description": "Single stub object",
+      "value": {
+        "service": "Gripmock",
+        "method": "SayHello",
+        "input": {
+          "equals": {
+            "name": "gripmock"
+          }
+        },
+        "output": {
+          "data": {
+            "message": "Hello GripMock",
+            "returnCode": 42
+          }
+        }
+      }
+    },
+    {
+      "description": "Array of stubs",
+      "value": [
+        {
+          "service": "Gripmock",
+          "method": "SayHello",
+          "input": {
+            "equals": {
+              "name": "alpha"
+            }
+          },
+          "output": {
+            "data": {
+              "message": "Hello Alpha",
+              "returnCode": 1
+            }
+          }
+        },
+        {
+          "service": "Gripmock",
+          "method": "SayHello",
+          "input": {
+            "equals": {
+              "name": "beta"
+            }
+          },
+          "output": {
+            "data": {
+              "message": "Hello Beta",
+              "returnCode": 2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "description": "Streaming stub",
+      "value": {
+        "service": "TrackService",
+        "method": "StreamTrack",
+        "priority": 100,
+        "input": {
+          "equals": {
+            "stn": "MS#00001"
+          }
+        },
+        "output": {
+          "delay": "100ms",
+          "stream": [
+            {
+              "stn": "MS#00001",
+              "identity": "00",
+              "latitude": 0.1,
+              "longitude": 0.005,
+              "speed": 45,
+              "updatedAt": "2024-01-01T12:00:00.000Z"
+            },
+            {
+              "stn": "MS#00001",
+              "identity": "01",
+              "latitude": 0.10001,
+              "longitude": 0.00501,
+              "speed": 46,
+              "updatedAt": "2024-01-01T12:00:01.000Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "description": "Header-based authentication",
+      "value": {
+        "service": "AuthService",
+        "method": "ValidateToken",
+        "headers": {
+          "equals": {
+            "authorization": "Bearer token123"
+          }
+        },
+        "output": {
+          "data": {
+            "valid": true,
+            "userId": "user123"
+          }
+        }
+      }
+    },
+    {
+      "description": "Error response",
+      "value": {
+        "service": "ErrorService",
+        "method": "SimulateError",
+        "input": {
+          "contains": {
+            "trigger": "error"
+          }
+        },
+        "output": {
+          "delay": "500ms",
+          "error": "Service temporarily unavailable",
+          "code": 14
+        }
+      }
+    }
+  ],
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [ "service", "method", "output" ],
+      "properties": {
+        "id": {
+          "description": "Unique identifier for the stub (auto-generated if omitted)",
+          "type": "string",
+          "format": "uuid"
+        },
+        "service": {
+          "description": "gRPC service name (e.g., 'Gripmock', 'com.bavix.echo.v1.EchoService')",
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "description": "gRPC method name (e.g., 'SayHello', 'SendMessage')",
+          "type": "string",
+          "minLength": 1
+        },
+        "priority": {
+          "description": "Stub priority for matching (higher numbers = higher priority)",
+          "default": 0,
+          "type": "integer"
+        },
+        "input": {
+          "description": "Input matching rules for unary requests (mutually exclusive with inputs)",
+          "$ref": "#/$defs/inputMatcher"
+        },
+        "inputs": {
+          "description": "Inputs matching rules for client streaming requests (mutually exclusive with input)",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/inputMatcher"
+          }
+        },
+        "headers": {
+          "description": "Header matching rules",
+          "$ref": "#/$defs/headerMatcher"
+        },
+        "options": {
+          "description": "Optional behavior settings (e.g. times limit)",
+          "$ref": "#/$defs/stubOptions"
+        },
+        "output": {
+          "description": "Response configuration",
+          "$ref": "#/$defs/output"
+        },
+        "effects": {
+          "description": "Side effects applied after successful stub match. Generated/deleted stubs inherit parent stub session automatically.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [ "service", "method", "output" ],
+        "properties": {
+          "id": {
+            "description": "Unique identifier for the stub (auto-generated if omitted)",
+            "type": "string",
+            "format": "uuid"
+          },
+          "service": {
+            "description": "gRPC service name (e.g., 'Gripmock', 'com.bavix.echo.v1.EchoService')",
+            "type": "string",
+            "minLength": 1
+          },
+          "method": {
+            "description": "gRPC method name (e.g., 'SayHello', 'SendMessage')",
+            "type": "string",
+            "minLength": 1
+          },
+          "priority": {
+            "description": "Stub priority for matching (higher numbers = higher priority)",
+            "default": 0,
+            "type": "integer"
+          },
+          "input": {
+            "description": "Input matching rules for unary requests (mutually exclusive with inputs)",
+            "$ref": "#/$defs/inputMatcher"
+          },
+          "inputs": {
+            "description": "Inputs matching rules for client streaming requests (mutually exclusive with input)",
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/inputMatcher"
+            }
+          },
+          "headers": {
+            "description": "Header matching rules",
+            "$ref": "#/$defs/headerMatcher"
+          },
+          "options": {
+            "description": "Optional behavior settings (e.g. times limit)",
+            "$ref": "#/$defs/stubOptions"
+          },
+          "output": {
+            "description": "Response configuration",
+            "$ref": "#/$defs/output"
+          },
+          "effects": {
+            "description": "Side effects applied after successful stub match. Generated/deleted stubs inherit parent stub session automatically.",
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/effect"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  ],
+  "$defs": {
+    "effect": {
+      "type": "object",
+      "allOf": [
+        {
+          "if": {
+            "required": [ "action" ],
+            "properties": {
+              "action": {
+                "const": "upsert"
+              }
+            }
+          },
+          "then": {
+            "required": [ "stub" ]
+          }
+        },
+        {
+          "if": {
+            "required": [ "action" ],
+            "properties": {
+              "action": {
+                "const": "delete"
+              }
+            }
+          },
+          "then": {
+            "required": [ "id" ]
+          }
+        }
+      ],
+      "required": [ "action" ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [ "upsert", "delete" ],
+          "minLength": 1
+        },
+        "id": {
+          "description": "Target stub ID for delete action. Can be static UUID or template-rendered string.",
+          "type": "string",
+          "minLength": 1
+        },
+        "stub": {
+          "description": "Stub payload for upsert action (validated after template rendering)",
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "inputMatcher": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "ignoreArrayOrder": {
+          "description": "Disable array order checks for matching",
+          "default": false,
+          "type": "boolean"
+        },
+        "equals": {
+          "description": "Exact match for field names and values (case-sensitive)",
+          "type": "object",
+          "additionalProperties": true
+        },
+        "contains": {
+          "oneOf": [
+            {
+              "description": "Partial match (substring) for field values",
+              "type": "object",
+              "additionalProperties": true
+            },
+            {
+              "description": "Empty contains matcher (matches any input)",
+              "type": "null"
+            }
+          ]
+        },
+        "matches": {
+          "oneOf": [
+            {
+              "description": "Regex match for field values (leaf values are regular expression patterns)",
+              "type": "object",
+              "additionalProperties": true
+            },
+            {
+              "description": "Empty matches matcher (matches any input)",
+              "type": "null"
+            }
+          ]
+        },
+        "glob": {
+          "oneOf": [
+            {
+              "description": "Glob pattern match for field values (uses path.Match)",
+              "type": "object",
+              "additionalProperties": true
+            },
+            {
+              "description": "Empty glob matcher (matches any input)",
+              "type": "null"
+            }
+          ]
+        },
+        "anyOf": {
+          "description": "Alternative matchers (OR logic). Each item is evaluated as equals AND contains AND matches.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/inputMatcherAnyOfElement"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "inputMatcherAnyOfElement": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "ignoreArrayOrder": {
+          "description": "Disable array order checks for this alternative",
+          "default": false,
+          "type": "boolean"
+        },
+        "equals": {
+          "description": "Exact match for field names and values (case-sensitive)",
+          "type": "object",
+          "additionalProperties": true
+        },
+        "contains": {
+          "oneOf": [
+            {
+              "description": "Partial match (substring) for field values",
+              "type": "object",
+              "additionalProperties": true
+            },
+            {
+              "description": "Empty contains matcher (matches any input)",
+              "type": "null"
+            }
+          ]
+        },
+        "matches": {
+          "oneOf": [
+            {
+              "description": "Regex match for field values (leaf values are regular expression patterns)",
+              "type": "object",
+              "additionalProperties": true
+            },
+            {
+              "description": "Empty matches matcher (matches any input)",
+              "type": "null"
+            }
+          ]
+        },
+        "glob": {
+          "oneOf": [
+            {
+              "description": "Glob pattern match for field values (uses path.Match)",
+              "type": "object",
+              "additionalProperties": true
+            },
+            {
+              "description": "Empty glob matcher (matches any input)",
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "stubOptions": {
+      "description": "Optional behavior settings for a stub",
+      "type": "object",
+      "properties": {
+        "times": {
+          "description": "Max number of matches; 0 = unlimited. After limit, stub exhausts and no longer matches.",
+          "default": 0,
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "headerMatcher": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "equals": {
+          "description": "Exact match for header names and values",
+          "type": "object",
+          "additionalProperties": {
+            "description": "Header value (multiple values separated by ';')",
+            "type": "string"
+          }
+        },
+        "contains": {
+          "description": "Partial match for header values",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "matches": {
+          "description": "Regex match for header values",
+          "type": "object",
+          "additionalProperties": {
+            "description": "Regular expression pattern",
+            "type": "string"
+          }
+        },
+        "glob": {
+          "description": "Glob pattern match for header values",
+          "type": "object",
+          "additionalProperties": {
+            "description": "Glob pattern (uses path.Match)",
+            "type": "string"
+          }
+        },
+        "anyOf": {
+          "description": "Alternative header matchers (OR logic). Each item is evaluated as equals AND contains AND matches.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/headerMatcherAnyOfElement"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "headerMatcherAnyOfElement": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "equals": {
+          "description": "Exact match for header names and values",
+          "type": "object",
+          "additionalProperties": {
+            "description": "Header value (multiple values separated by ';')",
+            "type": "string"
+          }
+        },
+        "contains": {
+          "description": "Partial match for header values",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "matches": {
+          "description": "Regex match for header values",
+          "type": "object",
+          "additionalProperties": {
+            "description": "Regular expression pattern",
+            "type": "string"
+          }
+        },
+        "glob": {
+          "description": "Glob pattern match for header values",
+          "type": "object",
+          "additionalProperties": {
+            "description": "Glob pattern (uses path.Match)",
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "outputData": {
+      "description": "Response data matching protobuf message structure",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "streamMessage": {
+      "description": "Single message in a stream response",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "output": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "data": {
+          "description": "Response data for unary calls",
+          "$ref": "#/$defs/outputData"
+        },
+        "stream": {
+          "description": "Array of messages for streaming responses",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/streamMessage"
+          }
+        },
+        "error": {
+          "description": "gRPC error message",
+          "type": "string"
+        },
+        "code": {
+          "description": "gRPC status code (e.g., 3 for InvalidArgument, 14 for Unavailable)",
+          "type": "integer",
+          "maximum": 16,
+          "minimum": 0
+        },
+        "details": {
+          "description": "gRPC status details packed as google.protobuf.Any payloads; each item must include 'type' with full type URL",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [ "type" ],
+            "properties": {
+              "type": {
+                "description": "Full Any type URL (e.g., type.googleapis.com/google.rpc.ErrorInfo)",
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "delay": {
+          "description": "Delay timing: for unary calls - before response; for streaming - between messages (e.g., '100ms', '2.5s', '1m')",
+          "type": "string",
+          "pattern": "^(\\d+(\\.\\d+)?(ms|s|m|h))+$"
+        },
+        "headers": {
+          "description": "Response headers",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

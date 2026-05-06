@@ -1,0 +1,13 @@
+--- ENDPOINT ---
+fingerprint.Fingerprint/Check
+
+--- REQUEST ---
+{
+  "id": "user123"
+}
+
+--- RESPONSE ---
+{
+  "id": 123,
+  "valid": true
+}

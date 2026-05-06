@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+- service: ConfigService
+  method: GetConfig
+  input:
+    equals:
+      configId: "config_123"
+  output:
+    data:
+      settings:
+        fields:
+          theme:
+            stringValue: "dark"
+          max_users:
+            numberValue: 100
+          enabled:
+            boolValue: true

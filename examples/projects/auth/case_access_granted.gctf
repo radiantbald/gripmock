@@ -1,0 +1,17 @@
+--- ENDPOINT ---
+auth.AuthService/CheckAccess
+
+--- REQUEST_HEADERS ---
+x-api-key: secret-key-123
+
+--- REQUEST ---
+{
+  "action": "read",
+  "resource": "user:123"
+}
+
+--- RESPONSE ---
+{
+  "allowed": true,
+  "reason": "Access granted"
+}

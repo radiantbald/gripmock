@@ -1,0 +1,14 @@
+--- ENDPOINT ---
+unitconverter.v1.UnitConversionService/ConvertLength
+
+--- REQUEST ---
+{
+  "fromUnit": "METERS",
+  "value": 10
+}
+
+--- ERROR ---
+{
+  "code": 3,
+  "message": "toUnit must be specified"
+}

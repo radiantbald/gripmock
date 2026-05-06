@@ -1,0 +1,14 @@
+--- ENDPOINT ---
+unitconverter.v1.UnitConversionService/ConvertTemperature
+
+--- REQUEST ---
+{
+  "toUnit": "FAHRENHEIT",
+  "value": 50
+}
+
+--- ERROR ---
+{
+  "code": 3,
+  "message": "fromUnit must be specified"
+}

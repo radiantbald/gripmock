@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+- service: CalculatorService
+  method: MultiplyFloat
+  input:
+    equals:
+      a: 3.5
+      b: 2
+  output:
+    data:
+      result: 7.0

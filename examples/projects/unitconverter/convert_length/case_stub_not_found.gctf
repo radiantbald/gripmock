@@ -1,0 +1,14 @@
+--- ENDPOINT ---
+unitconverter.v1.UnitConversionService/ConvertLength
+
+--- REQUEST ---
+{
+  "toUnit": "METERS",
+  "value": 1000
+}
+
+--- ERROR ---
+{
+  "code": 5,
+  "message": "No matching stub found\n\nService: unitconverter.v1.UnitConversionService\nMethod: ConvertLength\n\nRequest input:\n{\n\t\"from_unit\": \"LENGTH_UNIT_UNSPECIFIED\",\n\t\"to_unit\": \"METERS\",\n\t\"value\": 1000\n}\n\nClosest match:\npriority: 0\ninput rules:\ninput.equals:\n{\n\t\"to_unit\": \"METERS\",\n\t\"value\": 5\n}"
+}

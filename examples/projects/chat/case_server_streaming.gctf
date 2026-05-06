@@ -1,0 +1,13 @@
+--- ENDPOINT ---
+chat.ChatService/ReceiveMessages
+
+--- REQUEST ---
+{
+  "user": "Bob"
+}
+
+--- RESPONSE ---
+{
+  "text": "Welcome Bob!",
+  "user": "Server"
+}

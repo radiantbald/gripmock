@@ -1,0 +1,117 @@
+version: 2
+
+project_name: gripmock
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: gripmock
+    main: .
+    binary: gripmock
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/bavix/gripmock/v3/internal/infra/build.Version={{.Version}} -X github.com/bavix/gripmock/v3/internal/infra/build.Commit={{.ShortCommit}} -X github.com/bavix/gripmock/v3/internal/infra/build.Date={{.CommitDate}}
+
+archives:
+  - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: 'checksums.txt'
+
+release:
+  github:
+    owner: bavix
+    name: gripmock
+  draft: true
+  prerelease: auto
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+brews:
+  - name: gripmock
+    repository:
+      owner: gripmock
+      name: homebrew-tap
+      branch: master
+    directory: Formula
+    homepage: https://bavix.github.io/gripmock/
+    description: "A mock server for gRPC services using .proto files or compiled .pb descriptors"
+    license: "MIT"
+    url_template: "https://github.com/bavix/gripmock/releases/download/v{{ .Version }}/gripmock_{{ .Version }}_{{ .Os }}_{{ .Arch }}.tar.gz"
+    commit_author:
+      name: Github bot
+      email: bot@babichev.net
+      signing:
+        enabled: true
+        key: "{{ .Env.GPG_FINGERPRINT }}"
+        program: gpg2
+        format: openpgp
+    commit_msg_template: "Update GripMock to {{ .Version }}"
+
+    # Deprecation warning mechanism
+    custom_block: |
+      deprecate! date: "2026-02-18", because: "moved to cask. Please run `brew install --cask gripmock`"
+
+    caveats: |
+      The 'gripmock' formula is deprecated and will be removed in future versions.
+      Please migrate to the cask version:
+        brew uninstall gripmock
+        brew install --cask gripmock
+
+    test: |
+      assert_match "v#{version}", shell_output("#{bin}/gripmock --version")
+
+homebrew_casks:
+  - name: gripmock
+    repository:
+      owner: gripmock
+      name: homebrew-tap
+      branch: master
+    # Casks should live in the Casks directory (default). Keep explicit for clarity.
+    directory: Casks
+    homepage: https://bavix.github.io/gripmock/
+    description: "A mock server for gRPC services using .proto files or compiled .pb descriptors"
+    license: "MIT"
+    url:
+      verified: github.com/bavix/gripmock
+      template: "https://github.com/bavix/gripmock/releases/download/v{{ .Version }}/gripmock_{{ .Version }}_{{ .Os }}_{{ .Arch }}.tar.gz"
+    commit_author:
+      name: Github bot
+      email: bot@babichev.net
+      signing:
+        enabled: true
+        key: "{{ .Env.GPG_FINGERPRINT }}"
+        program: gpg2
+        format: openpgp
+    commit_msg_template: "Update GripMock to {{ .Version }}"
+    # Optional: remove quarantine on macOS if the binary isn't signed/notarized
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/gripmock"]
+          end

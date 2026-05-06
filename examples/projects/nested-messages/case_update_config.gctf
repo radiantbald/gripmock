@@ -1,0 +1,17 @@
+--- ENDPOINT ---
+nested.ConfigurationService/UpdateConfig
+
+--- REQUEST ---
+{
+  "env": "PRODUCTION",
+  "host": "api.example.com",
+  "port": 443,
+  "use_tls": true
+}
+
+--- RESPONSE ---
+{
+  "message": "Configuration updated successfully",
+  "success": true,
+  "updated_env": "PRODUCTION"
+}

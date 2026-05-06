@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+- service: AuthService
+  method: IsAdmin
+  input:
+    equals:
+      username: "admin_user"
+  output:
+    data:
+      isAdmin: true

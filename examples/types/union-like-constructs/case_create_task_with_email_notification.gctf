@@ -1,0 +1,19 @@
+--- ENDPOINT ---
+task.v1.TaskService/CreateTask
+
+--- REQUEST ---
+{
+  "description": "Milk, eggs, bread",
+  "email": {
+    "email": "user@example.com"
+  },
+  "title": "Buy groceries"
+}
+
+--- RESPONSE ---
+{
+  "success": {
+    "status": "TASK_CREATED",
+    "task_id": "TASK-456"
+  }
+}

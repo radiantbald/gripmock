@@ -1,0 +1,29 @@
+--- ENDPOINT ---
+task.v1.TaskService/CreateTask
+
+--- REQUEST ---
+{
+  "description": "Invalid task",
+  "sms": {
+    "phone_number": "invalid-phone"
+  },
+  "title": ""
+}
+
+--- RESPONSE ---
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "errors": [
+      {
+        "description": "Title cannot be empty",
+        "field": "title"
+      },
+      {
+        "description": "Invalid phone number format",
+        "field": "sms.phone_number"
+      }
+    ],
+    "message": "Validation failed"
+  }
+}

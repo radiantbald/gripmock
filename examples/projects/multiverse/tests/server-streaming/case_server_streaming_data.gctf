@@ -1,0 +1,50 @@
+--- ENDPOINT ---
+multiverse.v1.MultiverseService/StreamData
+
+--- REQUEST ---
+{
+  "chunk_count": 5,
+  "delay_ms": 100,
+  "pattern": "sequential",
+  "stream_id": "stream_001"
+}
+
+--- RESPONSE ---
+{
+  "chunk_id": "response_001",
+  "content_type": "application/json",
+  "sequence": 1,
+  "total_chunks": 5
+}
+
+--- RESPONSE ---
+{
+  "chunk_id": "response_002",
+  "content_type": "application/json",
+  "sequence": 2,
+  "total_chunks": 5
+}
+
+--- RESPONSE ---
+{
+  "chunk_id": "response_003",
+  "content_type": "application/json",
+  "sequence": 3,
+  "total_chunks": 5
+}
+
+--- RESPONSE ---
+{
+  "chunk_id": "response_004",
+  "content_type": "application/json",
+  "sequence": 4,
+  "total_chunks": 5
+}
+
+--- RESPONSE ---
+{
+  "chunk_id": "response_005",
+  "content_type": "application/json",
+  "sequence": 5,
+  "total_chunks": 5
+}

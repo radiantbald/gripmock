@@ -1,0 +1,16 @@
+--- ENDPOINT ---
+helloworld.Greeter/SayHello
+
+--- REQUEST_HEADERS ---
+x-token: 123
+x-user: Ivan
+
+--- REQUEST ---
+{
+  "name": "Alex"
+}
+
+--- RESPONSE ---
+{
+  "message": "Hello, Ivan!"
+}

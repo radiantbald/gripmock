@@ -1,0 +1,42 @@
+{
+  "name": "gripmock-ui",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview",
+    "test": "vitest run",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint --fix \"src/**/*.{js,jsx,ts,tsx}\"",
+    "format": "prettier --write ./src"
+  },
+  "overrides": {
+    "eslint-plugin-react-hooks": {
+      "eslint": "^10.0.0"
+    }
+  },
+  "dependencies": {
+    "@microlink/react-json-view": "^1.31.6",
+    "@mui/material": "^7.3.9",
+    "@vitejs/plugin-react": "^5.1",
+    "fuse.js": "^7.1",
+    "react": "^19.2",
+    "react-admin": "^5.14",
+    "react-dom": "^19.2",
+    "typescript": "^5.9",
+    "vite": "^7.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/react": "^19.2",
+    "@types/react-dom": "^19.2",
+    "@typescript-eslint/eslint-plugin": "^8.57",
+    "@typescript-eslint/parser": "^8.57",
+    "eslint": "^10.0.3",
+    "eslint-config-prettier": "^10.1",
+    "eslint-plugin-react-hooks": "^7.0",
+    "globals": "^16.5.0",
+    "prettier": "^3.8",
+    "vitest": "^4.0.18"
+  }
+}

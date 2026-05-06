@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+- service: FileService
+  method: UploadFile
+  input:
+    equals:
+      content: "aGVsbG8="  # "hello" in Base64
+  output:
+    data:
+      checksum: "5d41402abc4b2a76b9719d911017c592"  # MD5 hash of "hello"

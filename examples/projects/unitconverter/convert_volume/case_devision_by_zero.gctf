@@ -1,0 +1,15 @@
+--- ENDPOINT ---
+unitconverter.v1.UnitConversionService/ConvertVolume
+
+--- REQUEST ---
+{
+  "fromUnit": "LITERS",
+  "toUnit": "MILLILITERS",
+  "value": 0
+}
+
+--- ERROR ---
+{
+  "code": 3,
+  "message": "Conversion factor undefined"
+}

@@ -1,0 +1,12 @@
+--- ENDPOINT ---
+com.bavix.echo.v1.EchoService/SendMessage
+
+--- REQUEST ---
+{
+  "message": "anything"
+}
+
+--- RESPONSE ---
+{
+  "response": "hit"
+}

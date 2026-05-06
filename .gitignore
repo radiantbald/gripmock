@@ -1,0 +1,16 @@
+pkged.go
+gripmock
+*.out
+.idea
+.DS_Store
+protogen/*
+!protogen/go.mod
+!protogen/empty.go
+!protogen/example/
+temp
+node_modules/
+.trunk/
+plugins/*.so
+
+DEV-3.5.md
+test/bench/

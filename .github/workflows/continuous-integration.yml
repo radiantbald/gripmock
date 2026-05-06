@@ -1,0 +1,486 @@
+name: Continuous Integration
+on:
+  push:
+    branches:
+      - "master"
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GRPCTESTIFY_VERSION: "1.6.1"
+  GO_VERSION: "1.26"
+
+jobs:
+  unit-tests:
+    name: "Unit Tests"
+    runs-on: ubuntu-latest
+    env:
+      GOCOVERDIR: /tmp/cover-unit
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run unit tests with coverage
+        run: |
+          mkdir -p "$GOCOVERDIR"
+          go test -cover -covermode=atomic ./... -args -test.gocoverdir="$GOCOVERDIR"
+        shell: bash
+
+      - name: Upload unit coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-unit
+          path: /tmp/cover-unit
+
+  unit-tests-matrix:
+    name: "Unit Tests (${{ matrix.os }})"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run unit tests
+        run: go test ./...
+
+  bsr-e2e-tests:
+    name: "BSR E2E (${{ matrix.project }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: eliza
+            module: buf.build/connectrpc/eliza
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install grpctestify
+        uses: gripmock/grpctestify-action@v1
+        with:
+          install-only: true
+          version: ${{ env.GRPCTESTIFY_VERSION }}
+
+      - name: Run BSR E2E suite
+        run: |
+          cd "third_party/bsr/${{ matrix.project }}"
+          make up MODULE="${{ matrix.module }}"
+          make test
+          make down
+
+  binary-smoke-tests:
+    name: "Binary Smoke (${{ matrix.platform }})"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: macos-latest
+            platform: macos
+          - os: windows-latest
+            platform: windows
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build and smoke-test binary (Linux/macOS)
+        if: matrix.platform != 'windows'
+        run: |
+          bin="$RUNNER_TEMP/gripmock"
+          go build -o "$bin" .
+          "$bin" --version
+          "$bin" --help
+
+          grpc_port="$((30000 + RANDOM % 20000))"
+          http_port="$((30000 + RANDOM % 20000))"
+
+          GRPC_PORT="$grpc_port" HTTP_PORT="$http_port" "$bin" --stub=examples examples >"$RUNNER_TEMP/gripmock.log" 2>&1 &
+          pid=$!
+
+          cleanup() {
+            kill -INT "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+          }
+
+          trap cleanup EXIT
+          if ! GRPC_PORT="$grpc_port" HTTP_PORT="$http_port" "$bin" check --timeout=60s --silent; then
+            printf 'Smoke check failed on ports grpc=%s http=%s\n' "$grpc_port" "$http_port"
+            printf '---- gripmock server log ----\n'
+            cat "$RUNNER_TEMP/gripmock.log"
+            exit 1
+          fi
+          cleanup
+          trap - EXIT
+
+      - name: Build and smoke-test binary (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $bin = Join-Path $env:RUNNER_TEMP "gripmock.exe"
+          go build -o $bin .
+
+          & $bin --version
+          & $bin --help
+
+          $env:GRPC_PORT = (Get-Random -Minimum 30000 -Maximum 50000).ToString()
+          $env:HTTP_PORT = (Get-Random -Minimum 30000 -Maximum 50000).ToString()
+
+          $stdout = Join-Path $env:RUNNER_TEMP "gripmock.out.log"
+          $stderr = Join-Path $env:RUNNER_TEMP "gripmock.err.log"
+          $proc = Start-Process -FilePath $bin -ArgumentList "--stub=examples", "examples" -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+
+          try {
+            & $bin check --timeout=60s --silent
+          }
+          catch {
+            Write-Host "Smoke check failed on ports grpc=$($env:GRPC_PORT) http=$($env:HTTP_PORT)"
+            if (Test-Path $stdout) {
+              Write-Host "---- gripmock stdout ----"
+              Get-Content $stdout
+            }
+            if (Test-Path $stderr) {
+              Write-Host "---- gripmock stderr ----"
+              Get-Content $stderr
+            }
+            throw
+          }
+          finally {
+            if ($null -ne $proc) {
+              Stop-Process -Id $proc.Id -ErrorAction SilentlyContinue
+            }
+
+            Remove-Item Env:GRPC_PORT -ErrorAction SilentlyContinue
+            Remove-Item Env:HTTP_PORT -ErrorAction SilentlyContinue
+          }
+
+  goreleaser-check:
+    name: "GoReleaser Check"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Setup GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          install-only: true
+
+      - name: Validate GoReleaser config
+        run: goreleaser check
+
+      - name: Build snapshot with GoReleaser
+        run: goreleaser build --snapshot --clean
+
+  e2e-tests:
+    name: "E2E Tests (${{ matrix.platform }})"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            collect_coverage: true
+          - os: macos-latest
+            platform: macos
+            collect_coverage: false
+          - os: windows-latest
+            platform: windows
+            collect_coverage: false
+    env:
+      COLLECT_COVERAGE: ${{ matrix.collect_coverage }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install grpctestify
+        uses: gripmock/grpctestify-action@v1
+        with:
+          install-only: true
+          version: ${{ env.GRPCTESTIFY_VERSION }}
+
+      - name: Run E2E suite (Linux/macOS)
+        if: matrix.platform != 'windows'
+        run: |
+          find . -name "*.proto.src" -type f -delete
+
+          bin="$RUNNER_TEMP/gripmock"
+          if [ "$COLLECT_COVERAGE" = "true" ]; then
+            go build -cover -covermode=atomic -o "$bin" .
+            mkdir -p /tmp/cover-e2e /tmp/cover-check
+            GOCOVERDIR=/tmp/cover-e2e "$bin" --stub=examples examples &
+          else
+            go build -o "$bin" .
+            "$bin" --stub=examples examples &
+          fi
+          pid=$!
+
+          cleanup() {
+            kill -INT "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+          }
+
+          trap cleanup EXIT
+          if [ "$COLLECT_COVERAGE" = "true" ]; then
+            GOCOVERDIR=/tmp/cover-check "$bin" check --timeout=60s --silent
+          else
+            "$bin" check --timeout=60s --silent
+          fi
+
+          grpctestify examples/
+
+      - name: Run E2E suite (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path . -Recurse -Filter *.proto.src -File | Remove-Item -Force
+
+          $bin = Join-Path $env:RUNNER_TEMP "gripmock.exe"
+          if ($env:COLLECT_COVERAGE -eq "true") {
+            go build -cover -covermode=atomic -o $bin .
+            New-Item -ItemType Directory -Path "/tmp/cover-e2e" -Force | Out-Null
+            New-Item -ItemType Directory -Path "/tmp/cover-check" -Force | Out-Null
+            $env:GOCOVERDIR = "/tmp/cover-e2e"
+            $proc = Start-Process -FilePath $bin -ArgumentList "--stub=examples", "examples" -PassThru
+            Remove-Item Env:GOCOVERDIR
+          }
+          else {
+            go build -o $bin .
+            $proc = Start-Process -FilePath $bin -ArgumentList "--stub=examples", "examples" -PassThru
+          }
+
+          try {
+            if ($env:COLLECT_COVERAGE -eq "true") {
+              $env:GOCOVERDIR = "/tmp/cover-check"
+              & $bin check --timeout=60s --silent
+              Remove-Item Env:GOCOVERDIR
+            }
+            else {
+              & $bin check --timeout=60s --silent
+            }
+
+            grpctestify examples\
+          }
+          finally {
+            if ($null -ne $proc) {
+              Stop-Process -Id $proc.Id -ErrorAction SilentlyContinue
+            }
+          }
+
+      - name: Upload e2e coverage
+        if: matrix.collect_coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-e2e
+          path: /tmp/cover-e2e
+
+      - name: Upload check coverage
+        if: matrix.collect_coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-check
+          path: /tmp/cover-check
+
+  e2e-tls-tests:
+    name: "E2E TLS (${{ matrix.tls_mode }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tls_mode: tls12
+            grpc_tls_cert_file: third_party/tls/tls12/server.crt
+            grpc_tls_key_file: third_party/tls/tls12/server.key
+            grpc_tls_ca_file: third_party/tls/tls12/ca.crt
+            grpc_tls_min_version: "1.2"
+            grpc_tls_client_auth: "false"
+            grpctestify_tls_cert_file: ""
+            grpctestify_tls_key_file: ""
+            grpctestify_tls_ca_file: third_party/tls/tls12/ca.crt
+            grpctestify_tls_server_name: localhost
+          - tls_mode: tls13
+            grpc_tls_cert_file: third_party/tls/tls13/server.crt
+            grpc_tls_key_file: third_party/tls/tls13/server.key
+            grpc_tls_ca_file: third_party/tls/tls13/ca.crt
+            grpc_tls_min_version: "1.3"
+            grpc_tls_client_auth: "false"
+            grpctestify_tls_cert_file: ""
+            grpctestify_tls_key_file: ""
+            grpctestify_tls_ca_file: third_party/tls/tls13/ca.crt
+            grpctestify_tls_server_name: localhost
+          - tls_mode: mtls
+            grpc_tls_cert_file: third_party/tls/mtls/server.crt
+            grpc_tls_key_file: third_party/tls/mtls/server.key
+            grpc_tls_ca_file: third_party/tls/mtls/ca.crt
+            grpc_tls_min_version: "1.2"
+            grpc_tls_client_auth: "true"
+            grpctestify_tls_cert_file: third_party/tls/mtls/client.crt
+            grpctestify_tls_key_file: third_party/tls/mtls/client.key
+            grpctestify_tls_ca_file: third_party/tls/mtls/ca.crt
+            grpctestify_tls_server_name: localhost
+          - tls_mode: mtls13
+            grpc_tls_cert_file: third_party/tls/mtls/server.crt
+            grpc_tls_key_file: third_party/tls/mtls/server.key
+            grpc_tls_ca_file: third_party/tls/mtls/ca.crt
+            grpc_tls_min_version: "1.3"
+            grpc_tls_client_auth: "true"
+            grpctestify_tls_cert_file: third_party/tls/mtls/client.crt
+            grpctestify_tls_key_file: third_party/tls/mtls/client.key
+            grpctestify_tls_ca_file: third_party/tls/mtls/ca.crt
+            grpctestify_tls_server_name: localhost
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install grpctestify
+        uses: gripmock/grpctestify-action@v1
+        with:
+          install-only: true
+          version: ${{ env.GRPCTESTIFY_VERSION }}
+
+      - name: Run E2E TLS suite
+        run: |
+          find . -name "*.proto.src" -type f -delete
+
+          bin="$RUNNER_TEMP/gripmock"
+          go build -o "$bin" .
+
+          export GRPC_TLS_CERT_FILE="${{ matrix.grpc_tls_cert_file }}"
+          export GRPC_TLS_KEY_FILE="${{ matrix.grpc_tls_key_file }}"
+          export GRPC_TLS_CA_FILE="${{ matrix.grpc_tls_ca_file }}"
+          export GRPC_TLS_MIN_VERSION="${{ matrix.grpc_tls_min_version }}"
+          export GRPC_TLS_CLIENT_AUTH="${{ matrix.grpc_tls_client_auth }}"
+
+          "$bin" --stub=examples examples &
+          pid=$!
+
+          cleanup() {
+            kill -INT "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+          }
+
+          trap cleanup EXIT
+
+          "$bin" check --timeout=60s --silent
+
+          export GRPCTESTIFY_TLS_CA_FILE="${{ matrix.grpctestify_tls_ca_file }}"
+          export GRPCTESTIFY_TLS_SERVER_NAME="${{ matrix.grpctestify_tls_server_name }}"
+          export GRPCTESTIFY_TLS_CERT_FILE="${{ matrix.grpctestify_tls_cert_file }}"
+          export GRPCTESTIFY_TLS_KEY_FILE="${{ matrix.grpctestify_tls_key_file }}"
+
+          grpctestify examples/
+
+  gctf-gates:
+    name: "GCTF Gates"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install grpctestify
+        uses: gripmock/grpctestify-action@v1
+        with:
+          install-only: true
+          version: ${{ env.GRPCTESTIFY_VERSION }}
+
+      - name: Check GCTF formatting
+        run: grpctestify fmt .
+
+      - name: Validate GCTF files
+        run: grpctestify check .
+
+  coverage-report:
+    name: "Coverage Report"
+    runs-on: ubuntu-latest
+    needs: [unit-tests, e2e-tests, e2e-tls-tests]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download unit coverage
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage-unit
+          path: /tmp/cover-unit
+
+      - name: Download e2e coverage
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage-e2e
+          path: /tmp/cover-e2e
+
+      - name: Download check coverage
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage-check
+          path: /tmp/cover-check
+
+      - name: Merge all coverage data
+        run: |
+          mkdir -p /tmp/cover-all
+          go tool covdata merge \
+            -i=/tmp/cover-unit,/tmp/cover-e2e,/tmp/cover-check \
+            -o=/tmp/cover-all
+
+      - name: Generate coverage report
+        run: |
+          go tool covdata textfmt -i=/tmp/cover-all -o coverage.txt
+          go tool covdata percent -i=/tmp/cover-all
+
+      - name: Upload coverage to Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path-to-lcov: coverage.txt
+
+      - name: Upload coverage report as artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: coverage.txt

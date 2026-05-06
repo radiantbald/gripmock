@@ -1,0 +1,10 @@
+--- ENDPOINT ---
+fingerprint.Fingerprint/Check
+
+--- REQUEST ---
+{
+  "id": "hello"
+}
+
+--- RESPONSE ---
+{}

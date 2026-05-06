@@ -1,0 +1,14 @@
+--- ENDPOINT ---
+unitconverter.v1.UnitConversionService/ConvertWeight
+
+--- REQUEST ---
+{
+  "fromUnit": "OUNCES",
+  "value": 100
+}
+
+--- ERROR ---
+{
+  "code": 3,
+  "message": "toUnit must be specified"
+}

@@ -1,0 +1,35 @@
+--- ENDPOINT ---
+ecommerce.EcommerceService/GetOrderHistory
+
+--- REQUEST ---
+{
+  "limit": 3,
+  "user_id": "USER_456"
+}
+
+--- RESPONSE ---
+{
+  "item_count": 3,
+  "order_date": "2024-01-15",
+  "order_id": "ORDER_456_001",
+  "status": "delivered",
+  "total_amount": 150
+}
+
+--- RESPONSE ---
+{
+  "item_count": 2,
+  "order_date": "2024-01-10",
+  "order_id": "ORDER_456_002",
+  "status": "shipped",
+  "total_amount": 75.5
+}
+
+--- RESPONSE ---
+{
+  "item_count": 4,
+  "order_date": "2024-01-05",
+  "order_id": "ORDER_456_003",
+  "status": "processing",
+  "total_amount": 200
+}

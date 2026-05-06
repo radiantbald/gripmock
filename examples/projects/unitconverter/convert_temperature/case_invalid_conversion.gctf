@@ -1,0 +1,15 @@
+--- ENDPOINT ---
+unitconverter.v1.UnitConversionService/ConvertTemperature
+
+--- REQUEST ---
+{
+  "fromUnit": "CELSIUS",
+  "toUnit": "KELVIN",
+  "value": -300
+}
+
+--- ERROR ---
+{
+  "code": 3,
+  "message": "Temperature below absolute zero"
+}

@@ -1,0 +1,28 @@
+--- ENDPOINT ---
+ecommerce.EcommerceService/SubmitProductReviews
+
+--- REQUEST ---
+{
+  "comment": "Great product!",
+  "product_id": "PROD_789",
+  "rating": 5,
+  "review_date": "2024-01-15",
+  "user_id": "USER_001"
+}
+
+--- REQUEST ---
+{
+  "comment": "Good quality",
+  "product_id": "PROD_789",
+  "rating": 4,
+  "review_date": "2024-01-16",
+  "user_id": "USER_002"
+}
+
+--- RESPONSE ---
+{
+  "average_rating": 4,
+  "reviews_count": 2,
+  "status": "processed",
+  "submission_id": "REVIEW_2_1734038400"
+}

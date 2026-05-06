@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# ConvertLength Success
+service: UnitConversionService
+method: ConvertLength
+input:
+  equals:
+    value: 3.28084
+    from_unit: FEET
+    to_unit: METERS
+output:
+  data:
+    converted_value: 1.0

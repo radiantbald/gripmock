@@ -1,0 +1,105 @@
+package deps
+
+import (
+	"context"
+	"crypto/tls"
+	"net"
+
+	"github.com/cockroachdb/errors"
+	"github.com/rs/zerolog"
+
+	"github.com/bavix/gripmock/v3/internal/app"
+	"github.com/bavix/gripmock/v3/internal/domain/history"
+	"github.com/bavix/gripmock/v3/internal/domain/proto"
+)
+
+//nolint:funlen,cyclop
+func (b *Builder) GRPCServe(ctx context.Context, param *proto.Arguments) error {
+	b.StartSessionGC(ctx)
+
+	grpcTLS := b.grpcTLSConfig()
+	grpcTLS.ClientAuth = b.config.GRPCTLSClientAuth
+
+	var (
+		tlsCfg *tls.Config
+		err    error
+	)
+
+	if grpcTLS.IsEnabled() {
+		tlsCfg, err = grpcTLS.BuildTLSConfig()
+		if err != nil {
+			return errors.Wrap(err, "failed to build TLS config")
+		}
+	}
+
+	listener, err := (&net.ListenConfig{}).Listen(ctx, b.config.GRPCNetwork, b.config.GRPCAddr)
+	if err != nil {
+		return errors.Wrap(err, "failed to listen")
+	}
+
+	logger := zerolog.Ctx(ctx)
+
+	logger.Info().
+		Str("addr", listener.Addr().String()).
+		Str("network", listener.Addr().Network()).
+		Bool("tls", grpcTLS.IsEnabled()).
+		Msg("Serving gRPC")
+
+	var recorder history.Recorder
+	if store := b.HistoryStore(); store != nil {
+		recorder = store
+	}
+
+	grpcServer := app.NewGRPCServer(
+		b.config.GRPCNetwork,
+		b.config.GRPCAddr,
+		param,
+		b.Budgerigar(),
+		b.Extender(ctx),
+		recorder,
+		b.DescriptorRegistry(),
+		tlsCfg,
+		b.RemoteClient(),
+		b.config.OtelEnabled,
+		b.StubValidator(),
+	)
+
+	server, err := grpcServer.Build(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to build gRPC server")
+	}
+
+	b.ender.Add(func(_ context.Context) error {
+		server.GracefulStop()
+
+		return nil
+	})
+
+	ch := make(chan error)
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Fatal().
+					Interface("panic", r).
+					Msg("Fatal panic in gRPC server goroutine - terminating server")
+			}
+		}()
+		defer close(ch)
+
+		ch <- server.Serve(listener)
+	}()
+
+	select {
+	case <-ctx.Done():
+		if !errors.Is(ctx.Err(), context.Canceled) {
+			return errors.Wrap(ctx.Err(), "failed to serve")
+		}
+	case err := <-ch:
+		if !errors.Is(err, context.Canceled) {
+			return errors.Wrap(err, "failed to serve")
+		}
+	}
+
+	return nil
+}
