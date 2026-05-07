@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gripmock}
+      POSTGRES_USER: ${POSTGRES_USER:-gripmock}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gripmock}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gripmock} -d ${POSTGRES_DB:-gripmock}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  gripmock:
+    build:
+      context: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_DSN: postgres://${POSTGRES_USER:-gripmock}:${POSTGRES_PASSWORD:-gripmock}@postgres:5432/${POSTGRES_DB:-gripmock}?sslmode=disable
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    command:
+      - --stub=/stubs
+      - /proto/${GRIPMOCK_PROTO_FILE:-service.proto}
+    volumes:
+      - ${GRIPMOCK_STUBS_DIR:-./examples/projects/greeter/stubs}:/stubs:ro
+      - ${GRIPMOCK_PROTO_DIR:-./examples/projects/greeter}:/proto:ro
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.gripmock-http.rule: PathPrefix(`/`)
+      traefik.http.routers.gripmock-http.entrypoints: http
+      traefik.http.routers.gripmock-http.service: gripmock-http
+      traefik.http.services.gripmock-http.loadbalancer.server.port: "4771"
+      traefik.http.routers.gripmock-grpc.rule: PathPrefix(`/`)
+      traefik.http.routers.gripmock-grpc.entrypoints: grpc
+      traefik.http.routers.gripmock-grpc.service: gripmock-grpc
+      traefik.http.services.gripmock-grpc.loadbalancer.server.port: "4770"
+      traefik.http.services.gripmock-grpc.loadbalancer.server.scheme: h2c
+
+  traefik:
+    image: traefik:v3.1
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.grpc.address=:4770
+      - --entrypoints.http.address=:4771
+      - --accesslog=true
+      - --log.level=INFO
+    ports:
+      - "4770:4770"
+      - "4771:4771"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - gripmock
+
+volumes:
+  postgres_data:

@@ -336,6 +336,42 @@ func (s *RestServerTestSuite) TestListStubsParams() {
 	s.Equal("Ping", response[0].Method)
 }
 
+func (s *RestServerTestSuite) TestListStubs_SessionFromHeader() {
+	s.budgerigar.PutMany(
+		&stuber.Stub{
+			Service: "svc.Scope",
+			Method:  "Ping",
+			Session: "A",
+			Input:   stuber.InputData{},
+			Output:  stuber.Output{},
+		},
+		&stuber.Stub{
+			Service: "svc.Scope",
+			Method:  "Ping",
+			Session: "B",
+			Input:   stuber.InputData{},
+			Output:  stuber.Output{},
+		},
+	)
+
+	req := httptest.NewRequestWithContext(s.T().Context(), http.MethodGet, "/api/stubs?service=svc.Scope&method=Ping", nil)
+	req.Header.Set("X-Gripmock-Session", "A")
+
+	w := httptest.NewRecorder()
+	s.server.ListStubs(w, req, rest.ListStubsParams{
+		Service: ptrString("svc.Scope"),
+		Method:  ptrString("Ping"),
+	})
+
+	s.Equal(http.StatusOK, w.Code)
+
+	var response []rest.Stub
+	s.Require().NoError(json.Unmarshal(w.Body.Bytes(), &response))
+	s.Require().Len(response, 1)
+	s.Equal("svc.Scope", response[0].Service)
+	s.Equal("Ping", response[0].Method)
+}
+
 // TestAddDescriptors tests POST /api/descriptors with binary FileDescriptorSet.
 func (s *RestServerTestSuite) TestAddDescriptors() {
 	body := s.greeterDescriptorSetBytes()
@@ -478,6 +514,30 @@ func (s *RestServerTestSuite) TestAddStub_SessionFromHeader() {
 	stubs := s.budgerigar.All()
 	s.Require().Len(stubs, 1)
 	s.Equal("header-session", stubs[0].Session)
+}
+
+func (s *RestServerTestSuite) TestAddStub_SessionFromQueryWhenHeaderMissing() {
+	// Arrange
+	stubJSON := `[
+		{
+			"service": "svc",
+			"method": "M",
+			"input": {"contains": {"x": "1"}},
+			"output": {"data": {"ok": true}}
+		}
+	]`
+
+	// Act
+	w := s.addStubJSONWithRequest(s.server, stubJSON, func(req *http.Request) {
+		req.URL.RawQuery = "session=query-session"
+	})
+
+	// Assert
+	s.Equal(http.StatusOK, w.Code)
+
+	stubs := s.budgerigar.All()
+	s.Require().Len(stubs, 1)
+	s.Equal("query-session", stubs[0].Session)
 }
 
 func (s *RestServerTestSuite) TestMcpMessageHistoryTools() {
@@ -1769,6 +1829,10 @@ func (s *RestServerTestSuite) mcpErrorCode(response map[string]any) float64 {
 	s.Require().True(ok)
 
 	return code
+}
+
+func ptrString(value string) *string {
+	return &value
 }
 
 // TestRestServerTestSuite runs the test suite.

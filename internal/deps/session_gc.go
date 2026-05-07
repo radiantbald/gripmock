@@ -10,33 +10,7 @@ import (
 )
 
 func (b *Builder) StartSessionGC(ctx context.Context) {
-	b.sessionGCOnce.Do(func() {
-		interval := b.config.SessionGCInterval
-		ttl := b.config.SessionGCTTL
-
-		if interval <= 0 || ttl <= 0 {
-			return
-		}
-
-		ticker := time.NewTicker(interval)
-
-		b.ender.Add(func(_ context.Context) error {
-			ticker.Stop()
-
-			return nil
-		})
-
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case now := <-ticker.C:
-					b.cleanupExpiredSessions(ctx, now, ttl)
-				}
-			}
-		}()
-	})
+	_ = ctx
 }
 
 func (b *Builder) cleanupExpiredSessions(ctx context.Context, now time.Time, ttl time.Duration) {

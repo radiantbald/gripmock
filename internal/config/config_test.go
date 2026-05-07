@@ -26,22 +26,26 @@ func TestConfigOldEnvVarNames(t *testing.T) {
 	t.Setenv("HISTORY_REDACT_KEYS", "password,token,secret")
 
 	expected := config.Config{
-		LogLevel:               "debug",
-		GRPCNetwork:            "tcp",
-		GRPCHost:               "127.0.0.1",
-		GRPCPort:               "8080",
-		GRPCAddr:               "127.0.0.1:8080",
-		HTTPHost:               "localhost",
-		HTTPPort:               "8081",
-		HTTPAddr:               "localhost:8081",
-		StubWatcherEnabled:     false,
-		StubWatcherInterval:    5 * 1000000000, // 5s in nanoseconds
-		StubWatcherType:        "polling",
-		HistoryEnabled:         false,
-		HistoryLimit:           config.ByteSize{Bytes: 128 * 1024 * 1024}, // 128M
-		HistoryMessageMaxBytes: 524288,
-		HistoryRedactKeys:      []string{"password", "token", "secret"},
-		TemplatePluginPaths:    nil,
+		LogLevel:                "debug",
+		GRPCNetwork:             "tcp",
+		GRPCHost:                "127.0.0.1",
+		GRPCPort:                "8080",
+		GRPCAddr:                "127.0.0.1:8080",
+		HTTPHost:                "localhost",
+		HTTPPort:                "8081",
+		HTTPAddr:                "localhost:8081",
+		StubWatcherEnabled:      false,
+		StubWatcherInterval:     5 * 1000000000, // 5s in nanoseconds
+		StubWatcherType:         "polling",
+		HistoryEnabled:          false,
+		HistoryLimit:            config.ByteSize{Bytes: 128 * 1024 * 1024}, // 128M
+		HistoryMessageMaxBytes:  524288,
+		HistoryRedactKeys:       []string{"password", "token", "secret"},
+		TemplatePluginPaths:     nil,
+		PostgresDSN:             "",
+		PostgresMaxOpenConns:    10,
+		PostgresMaxIdleConns:    5,
+		PostgresConnMaxLifetime: 30 * 60 * 1000000000,
 	}
 
 	// Load configuration
@@ -63,28 +67,36 @@ func TestConfigOldEnvVarNames(t *testing.T) {
 	require.Equal(t, expected.HistoryLimit.Bytes, cfg.HistoryLimit.Bytes)
 	require.Equal(t, expected.HistoryMessageMaxBytes, cfg.HistoryMessageMaxBytes)
 	require.Equal(t, expected.HistoryRedactKeys, cfg.HistoryRedactKeys)
+	require.Equal(t, expected.PostgresDSN, cfg.PostgresDSN)
+	require.Equal(t, expected.PostgresMaxOpenConns, cfg.PostgresMaxOpenConns)
+	require.Equal(t, expected.PostgresMaxIdleConns, cfg.PostgresMaxIdleConns)
+	require.Equal(t, expected.PostgresConnMaxLifetime, cfg.PostgresConnMaxLifetime)
 }
 
 func TestConfigDefaultValues(t *testing.T) {
 	t.Parallel()
 
 	expected := config.Config{
-		LogLevel:               "info",
-		GRPCNetwork:            "tcp",
-		GRPCHost:               "0.0.0.0",
-		GRPCPort:               "4770",
-		GRPCAddr:               "0.0.0.0:4770",
-		HTTPHost:               "0.0.0.0",
-		HTTPPort:               "4771",
-		HTTPAddr:               "0.0.0.0:4771",
-		StubWatcherEnabled:     true,
-		StubWatcherInterval:    1 * 1000000000, // 1s in nanoseconds
-		StubWatcherType:        "fsnotify",
-		HistoryEnabled:         true,
-		HistoryLimit:           config.ByteSize{Bytes: 64 * 1024 * 1024}, // 64M
-		HistoryMessageMaxBytes: 262144,
-		HistoryRedactKeys:      nil, // env v11 returns nil for empty strings
-		TemplatePluginPaths:    nil,
+		LogLevel:                "info",
+		GRPCNetwork:             "tcp",
+		GRPCHost:                "0.0.0.0",
+		GRPCPort:                "4770",
+		GRPCAddr:                "0.0.0.0:4770",
+		HTTPHost:                "0.0.0.0",
+		HTTPPort:                "4771",
+		HTTPAddr:                "0.0.0.0:4771",
+		StubWatcherEnabled:      true,
+		StubWatcherInterval:     1 * 1000000000, // 1s in nanoseconds
+		StubWatcherType:         "fsnotify",
+		HistoryEnabled:          true,
+		HistoryLimit:            config.ByteSize{Bytes: 64 * 1024 * 1024}, // 64M
+		HistoryMessageMaxBytes:  262144,
+		HistoryRedactKeys:       nil, // env v11 returns nil for empty strings
+		TemplatePluginPaths:     nil,
+		PostgresDSN:             "",
+		PostgresMaxOpenConns:    10,
+		PostgresMaxIdleConns:    5,
+		PostgresConnMaxLifetime: 30 * 60 * 1000000000,
 	}
 
 	// Load configuration
@@ -106,6 +118,10 @@ func TestConfigDefaultValues(t *testing.T) {
 	require.Equal(t, expected.HistoryLimit.Bytes, cfg.HistoryLimit.Bytes)
 	require.Equal(t, expected.HistoryMessageMaxBytes, cfg.HistoryMessageMaxBytes)
 	require.Equal(t, expected.HistoryRedactKeys, cfg.HistoryRedactKeys)
+	require.Equal(t, expected.PostgresDSN, cfg.PostgresDSN)
+	require.Equal(t, expected.PostgresMaxOpenConns, cfg.PostgresMaxOpenConns)
+	require.Equal(t, expected.PostgresMaxIdleConns, cfg.PostgresMaxIdleConns)
+	require.Equal(t, expected.PostgresConnMaxLifetime, cfg.PostgresConnMaxLifetime)
 }
 
 func TestConfigByteSize(t *testing.T) {

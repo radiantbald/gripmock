@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -65,6 +66,42 @@ func TestUpdateManyV2(t *testing.T) {
 	require.NotNil(t, found2)
 	require.Equal(t, "Greeter2Updated", found2.Service)
 	require.Equal(t, "SayHello2Updated", found2.Method)
+}
+
+func TestPutManySingleEnabledPerRouteTrimmedV2(t *testing.T) {
+	t.Parallel()
+
+	s := stuber.NewBudgerigar()
+	enabled := true
+
+	first := &stuber.Stub{
+		ID:      uuid.New(),
+		Service: "Calculator",
+		Method:  "MultiplyByFive",
+		Enabled: &enabled,
+	}
+	second := &stuber.Stub{
+		ID:      uuid.New(),
+		Service: "Calculator ",
+		Method:  "MultiplyByFive ",
+		Enabled: &enabled,
+	}
+
+	s.PutMany(first, second)
+
+	all := s.All()
+	require.Len(t, all, 2)
+
+	enabledCount := 0
+	for _, item := range all {
+		if strings.TrimSpace(item.Service) == "Calculator" && strings.TrimSpace(item.Method) == "MultiplyByFive" && item.IsEnabled() {
+			enabledCount++
+		}
+	}
+
+	require.Equal(t, 1, enabledCount, "only one enabled stub is allowed per service/method route")
+	require.False(t, s.FindByID(first.ID).IsEnabled())
+	require.True(t, s.FindByID(second.ID).IsEnabled())
 }
 
 func TestRelationshipV2(t *testing.T) {

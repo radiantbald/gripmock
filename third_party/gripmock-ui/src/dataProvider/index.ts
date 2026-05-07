@@ -11,8 +11,57 @@ import {
 } from "./processing";
 import { canonicalResource } from "./resources";
 import type { Row } from "./types";
+import { getCurrentSession } from "../utils/session";
 
 type RAResult<T> = { data: T };
+
+const extractSessionName = (value: unknown): string => {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  const row = value as Record<string, unknown>;
+  const candidate = row.session || row.name || row.id;
+  return typeof candidate === "string" ? candidate.trim() : "";
+};
+
+const toText = (value: unknown): string => (typeof value === "string" ? value.trim() : String(value ?? "").trim());
+
+const extractSessionRow = (value: unknown): { id: string; session: string; name: string } | null => {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized) {
+      return null;
+    }
+
+    return { id: normalized, session: normalized, name: normalized };
+  }
+
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const row = value as Record<string, unknown>;
+  const sessionName = extractSessionName(value);
+  if (!sessionName) {
+    return null;
+  }
+
+  const id = toText(row.id || sessionName);
+  if (!id) {
+    return null;
+  }
+
+  return {
+    id,
+    session: sessionName,
+    name: sessionName,
+  };
+};
 
 const toNumericId = (value: unknown): number => {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -36,11 +85,20 @@ const dataProvider: DataProvider = {
     const canonical = canonicalResource(resource);
 
     if (canonical === "sessions") {
-      const json = await apiClient.request<{ sessions?: string[] }>(`/${canonical}`);
-      const rows = ensureArray<string>(json?.sessions).map((session) => ({
-        id: session,
-        session,
-      }));
+      const json = await apiClient.request<unknown>(`/${canonical}`);
+      const payload =
+        ensureArray<unknown>((json as { sessions?: unknown[] } | undefined)?.sessions).length > 0
+          ? ensureArray<unknown>((json as { sessions?: unknown[] }).sessions)
+          : ensureArray<unknown>(json);
+      const byId = new Map<string, { id: string; session: string; name: string }>();
+      payload.forEach((item) => {
+        const row = extractSessionRow(item);
+        if (!row) {
+          return;
+        }
+        byId.set(row.id, row);
+      });
+      const rows = Array.from(byId.values());
       const { page, perPage } = params.pagination || { page: 1, perPage: 25 };
       return dataProcessing.applyPagination(rows, page, perPage) as any;
     }
@@ -183,8 +241,13 @@ const dataProvider: DataProvider = {
     }
 
     const requestBody = Array.isArray(params.data) ? params.data : [params.data];
+    const activeSession = getCurrentSession().trim();
+    const endpoint =
+      canonical === "stubs" && activeSession
+        ? `/${canonical}?session=${encodeURIComponent(activeSession)}`
+        : `/${canonical}`;
 
-    const response = await apiClient.request<unknown>(`/${canonical}`, {
+    const response = await apiClient.request<unknown>(endpoint, {
       method: "POST",
       body: JSON.stringify(requestBody),
     });

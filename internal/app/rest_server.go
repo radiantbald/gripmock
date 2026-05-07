@@ -39,7 +39,11 @@ import (
 	"github.com/bavix/gripmock/v3/internal/infra/httputil"
 	"github.com/bavix/gripmock/v3/internal/infra/jsondecoder"
 	"github.com/bavix/gripmock/v3/internal/infra/muxmiddleware"
+	pgallowlist "github.com/bavix/gripmock/v3/internal/infra/postgres/allowlist"
+	pgsessions "github.com/bavix/gripmock/v3/internal/infra/postgres/sessions"
+	pgusers "github.com/bavix/gripmock/v3/internal/infra/postgres/users"
 	protosetinfra "github.com/bavix/gripmock/v3/internal/infra/protoset"
+	sessioninfra "github.com/bavix/gripmock/v3/internal/infra/session"
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
 )
 
@@ -63,6 +67,9 @@ type RestServer struct {
 	publicIDs       map[rest.ID]uuid.UUID
 	privateIDs      map[uuid.UUID]rest.ID
 	mcpHandler      http.Handler
+	usersRepository *pgusers.Repository
+	allowedPhones   *pgallowlist.Repository
+	sessionsRepo    *pgsessions.Repository
 }
 
 var _ rest.ServerInterface = &RestServer{}
@@ -114,6 +121,18 @@ func NewRestServer(
 	return server, nil
 }
 
+func (h *RestServer) SetUsersRepository(repository *pgusers.Repository) {
+	h.usersRepository = repository
+}
+
+func (h *RestServer) SetAllowedPhonesRepository(repository *pgallowlist.Repository) {
+	h.allowedPhones = repository
+}
+
+func (h *RestServer) SetSessionsRepository(repository *pgsessions.Repository) {
+	h.sessionsRepo = repository
+}
+
 const (
 	servicesListCap   = 16
 	serviceMethodsCap = 32
@@ -121,8 +140,9 @@ const (
 )
 
 var (
-	errServiceNotFound = stderrors.New("service not found")
-	errMethodNotFound  = stderrors.New("method not found in service")
+	errServiceNotFound        = stderrors.New("service not found")
+	errMethodNotFound         = stderrors.New("method not found in service")
+	errSessionForbiddenDelete = stderrors.New("only session creator can delete this session")
 )
 
 // ServicesList returns a list of all available gRPC services (startup + REST-added).
@@ -257,7 +277,41 @@ func (h *RestServer) Dashboard(w http.ResponseWriter, r *http.Request) {
 
 // SessionsList returns distinct non-empty session IDs for UI selectors.
 func (h *RestServer) SessionsList(w http.ResponseWriter, r *http.Request) {
-	h.writeResponse(r.Context(), w, rest.Sessions{Sessions: h.budgerigar.Sessions()})
+	h.writeResponse(r.Context(), w, rest.Sessions{Sessions: h.sessionsForResponse()})
+}
+
+// SessionsCreate creates a session row and returns generated id.
+func (h *RestServer) SessionsCreate(w http.ResponseWriter, r *http.Request) {
+	if h.sessionsRepo == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		h.writeResponseError(r.Context(), w, errors.New("sessions repository is not configured"))
+		return
+	}
+
+	var payload struct {
+		Name string `json:"name"`
+	}
+
+	byt, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.validationError(r.Context(), w, errors.Wrap(err, "failed to read request body"))
+		return
+	}
+	if err = json.Unmarshal(byt, &payload); err != nil {
+		h.validationError(r.Context(), w, errors.Wrap(err, "invalid sessions payload"))
+		return
+	}
+
+	row, createErr := h.sessionsRepo.Create(r.Context(), payload.Name, muxmiddleware.OwnerFromContext(r.Context()))
+	if createErr != nil {
+		h.validationError(r.Context(), w, createErr)
+		return
+	}
+
+	h.writeResponse(r.Context(), w, rest.Session{
+		Id:   strconv.FormatInt(row.ID, 10),
+		Name: row.Name,
+	})
 }
 
 // DashboardInfo returns build metadata and runtime process information.
@@ -335,6 +389,7 @@ func newMCPToolHandler(h *RestServer, name string) mcp.ToolHandler {
 		}
 
 		args = mcpusecase.ApplySession(name, args, mcpSessionFromContext(ctx, req))
+		args = mcpApplyOwner(name, args, mcpOwnerFromContext(ctx, req))
 
 		result, err := callMCPToolDispatch(h, name, args)
 		if err != nil {
@@ -358,6 +413,36 @@ func mcpSessionFromContext(ctx context.Context, req *mcp.CallToolRequest) string
 	}
 
 	return strings.TrimSpace(req.Extra.Header.Get(muxmiddleware.HeaderName))
+}
+
+func mcpOwnerFromContext(ctx context.Context, req *mcp.CallToolRequest) string {
+	if ownerID := muxmiddleware.OwnerFromContext(ctx); ownerID != "" {
+		return ownerID
+	}
+
+	if req == nil || req.Extra == nil {
+		return ""
+	}
+
+	return strings.TrimSpace(req.Extra.Header.Get(muxmiddleware.OwnerHeaderName))
+}
+
+func mcpApplyOwner(toolName string, args map[string]any, ownerID string) map[string]any {
+	if ownerID == "" {
+		return args
+	}
+
+	if toolName != mcpusecase.ToolStubsPurge && toolName != mcpusecase.ToolStubsUpsert {
+		return args
+	}
+
+	if args == nil {
+		args = make(map[string]any)
+	}
+
+	args["_owner"] = ownerID
+
+	return args
 }
 
 func mcpJSONRPCError(toolName string, err error) error {
@@ -526,7 +611,7 @@ func mcpDashboardInfo(h *RestServer, args map[string]any) (map[string]any, error
 }
 
 func mcpSessionsList(h *RestServer, _ map[string]any) (map[string]any, error) {
-	return map[string]any{"sessions": h.budgerigar.Sessions()}, nil
+	return map[string]any{"sessions": h.sessionsForResponse()}, nil
 }
 
 func mcpGripmockInfo(h *RestServer, _ map[string]any) (map[string]any, error) {
@@ -878,9 +963,14 @@ func mcpStubsUpsert(h *RestServer, args map[string]any) (map[string]any, error) 
 	}
 
 	sessionID, _ := args["session"].(string)
+	if sessionID != "" {
+		ownerID, _ := args["_owner"].(string)
+		sessioninfra.TouchWithOwner(sessionID, ownerID)
+	}
 
 	for _, stub := range stubs {
 		stub.Session = sessionID
+		stub.Source = stuber.SourceMCP
 
 		if err = h.validateStub(stub); err != nil {
 			return nil, mcpInvalidArgErrorWithCause(err.Error(), err)
@@ -983,9 +1073,36 @@ func mcpStubsBatchDelete(h *RestServer, args map[string]any) (map[string]any, er
 func mcpStubsPurge(h *RestServer, args map[string]any) (map[string]any, error) {
 	sessionID, _ := args["session"].(string)
 	if sessionID != "" {
-		deletedCount := h.budgerigar.DeleteSession(sessionID)
+		ownerID, _ := args["_owner"].(string)
+		if !sessioninfra.CanDelete(sessionID, ownerID) {
+			return nil, mcpInvalidArgError(errSessionForbiddenDelete.Error())
+		}
 
-		return map[string]any{"deletedCount": deletedCount, "session": sessionID}, nil
+		deletedCount := h.budgerigar.DeleteSession(sessionID)
+		deletedHistoryCount := 0
+		if cleaner, ok := h.history.(history.SessionCleaner); ok {
+			deletedHistoryCount = cleaner.DeleteSession(sessionID)
+		}
+		deletedSessionRows := 0
+		if h.sessionsRepo != nil {
+			parsedSessionID, parseErr := strconv.ParseInt(strings.TrimSpace(sessionID), 10, 64)
+			if parseErr != nil {
+				return nil, mcpInvalidArgError("session must be numeric id")
+			}
+			rows, deleteErr := h.sessionsRepo.DeleteByID(context.Background(), parsedSessionID)
+			if deleteErr != nil {
+				return nil, errors.Wrap(deleteErr, "failed to delete session metadata")
+			}
+			deletedSessionRows = rows
+		}
+		sessioninfra.Forget(sessionID)
+
+		return map[string]any{
+			"deletedCount":        deletedCount,
+			"deletedHistoryCount": deletedHistoryCount,
+			"deletedSessionRows":  deletedSessionRows,
+			"session":             sessionID,
+		}, nil
 	}
 
 	deletedCount := len(h.budgerigar.All())
@@ -1613,7 +1730,10 @@ func (h *RestServer) AddStub(w http.ResponseWriter, r *http.Request) {
 	}
 
 	inputs := make([]*stuber.Stub, 0, len(payload))
-	sess := muxmiddleware.FromRequest(r)
+	sess := strings.TrimSpace(muxmiddleware.FromRequest(r))
+	if sess == "" {
+		sess = strings.TrimSpace(r.URL.Query().Get("session"))
+	}
 	for _, item := range payload {
 		stub, convertErr := h.toDomainStub(item)
 		if convertErr != nil {
@@ -1829,17 +1949,41 @@ func (h *RestServer) BatchStubsDelete(w http.ResponseWriter, r *http.Request) {
 
 // ListUsedStubs returns stubs that have been matched.
 func (h *RestServer) ListUsedStubs(w http.ResponseWriter, r *http.Request) {
-	h.writeResponse(r.Context(), w, h.toRestStubs(h.budgerigar.Used()))
+	sessionID := strings.TrimSpace(muxmiddleware.FromRequest(r))
+	visible := make([]*stuber.Stub, 0)
+	for _, stub := range h.budgerigar.Used() {
+		if stubVisibleForSession(stub.Session, sessionID) {
+			visible = append(visible, stub)
+		}
+	}
+
+	h.writeResponse(r.Context(), w, h.toRestStubs(visible))
 }
 
 // ListUnusedStubs returns stubs that have never been matched.
 func (h *RestServer) ListUnusedStubs(w http.ResponseWriter, r *http.Request) {
-	h.writeResponse(r.Context(), w, h.toRestStubs(h.budgerigar.Unused()))
+	sessionID := strings.TrimSpace(muxmiddleware.FromRequest(r))
+	visible := make([]*stuber.Stub, 0)
+	for _, stub := range h.budgerigar.Unused() {
+		if stubVisibleForSession(stub.Session, sessionID) {
+			visible = append(visible, stub)
+		}
+	}
+
+	h.writeResponse(r.Context(), w, h.toRestStubs(visible))
 }
 
 // ListStubs returns all stubs, optionally filtered by source.
 func (h *RestServer) ListStubs(w http.ResponseWriter, r *http.Request, params rest.ListStubsParams) {
-	stubs, total := h.budgerigar.List(listOptionsFromParams(params))
+	options := listOptionsFromParams(params)
+	if !options.SessionSet {
+		if sessionID := strings.TrimSpace(muxmiddleware.FromRequest(r)); sessionID != "" {
+			options.Session = sessionID
+			options.SessionSet = true
+		}
+	}
+
+	stubs, total := h.budgerigar.List(options)
 	w.Header().Set("X-Total-Count", strconv.Itoa(total))
 
 	h.writeResponse(r.Context(), w, h.toRestStubs(stubs))
@@ -2440,6 +2584,7 @@ func (h *RestServer) validateStub(stub *stuber.Stub) error {
 func (h *RestServer) dashboardPayload(r *http.Request) rest.Dashboard {
 	all := h.budgerigar.All()
 	used := h.budgerigar.Used()
+	sessions := h.sessions()
 
 	payload := rest.Dashboard{
 		AppName:            "gripmock",
@@ -2457,7 +2602,7 @@ func (h *RestServer) dashboardPayload(r *http.Request) rest.Dashboard {
 		TotalStubs:         len(all),
 		UsedStubs:          len(used),
 		UnusedStubs:        max(len(all)-len(used), 0),
-		TotalSessions:      len(h.budgerigar.Sessions()),
+		TotalSessions:      len(sessions),
 		RuntimeDescriptors: len(h.restDescriptors.ServiceIDs()),
 		TotalHistory:       0,
 		HistoryErrors:      0,
@@ -2477,6 +2622,40 @@ func (h *RestServer) dashboardPayload(r *http.Request) rest.Dashboard {
 	}
 
 	return payload
+}
+
+func (h *RestServer) sessions() []string {
+	if h.sessionsRepo == nil {
+		return []string{}
+	}
+
+	sessions, err := h.sessionsRepo.List(context.Background())
+	if err != nil {
+		return []string{}
+	}
+
+	return sessions
+}
+
+func (h *RestServer) sessionsForResponse() []rest.Session {
+	if h.sessionsRepo == nil {
+		return []rest.Session{}
+	}
+
+	rows, err := h.sessionsRepo.ListRows(context.Background())
+	if err != nil {
+		return []rest.Session{}
+	}
+
+	result := make([]rest.Session, 0, len(rows))
+	for _, item := range rows {
+		result = append(result, rest.Session{
+			Id:   strconv.FormatInt(item.ID, 10),
+			Name: item.Name,
+		})
+	}
+
+	return result
 }
 
 func (h *RestServer) findServiceDetailed(serviceID string) (rest.Service, bool) {

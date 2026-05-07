@@ -1,31 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
-import { AppBar, ToggleThemeButton, useGetList } from "react-admin";
-import {
-  Box,
-  Button,
-  Chip,
-  Divider,
-  IconButton,
-  Menu,
-  MenuItem,
-  Tooltip,
-  Typography,
-} from "@mui/material";
-import ClearIcon from "@mui/icons-material/Clear";
-import HubIcon from "@mui/icons-material/Hub";
+import { useState } from "react";
+import { AppBar } from "react-admin";
+import { Box, IconButton, Menu, MenuItem, Typography } from "@mui/material";
+import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import { useLocation } from "react-router-dom";
-
-import {
-  clearCurrentSession,
-  getCurrentSession,
-  readRecentSessions,
-  saveRecentSessions,
-  setCurrentSession,
-  subscribeSessionChanges,
-} from "../../utils/session";
-import { mergeSessionOptions, normalizeSessionId, type SessionRow } from "../../features/session/model";
-
-const MAX_RECENT_SESSIONS = 8;
+import { clearAuthorizedPhone } from "../../utils/auth";
 
 const resolveSectionTitle = (pathname: string): string => {
   if (pathname === "/" || pathname === "") return "Dashboard";
@@ -44,64 +22,25 @@ const resolveSectionTitle = (pathname: string): string => {
 
 export const CustomAppBar = () => {
   const location = useLocation();
-  const [session, setSession] = useState(() => getCurrentSession());
-  const [recentSessions, setRecentSessions] = useState<string[]>(() => readRecentSessions());
-  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
-  const { data: backendSessions = [] } = useGetList<SessionRow>(
-    "sessions",
-    {
-      pagination: { page: 1, perPage: 1000 },
-    },
-    {
-      retry: false,
-      staleTime: 30_000,
-    },
-  );
-
-  const options = useMemo(() => {
-    return mergeSessionOptions(backendSessions, recentSessions, session);
-  }, [backendSessions, recentSessions, session]);
-
-  useEffect(() => subscribeSessionChanges(() => setSession(getCurrentSession())), []);
-
-  const rememberSession = (value: string) => {
-    const normalized = normalizeSessionId(value);
-    if (!normalized) {
-      return;
-    }
-
-    const next = [normalized, ...recentSessions.filter((item) => item !== normalized)].slice(
-      0,
-      MAX_RECENT_SESSIONS,
-    );
-
-    setRecentSessions(next);
-    saveRecentSessions(next);
-  };
-
-  const onSessionChange = (value: string) => {
-    const normalized = normalizeSessionId(value);
-    setSession(normalized);
-    if (!normalized) {
-      clearCurrentSession();
-      return;
-    }
-
-    setCurrentSession(normalized);
-    rememberSession(normalized);
-  };
-
-  const clearSession = () => {
-    onSessionChange("");
-  };
-
-  const menuOpen = Boolean(menuAnchor);
-  const currentLabel = session ? session : "global";
-  const shortCurrentLabel = currentLabel.length > 18 ? `${currentLabel.slice(0, 18)}...` : currentLabel;
   const sectionTitle = resolveSectionTitle(location.pathname);
+  const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const isMenuOpen = Boolean(menuAnchorEl);
+
+  const openProfileMenu = (event: React.MouseEvent<HTMLElement>) => {
+    setMenuAnchorEl(event.currentTarget);
+  };
+
+  const closeProfileMenu = () => {
+    setMenuAnchorEl(null);
+  };
+
+  const handleLogout = () => {
+    closeProfileMenu();
+    clearAuthorizedPhone();
+  };
 
   return (
-    <AppBar toolbar={<ToggleThemeButton />}>
+    <AppBar toolbar={null}>
       <Typography
         variant="subtitle1"
         sx={{
@@ -127,78 +66,26 @@ export const CustomAppBar = () => {
         </Typography>
       ) : null}
       <Box sx={{ flex: 1 }} />
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-        <Button
-          color="inherit"
-          variant="text"
-          startIcon={<HubIcon fontSize="small" />}
-          onClick={(event) => setMenuAnchor(event.currentTarget)}
-          sx={{
-            textTransform: "none",
-            borderRadius: 6,
-            px: 1.5,
-            py: 0.5,
-            minWidth: 0,
-          }}
-        >
-          <Box
-            component="span"
-            sx={{
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-              fontSize: 13,
-            }}
-          >
-            {shortCurrentLabel}
-          </Box>
-        </Button>
-
-        <Menu
-          anchorEl={menuAnchor}
-          open={menuOpen}
-          onClose={() => setMenuAnchor(null)}
-          transformOrigin={{ horizontal: "right", vertical: "top" }}
-          anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
-        >
-          <MenuItem
-            onClick={() => {
-              clearSession();
-              setMenuAnchor(null);
-            }}
-          >
-            Global session (no header)
-          </MenuItem>
-          {session ? (
-            <MenuItem disabled>
-              <Chip size="small" color="primary" label="active" sx={{ mr: 1 }} />
-              {session}
-            </MenuItem>
-          ) : null}
-          {options.length > 0 ? <Divider /> : null}
-          {options.slice(0, MAX_RECENT_SESSIONS).map((value) => (
-            <MenuItem
-              key={value}
-              onClick={() => {
-                onSessionChange(value);
-                setMenuAnchor(null);
-              }}
-              sx={{
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                fontSize: 13,
-              }}
-            >
-              {value}
-            </MenuItem>
-          ))}
-        </Menu>
-
-        {session ? (
-          <Tooltip title="Clear session">
-            <IconButton size="small" onClick={clearSession} aria-label="clear session" color="inherit">
-              <ClearIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        ) : null}
-      </Box>
+      <IconButton
+        color="inherit"
+        aria-label="Открыть меню профиля"
+        aria-controls={isMenuOpen ? "profile-menu" : undefined}
+        aria-haspopup="true"
+        aria-expanded={isMenuOpen ? "true" : undefined}
+        onClick={openProfileMenu}
+      >
+        <AccountCircleIcon />
+      </IconButton>
+      <Menu
+        id="profile-menu"
+        anchorEl={menuAnchorEl}
+        open={isMenuOpen}
+        onClose={closeProfileMenu}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+      >
+        <MenuItem onClick={handleLogout}>Выйти</MenuItem>
+      </Menu>
     </AppBar>
   );
 };

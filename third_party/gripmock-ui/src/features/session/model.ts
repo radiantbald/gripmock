@@ -1,6 +1,7 @@
 export type SessionRow = {
   id: string;
-  session: string;
+  session?: string;
+  name?: string;
 };
 
 export const normalizeSessionId = (value: string): string => value.trim();
@@ -11,7 +12,7 @@ export const mergeSessionOptions = (
   current: string,
 ): string[] => {
   const fromBackend = backendRows
-    .map((item) => item?.session || item?.id)
+    .map((item) => item?.session || item?.name || item?.id)
     .filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 
   const merged = [...recent, ...fromBackend];

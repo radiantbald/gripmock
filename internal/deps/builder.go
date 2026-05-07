@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 
@@ -18,6 +19,9 @@ import (
 	"github.com/bavix/gripmock/v3/internal/infra/build"
 	"github.com/bavix/gripmock/v3/internal/infra/lifecycle"
 	internalplugins "github.com/bavix/gripmock/v3/internal/infra/plugins"
+	pgallowlist "github.com/bavix/gripmock/v3/internal/infra/postgres/allowlist"
+	pgsessions "github.com/bavix/gripmock/v3/internal/infra/postgres/sessions"
+	pgusers "github.com/bavix/gripmock/v3/internal/infra/postgres/users"
 	reflectclient "github.com/bavix/gripmock/v3/internal/infra/reflectclient"
 	sourceclient "github.com/bavix/gripmock/v3/internal/infra/sourceclient"
 	"github.com/bavix/gripmock/v3/internal/infra/storage"
@@ -58,6 +62,29 @@ type Builder struct {
 
 	extender     *storage.Extender
 	extenderOnce sync.Once
+
+	postgresPool     *pgxpool.Pool
+	postgresPoolOnce sync.Once
+	postgresPoolErr  error
+
+	persistentStore     stuber.PersistentStore
+	persistentStoreOnce sync.Once
+	persistentStoreErr  error
+
+	usersRepository     *pgusers.Repository
+	usersRepositoryOnce sync.Once
+	usersRepositoryErr  error
+
+	allowedPhonesRepository     *pgallowlist.Repository
+	allowedPhonesRepositoryOnce sync.Once
+	allowedPhonesRepositoryErr  error
+
+	sessionsRepository     *pgsessions.Repository
+	sessionsRepositoryOnce sync.Once
+	sessionsRepositoryErr  error
+
+	persistenceInitOnce sync.Once
+	persistenceInitErr  error
 
 	pluginPaths    []string
 	pluginRegistry *internalplugins.Registry

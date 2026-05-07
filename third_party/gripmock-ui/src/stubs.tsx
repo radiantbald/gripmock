@@ -1,4 +1,4 @@
-import { Box } from "@mui/material";
+import { Alert, Box } from "@mui/material";
 import {
   List,
   TextField,
@@ -26,7 +26,7 @@ import { JsonField } from "./components/json/JsonField";
 import { JsonTextAreaInput } from "./components/json/JsonTextAreaInput";
 import { KeyValueTableInput } from "./components/json/KeyValueTableInput";
 import { StubMatcherInput } from "./components/json/StubMatcherInput";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 
 import { useJsonTheme } from "./utils/jsonTheme";
@@ -41,6 +41,8 @@ import { listContentSx } from "./components/table/listStyles";
 import { ActiveFiltersSummary } from "./components/table/ActiveFiltersSummary";
 import type { StubRecord } from "./types/entities";
 import { StubsDatagrid } from "./features/stubs/components/StubsDatagrid";
+import { getCurrentSession, subscribeSessionChanges } from "./utils/session";
+import type { SessionRow } from "./features/session/model";
 
 // Export function for stubs list
 const exportStubs = (stubs: object[]) => {
@@ -134,6 +136,39 @@ const useGridDensity = () => {
   };
 
   return { density, setNextDensity };
+};
+
+const useActiveSession = (): string => {
+  const [session, setSession] = useState(() => getCurrentSession());
+
+  useEffect(() => subscribeSessionChanges(() => setSession(getCurrentSession())), []);
+
+  return session.trim();
+};
+
+const useSessionFromDatabase = (activeSession: string): boolean => {
+  const { data: sessions = [], refetch: refetchSessions } = useGetList<SessionRow>(
+    "sessions",
+    { pagination: { page: 1, perPage: 1000 } },
+    { retry: false, staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: true },
+  );
+
+  useEffect(() => {
+    if (!activeSession) {
+      return;
+    }
+
+    void refetchSessions();
+  }, [activeSession, refetchSessions]);
+
+  if (!activeSession) {
+    return false;
+  }
+
+  return sessions.some((row) => {
+    const value = String(row?.id || row?.session || row?.name || "").trim();
+    return value !== "" && value === activeSession;
+  });
 };
 
 // Service Autocomplete Filter
@@ -326,6 +361,18 @@ const StubsListPage = ({
 // Stub List component
 export const StubList = () => {
   const { density, setNextDensity } = useGridDensity();
+  const session = useActiveSession();
+  const sessionExistsInDb = useSessionFromDatabase(session);
+
+  if (!session || !sessionExistsInDb) {
+    return (
+      <Box p={1.5}>
+        <Alert severity="info">
+          Select an active session from the database in Session Scope to access the Stubs list.
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
     <StubsListPage
@@ -340,6 +387,18 @@ export const StubList = () => {
 // Used Stubs List component
 export const UsedStubList = () => {
   const { density, setNextDensity } = useGridDensity();
+  const session = useActiveSession();
+  const sessionExistsInDb = useSessionFromDatabase(session);
+
+  if (!session || !sessionExistsInDb) {
+    return (
+      <Box p={1.5}>
+        <Alert severity="info">
+          Select an active session from the database in Session Scope to access the Stubs list.
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
     <StubsListPage
@@ -357,6 +416,18 @@ export const UsedStubList = () => {
 // Unused Stubs List component
 export const UnusedStubList = () => {
   const { density, setNextDensity } = useGridDensity();
+  const session = useActiveSession();
+  const sessionExistsInDb = useSessionFromDatabase(session);
+
+  if (!session || !sessionExistsInDb) {
+    return (
+      <Box p={1.5}>
+        <Alert severity="info">
+          Select an active session from the database in Session Scope to access the Stubs list.
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
     <StubsListPage

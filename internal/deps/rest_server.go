@@ -2,8 +2,11 @@ package deps
 
 import (
 	"context"
+	"io/fs"
 	"net"
 	"net/http"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -88,6 +91,16 @@ func (b *Builder) RestServe(
 		return nil, errors.Wrapf(err, "failed to create rest server")
 	}
 
+	if usersRepository, usersErr := b.UserRepository(ctx); usersErr == nil {
+		apiServer.SetUsersRepository(usersRepository)
+	}
+	if allowedPhones, allowedErr := b.AllowedPhonesRepository(ctx); allowedErr == nil {
+		apiServer.SetAllowedPhonesRepository(allowedPhones)
+	}
+	if sessionsRepository, sessionsErr := b.SessionsRepository(ctx); sessionsErr == nil {
+		apiServer.SetSessionsRepository(sessionsRepository)
+	}
+
 	ui, err := b.ui(ctx)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get UI assets")
@@ -108,10 +121,35 @@ func (b *Builder) RestServe(
 	router.Path("/api/mcp").Methods(http.MethodPost).Handler(
 		withMCPMiddlewares(apiServer.MCPHandler()),
 	)
+	router.Path("/api/auth/code/request").Methods(http.MethodPost).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.RequestCallAuth)),
+	)
+	router.Path("/api/auth/code/verify").Methods(http.MethodPost).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.VerifyCallAuth)),
+	)
+	// Backward-compatible aliases for legacy clients.
+	router.Path("/api/auth/call/request").Methods(http.MethodPost).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.RequestCallAuth)),
+	)
+	router.Path("/api/auth/call/verify").Methods(http.MethodPost).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.VerifyCallAuth)),
+	)
+	router.Path("/api/auth/allowlist").Methods(http.MethodGet).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.ListAllowedPhones)),
+	)
+	router.Path("/api/auth/allowlist").Methods(http.MethodPost).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.UpsertAllowedPhone)),
+	)
+	router.Path("/api/auth/allowlist").Methods(http.MethodDelete).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.DeleteAllowedPhone)),
+	)
+	router.Path("/api/sessions").Methods(http.MethodPost).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.SessionsCreate)),
+	)
 
 	router.Path("/metrics").Handler(telemetry.MetricsHandler(b.promReg))
 
-	router.PathPrefix("/").Handler(http.FileServerFS(ui)).Methods(http.MethodGet)
+	router.PathPrefix("/").Handler(spaHandler(ui)).Methods(http.MethodGet)
 
 	const (
 		readHeaderTimeout = 10 * time.Second
@@ -130,8 +168,6 @@ func (b *Builder) RestServe(
 		}),
 		handlers.AllowedMethods([]string{http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodPatch}),
 	)(router)
-	handler = handlers.CompressHandler(handler)
-
 	if b.config.OtelEnabled {
 		handler = otelhttp.NewHandler(handler, "gripmock-rest")
 	}
@@ -184,6 +220,7 @@ func withMCPMiddlewares(handler http.Handler) http.Handler {
 		httputil.MaxBodySize(httputil.MaxBodyBytes()),
 		muxmiddleware.PanicRecoveryMiddleware,
 		muxmiddleware.TransportSession,
+		muxmiddleware.ContentType,
 		muxmiddleware.RequestLogger,
 	}
 
@@ -192,4 +229,36 @@ func withMCPMiddlewares(handler http.Handler) http.Handler {
 	}
 
 	return handler
+}
+
+func spaHandler(assets fs.FS) http.Handler {
+	fileServer := http.FileServerFS(assets)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cleanPath := strings.TrimPrefix(filepath.Clean(r.URL.Path), "/")
+		if cleanPath == "" || cleanPath == "." {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+
+		if _, err := fs.Stat(assets, cleanPath); err == nil {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+
+		// For missing static files keep regular 404 behavior.
+		if strings.Contains(filepath.Base(cleanPath), ".") {
+			http.NotFound(w, r)
+			return
+		}
+
+		index, err := fs.ReadFile(assets, "index.html")
+		if err != nil {
+			http.Error(w, "failed to load UI index", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(index)
+	})
 }

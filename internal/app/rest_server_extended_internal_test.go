@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/bavix/gripmock/v3/internal/domain/rest"
+	"github.com/bavix/gripmock/v3/internal/infra/session"
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
 )
 
@@ -373,7 +374,7 @@ func (s *RestServerExtendedTestSuite) TestDashboardOverview() {
 }
 
 func (s *RestServerExtendedTestSuite) TestSessionsList() {
-	// empty set should be [] (not null)
+	// Without a sessions repository, endpoint should still return [] (not null).
 	{
 		req := httptest.NewRequestWithContext(s.T().Context(), http.MethodGet, "/api/sessions", nil)
 		w := httptest.NewRecorder()
@@ -382,7 +383,7 @@ func (s *RestServerExtendedTestSuite) TestSessionsList() {
 
 		s.Require().Equal(http.StatusOK, w.Code)
 
-		var payload map[string][]string
+		var payload map[string][]map[string]string
 
 		err := json.Unmarshal(w.Body.Bytes(), &payload)
 		s.Require().NoError(err)
@@ -391,6 +392,7 @@ func (s *RestServerExtendedTestSuite) TestSessionsList() {
 		s.Empty(payload["sessions"])
 	}
 
+	// In-memory values should not leak into API payload when sessions source is DB-only.
 	s.server.budgerigar.PutMany(
 		&stuber.Stub{ID: uuid.New(), Service: "SessionService", Method: "M1", Session: "b"},
 		&stuber.Stub{ID: uuid.New(), Service: "SessionService", Method: "M2", Session: "a"},
@@ -404,11 +406,28 @@ func (s *RestServerExtendedTestSuite) TestSessionsList() {
 
 	s.Require().Equal(http.StatusOK, w.Code)
 
-	var payload map[string][]string
+	var payload map[string][]map[string]string
 
 	err := json.Unmarshal(w.Body.Bytes(), &payload)
 	s.Require().NoError(err)
-	s.Equal([]string{"a", "b"}, payload["sessions"])
+	s.Empty(payload["sessions"])
+
+	activeID := "active-session-for-list-test"
+	session.Touch(activeID)
+	defer session.Forget(activeID)
+
+	reqActive := httptest.NewRequestWithContext(s.T().Context(), http.MethodGet, "/api/sessions", nil)
+	wActive := httptest.NewRecorder()
+
+	s.server.SessionsList(wActive, reqActive)
+
+	s.Require().Equal(http.StatusOK, wActive.Code)
+
+	var payloadActive map[string][]map[string]string
+
+	err = json.Unmarshal(wActive.Body.Bytes(), &payloadActive)
+	s.Require().NoError(err)
+	s.Empty(payloadActive["sessions"])
 }
 
 func (s *RestServerExtendedTestSuite) TestDashboardInfo() {

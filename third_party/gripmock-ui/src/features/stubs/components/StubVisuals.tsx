@@ -1,4 +1,4 @@
-import { Box, Card, CardContent, Chip, Divider, Stack, Typography } from "@mui/material";
+import { Box, Card, CardContent, Chip, Divider, Stack, Tooltip, Typography } from "@mui/material";
 import { Code, Functions } from "@mui/icons-material";
 import { useRecordContext } from "react-admin";
 
@@ -21,22 +21,62 @@ export const MatcherChip = ({ record }: { record?: StubRecord }) => {
     return <Chip size="small" label="none" variant="outlined" />;
   }
 
-  return <Chip size="small" label={flags.join(" + ")} />;
+  return <Chip size="small" label={flags.join(" + ")} variant="outlined" />;
 };
 
 export const OutputKindChip = ({ record }: { record?: StubRecord }) => {
   const output = record?.output || {};
 
   if (Array.isArray(output.stream) && output.stream.length > 0) {
-    return <Chip size="small" color="info" label={`stream x${output.stream.length}`} />;
+    return (
+      <Chip
+        size="small"
+        color="default"
+        variant="outlined"
+        label={`stream x${output.stream.length}`}
+      />
+    );
   }
 
   if (output.data) {
-    return <Chip size="small" color="success" label="data" />;
+    const dataPreview = (() => {
+      try {
+        return JSON.stringify(output.data, null, 2) ?? String(output.data);
+      } catch {
+        return String(output.data);
+      }
+    })();
+
+    return (
+      <Tooltip
+        arrow
+        placement="bottom-start"
+        title={
+          <Box
+            component="pre"
+            sx={{
+              m: 0,
+              p: 0,
+              fontFamily: "monospace",
+              fontSize: 12,
+              lineHeight: 1.35,
+              whiteSpace: "pre-wrap",
+              maxWidth: 420,
+              maxHeight: 280,
+              overflow: "auto",
+            }}
+          >
+            {dataPreview}
+          </Box>
+        }
+      >
+        <Chip size="small" color="success" variant="outlined" label="data" />
+      </Tooltip>
+    );
   }
 
   if (typeof output.error === "string" && output.error.length > 0) {
-    return <Chip size="small" color="warning" label="error" />;
+    return <Chip size="small" color="warning" variant="outlined" label="error" />;
   }
 
   return <Chip size="small" label="empty" variant="outlined" />;

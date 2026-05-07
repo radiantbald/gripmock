@@ -1,6 +1,6 @@
-import { lazy, Suspense, type ComponentType } from "react";
+import { lazy, Suspense, useEffect, useState, type ComponentType } from "react";
 import { Admin, Resource } from "react-admin";
-import { Box, CircularProgress } from "@mui/material";
+import { Box, CircularProgress, CssBaseline, ThemeProvider } from "@mui/material";
 import StorageIcon from "@mui/icons-material/Storage";
 import PrivacyTipIcon from "@mui/icons-material/PrivacyTip";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -13,7 +13,9 @@ import HubIcon from "@mui/icons-material/Hub";
 
 import dataProvider from "./gripmock";
 import { CustomLayout } from "./components/Layout/CustomLayout";
-import { customTheme, customDarkTheme } from "./theme";
+import { customDarkTheme } from "./theme";
+import { getAuthorizedPhone, setAuthorizedPhone, subscribeAuthChanges } from "./utils/auth";
+import { SessionEntryGate } from "./features/session/components/SessionEntryGate";
 
 const Loader = () => (
   <Box p={1.5} display="flex" alignItems="center" justifyContent="center">
@@ -32,12 +34,6 @@ const wrapLazy = <P extends object>(
     );
   };
 
-const Dashboard = wrapLazy(
-  lazy(async () => {
-    const module = await import("./dashboard");
-    return { default: module.Dashboard };
-  }),
-);
 const ServiceList = wrapLazy(
   lazy(async () => {
     const module = await import("./services");
@@ -112,15 +108,39 @@ const InspectPage = wrapLazy(
 );
 
 export const App = () => {
+  const [authorizedPhone, setAuthorizedPhoneState] = useState(() => getAuthorizedPhone());
+  useEffect(() => subscribeAuthChanges(() => setAuthorizedPhoneState(getAuthorizedPhone())), []);
+
+  if (!authorizedPhone) {
+    return (
+      <ThemeProvider theme={customDarkTheme}>
+        <CssBaseline />
+        <SessionEntryGate
+          onActivate={(phone) => {
+            setAuthorizedPhone(phone);
+            setAuthorizedPhoneState(phone);
+            if (typeof window !== "undefined") {
+              window.history.replaceState(window.history.state, "", "/session");
+            }
+          }}
+        />
+      </ThemeProvider>
+    );
+  }
+
   return (
     <Admin
       disableTelemetry
       dataProvider={dataProvider}
       layout={CustomLayout}
-      theme={customTheme}
-      darkTheme={customDarkTheme}
-      dashboard={Dashboard as any}
+      theme={customDarkTheme}
     >
+      <Resource
+        icon={HubIcon}
+        name="session"
+        list={SessionScopePage}
+        options={{ label: "Session Scope" }}
+      />
       <Resource
         icon={PrivacyTipIcon}
         name="services"
@@ -159,12 +179,6 @@ export const App = () => {
         name="history"
         list={HistoryList}
         options={{ label: "History" }}
-      />
-      <Resource
-        icon={HubIcon}
-        name="session"
-        list={SessionScopePage}
-        options={{ label: "Session Scope" }}
       />
       <Resource
         icon={FactCheckIcon}

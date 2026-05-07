@@ -2,6 +2,7 @@ import { API_CONFIG } from "../constants/api";
 
 const SESSION_CHANGED_EVENT = "gripmock:session-changed";
 const RECENT_SESSIONS_STORAGE_KEY = "gripmock.ui.recentSessions";
+const DEFAULT_MAX_RECENT_SESSIONS = 8;
 
 const emitSessionChanged = () => {
   if (typeof window === "undefined") {
@@ -92,4 +93,23 @@ export const saveRecentSessions = (sessions: string[]) => {
   }
 
   localStorage.setItem(RECENT_SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
+};
+
+export const rememberRecentSession = (value: string, limit: number = DEFAULT_MAX_RECENT_SESSIONS): string[] => {
+  const normalized = value.trim();
+  if (!normalized) {
+    return readRecentSessions();
+  }
+
+  const current = readRecentSessions();
+  const maxItems = Math.max(limit, 1);
+  const dedupedCurrent = current.filter((item) => item.trim().length > 0);
+
+  const next = dedupedCurrent.includes(normalized)
+    ? dedupedCurrent.slice(-maxItems)
+    : [...dedupedCurrent, normalized].slice(-maxItems);
+
+  saveRecentSessions(next);
+
+  return next;
 };

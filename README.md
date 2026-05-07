@@ -108,11 +108,13 @@ go install github.com/bavix/gripmock/v3@latest
 
 **Start with a `.proto` file:**
 ```bash
+POSTGRES_DSN=postgres://user:pass@localhost:5432/gripmock?sslmode=disable \
 gripmock service.proto
 ```
 
 **Add static stubs:**
 ```bash
+POSTGRES_DSN=postgres://user:pass@localhost:5432/gripmock?sslmode=disable \
 gripmock --stub stubs/ service.proto
 ```
 
@@ -161,10 +163,32 @@ gripmock --stub stubs/ bsr.company.local/team/payments
 **Using Docker:**
 ```bash
 docker run -p 4770:4770 -p 4771:4771 \
+  -e POSTGRES_DSN=postgres://user:pass@host.docker.internal:5432/gripmock?sslmode=disable \
   -v $(pwd)/stubs:/stubs \
   -v $(pwd)/proto:/proto \
   bavix/gripmock --stub=/stubs /proto/service.proto
 ```
+
+**Using Docker Compose (persistent + scalable):**
+```bash
+# Tune credentials/runtime image/source
+cp .env.example .env
+
+# Start shared stack (Traefik + PostgreSQL + 3 GripMock instances)
+docker compose up -d --scale gripmock=3
+```
+
+Scale up/down on demand:
+```bash
+docker compose up -d --scale gripmock=6
+docker compose up -d --scale gripmock=1
+```
+
+This compose stack is production-oriented:
+
+- all services run in containers (no bind mounts from host)
+- PostgreSQL stores persistent data in volume `postgres_data`
+- Traefik exposes one endpoint per protocol and load balances across `gripmock` replicas
 
 - **Port 4770**: gRPC server
 - **Port 4771**: Web UI and REST API

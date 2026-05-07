@@ -82,6 +82,15 @@ GripMock reads configuration from environment variables on startup.
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `localhost:4317` | OTLP collector endpoint. |
 | `OTEL_EXPORTER_OTLP_INSECURE` | `true` | Use insecure OTLP transport. |
 
+## PostgreSQL (persistent stubs)
+
+| Variable | Default | Description |
+|---|---|---|
+| `POSTGRES_DSN` | *(empty)* | PostgreSQL DSN. Required for `gripmock` server startup. |
+| `POSTGRES_MAX_OPEN_CONNS` | `10` | Max connections in pool. |
+| `POSTGRES_MAX_IDLE_CONNS` | `5` | Min idle connections kept in pool. |
+| `POSTGRES_CONN_MAX_LIFETIME` | `30m` | Max lifetime per connection. |
+
 ## Buf Schema Registry (BSR)
 
 Supported profiles:
@@ -110,3 +119,5 @@ Examples:
 
 - Default scheme is `http`. Use `--scheme https` for TLS.
 - Override address via env: `HTTP_ADDR=10.0.0.5:4771 gripmock dump`.
+
+`gripmock dump` talks to an already running server and does not require `POSTGRES_DSN` locally.

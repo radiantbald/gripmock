@@ -37,6 +37,9 @@ var rootCmd = &cobra.Command{ //nolint:gochecknoglobals
 		ctx = builder.Logger(ctx)
 		builder.InitTelemetry(ctx)
 		builder.LoadPlugins(ctx)
+		if err := builder.EnsurePersistence(ctx); err != nil {
+			return errors.Wrap(err, "failed to initialize persistent storage")
+		}
 
 		zerolog.Ctx(ctx).Info().
 			Str("release", build.Version).

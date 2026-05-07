@@ -65,6 +65,12 @@ type Config struct {
 
 	// Buf Schema Registry configuration.
 	BSR BSRConfig `envPrefix:"BSR_"`
+
+	// PostgreSQL persistent stub storage configuration.
+	PostgresDSN             string        `env:"POSTGRES_DSN"`
+	PostgresMaxOpenConns    int32         `env:"POSTGRES_MAX_OPEN_CONNS"    envDefault:"10"`
+	PostgresMaxIdleConns    int32         `env:"POSTGRES_MAX_IDLE_CONNS"    envDefault:"5"`
+	PostgresConnMaxLifetime time.Duration `env:"POSTGRES_CONN_MAX_LIFETIME" envDefault:"30m"`
 }
 
 // Load returns configuration from environment with sensible defaults.

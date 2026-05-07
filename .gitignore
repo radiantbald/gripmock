@@ -9,6 +9,7 @@ protogen/*
 !protogen/example/
 temp
 node_modules/
+.env
 .trunk/
 plugins/*.so
 

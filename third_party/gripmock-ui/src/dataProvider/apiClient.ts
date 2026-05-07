@@ -1,4 +1,5 @@
 import { API_CONFIG } from "../constants/api";
+import { clearCurrentSession, getCurrentSession } from "../utils/session";
 import type { RequestOptions } from "./types";
 
 const getSessionHeader = (): Record<string, string> => {
@@ -12,6 +13,29 @@ const getSessionHeader = (): Record<string, string> => {
   }
 
   return { [API_CONFIG.SESSION_HEADER]: session };
+};
+
+const generateClientId = (): string => {
+  const now = Date.now();
+  const random = Math.floor(Math.random() * 1_000_000_000);
+  return String(now * 1_000_000_000 + random);
+};
+
+const getClientHeader = (): Record<string, string> => {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  const key = API_CONFIG.CLIENT_STORAGE_KEY;
+  let clientId = localStorage.getItem(key);
+  const hasNumericFormat = typeof clientId === "string" && /^[0-9]+$/.test(clientId);
+
+  if (!hasNumericFormat) {
+    clientId = generateClientId();
+    localStorage.setItem(key, clientId);
+  }
+
+  return { [API_CONFIG.CLIENT_HEADER]: clientId };
 };
 
 const parseError = async (response: Response): Promise<Error> => {
@@ -38,6 +62,7 @@ export const apiClient = {
       "Content-Type": "application/json",
       [API_CONFIG.INTERNAL_HEADER]: API_CONFIG.INTERNAL_VALUE,
       ...getSessionHeader(),
+      ...getClientHeader(),
       ...(options.headers || {}),
     };
 
@@ -53,6 +78,11 @@ export const apiClient = {
 
     if (!response.ok) {
       throw await parseError(response);
+    }
+
+    const resetSession = response.headers.get(API_CONFIG.SESSION_RESET_HEADER);
+    if (resetSession === "1" && getCurrentSession()) {
+      clearCurrentSession();
     }
 
     if (response.status === 204) {

@@ -11,6 +11,10 @@ build:
 ui-build:
 	npm --prefix third_party/gripmock-ui run build
 
+up:
+	$(MAKE) ui-build
+	docker compose up -d --build --scale gripmock=1
+
 test:
 	go test -tags mock -race -cover ./...
 

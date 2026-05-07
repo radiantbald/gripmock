@@ -225,11 +225,6 @@ func (s *Extender) handleFileReadError(ctx context.Context, filePath string, err
 		Err(err).
 		Str("file", filePath).
 		Msg("failed to read file")
-
-	if existingIDs, exists := s.mapIDsByFile[filePath]; exists {
-		s.storage.DeleteByID(existingIDs...)
-		delete(s.mapIDsByFile, filePath)
-	}
 }
 
 func (s *Extender) handleFirstTimeLoad(filePath string, stubs []*stuber.Stub) {

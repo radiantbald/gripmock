@@ -338,9 +338,15 @@ type Service struct {
 	Package string   `json:"package"`
 }
 
+// Session defines model for Session.
+type Session struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
 // Sessions defines model for Sessions.
 type Sessions struct {
-	Sessions []string `json:"sessions"`
+	Sessions []Session `json:"sessions"`
 }
 
 // Stub defines model for Stub.

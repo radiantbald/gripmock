@@ -1,5 +1,7 @@
 package app
 
+import "net/http"
+
 func (s *RestServerTestSuite) TestMCPStubsLifecycle() {
 	// Arrange
 	upsert := s.mcpToolCall(s.server, 1, "stubs.upsert", map[string]any{
@@ -95,6 +97,46 @@ func (s *RestServerTestSuite) TestMCPStubsBatchDeleteAndPurge() {
 	stubsAfter, ok := listAfterJSON["stubs"].([]any)
 	s.Require().True(ok)
 	s.Require().Empty(stubsAfter)
+}
+
+func (s *RestServerTestSuite) TestMCPStubsPurgeSessionOnlyByOwner() {
+	// Arrange
+	const (
+		sessionID = "owned-session"
+		ownerID   = "owner-1"
+	)
+
+	prepareOwner := func(r *http.Request) {
+		r.Header.Set("X-Gripmock-Session", sessionID)
+		r.Header.Set("X-Gripmock-Client", ownerID)
+	}
+
+	s.mcpToolCallWithRequest(s.server, 1, "stubs.upsert", map[string]any{
+		"stubs": map[string]any{
+			"service": "svc",
+			"method":  "M1",
+			"input":   map[string]any{"equals": map[string]any{"x": "1"}},
+			"output":  map[string]any{"data": map[string]any{"ok": true}},
+		},
+	}, prepareOwner)
+
+	// Act
+	forbidden := s.mcpToolCallWithRequest(s.server, 2, "stubs.purge", map[string]any{
+		"session": sessionID,
+	}, func(r *http.Request) {
+		r.Header.Set("X-Gripmock-Session", sessionID)
+		r.Header.Set("X-Gripmock-Client", "owner-2")
+	})
+	forbiddenCode := s.mcpErrorCode(forbidden)
+
+	allowed := s.mcpToolCallWithRequest(s.server, 3, "stubs.purge", map[string]any{
+		"session": sessionID,
+	}, prepareOwner)
+	allowedJSON := s.mcpStructuredContent(allowed)
+
+	// Assert
+	s.Require().Equal(float64(-32602), forbiddenCode)
+	s.Require().InDelta(float64(1), allowedJSON["deletedCount"], 0)
 }
 
 func (s *RestServerTestSuite) TestMCPStubsSearch() {

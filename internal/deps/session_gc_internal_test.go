@@ -34,33 +34,36 @@ func putHistory(b *Builder, sessionID string) {
 //nolint:paralleltest
 func TestBuilderCleanupExpiredSessionsRemovesTouchedSessionData(t *testing.T) {
 	b := NewBuilder(WithConfig(config.Config{HistoryEnabled: true}))
-	putStub(b, "A", "A")
-	putStub(b, "B", "B")
-	putHistory(b, "A")
-	putHistory(b, "B")
+	sessionA := "A-" + uuid.NewString()
+	sessionB := "B-" + uuid.NewString()
+	putStub(b, sessionA, "A")
+	putStub(b, sessionB, "B")
+	putHistory(b, sessionA)
+	putHistory(b, sessionB)
 
-	session.Touch("A")
+	session.Touch(sessionA)
 
 	b.cleanupExpiredSessions(t.Context(), time.Now(), 0)
 
 	all := b.Budgerigar().All()
 	require.Len(t, all, 1)
-	require.Equal(t, "B", all[0].Session)
+	require.Equal(t, sessionB, all[0].Session)
 
 	records := b.HistoryStore().All()
 	require.Len(t, records, 1)
-	require.Equal(t, "B", records[0].Session)
+	require.Equal(t, sessionB, records[0].Session)
 }
 
 //nolint:paralleltest
 func TestBuilderCleanupExpiredSessionsDoesNotDeleteGlobalSession(t *testing.T) {
 	b := NewBuilder(WithConfig(config.Config{HistoryEnabled: true}))
+	sessionA := "A-" + uuid.NewString()
 	putStub(b, "", "GLOBAL")
-	putStub(b, "A", "A")
+	putStub(b, sessionA, "A")
 	putHistory(b, "")
-	putHistory(b, "A")
+	putHistory(b, sessionA)
 
-	session.Touch("A")
+	session.Touch(sessionA)
 
 	b.cleanupExpiredSessions(t.Context(), time.Now(), 0)
 

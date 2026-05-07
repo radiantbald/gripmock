@@ -1,7 +1,10 @@
 package stuber
 
 import (
+	"context"
+	"log"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
@@ -12,13 +15,45 @@ type Aliveness interface {
 }
 
 type Budgerigar struct {
-	searcher *searcher
+	searcher       *searcher
+	persistent     PersistentStore
+	persistentLock sync.Mutex
 }
 
 func NewBudgerigar() *Budgerigar {
 	return &Budgerigar{
 		searcher: newSearcher(),
 	}
+}
+
+// SetPersistentStore attaches durable storage backend.
+func (b *Budgerigar) SetPersistentStore(store PersistentStore) {
+	b.persistentLock.Lock()
+	defer b.persistentLock.Unlock()
+
+	b.persistent = store
+}
+
+// HydrateFromPersistent clears in-memory index and repopulates from persistent storage.
+func (b *Budgerigar) HydrateFromPersistent(ctx context.Context) error {
+	b.persistentLock.Lock()
+	defer b.persistentLock.Unlock()
+
+	if b.persistent == nil {
+		return nil
+	}
+
+	all, err := b.persistent.LoadAll(ctx)
+	if err != nil {
+		return err
+	}
+
+	b.searcher.clear()
+	if len(all) > 0 {
+		b.searcher.upsert(all...)
+	}
+
+	return nil
 }
 
 // InternalStorage returns the internal storage interface for adding internal stubs.
@@ -42,9 +77,28 @@ func (b *Budgerigar) PutMany(values ...*Stub) []uuid.UUID {
 		}
 	}
 
-	b.ensureSingleEnabledByRoute(values...)
+	b.persistentLock.Lock()
+	defer b.persistentLock.Unlock()
 
-	return b.searcher.upsert(values...)
+	related := b.ensureSingleEnabledByRoute(values...)
+	candidates := dedupeStubsByID(append(values, related...))
+
+	if b.persistent != nil {
+		if _, err := b.persistent.UpsertMany(context.Background(), candidates...); err != nil {
+			log.Printf("[gripmock] failed to persist stubs: %v", err)
+
+			return []uuid.UUID{}
+		}
+	}
+
+	b.searcher.upsert(candidates...)
+
+	ids := make([]uuid.UUID, len(values))
+	for i, value := range values {
+		ids[i] = value.ID
+	}
+
+	return ids
 }
 
 // UpdateMany updates stubs that have non-nil IDs.
@@ -57,17 +111,37 @@ func (b *Budgerigar) UpdateMany(values ...*Stub) []uuid.UUID {
 		}
 	}
 
-	b.ensureSingleEnabledByRoute(updates...)
+	b.persistentLock.Lock()
+	defer b.persistentLock.Unlock()
 
-	return b.searcher.upsert(updates...)
+	related := b.ensureSingleEnabledByRoute(updates...)
+	candidates := dedupeStubsByID(append(updates, related...))
+
+	if b.persistent != nil {
+		if _, err := b.persistent.UpsertMany(context.Background(), candidates...); err != nil {
+			log.Printf("[gripmock] failed to persist updated stubs: %v", err)
+
+			return []uuid.UUID{}
+		}
+	}
+
+	b.searcher.upsert(candidates...)
+
+	ids := make([]uuid.UUID, len(updates))
+	for i, value := range updates {
+		ids[i] = value.ID
+	}
+
+	return ids
 }
 
-func (b *Budgerigar) ensureSingleEnabledByRoute(values ...*Stub) {
+func (b *Budgerigar) ensureSingleEnabledByRoute(values ...*Stub) []*Stub {
 	if len(values) == 0 {
-		return
+		return nil
 	}
 
 	latestEnabled := make(map[string]*Stub, len(values))
+	changed := make([]*Stub, 0, len(values))
 	for _, stub := range values {
 		if !stub.IsEnabled() {
 			continue
@@ -76,13 +150,14 @@ func (b *Budgerigar) ensureSingleEnabledByRoute(values ...*Stub) {
 		key := routeKey(stub.Service, stub.Method)
 		if previous, ok := latestEnabled[key]; ok && previous.ID != stub.ID {
 			previous.SetEnabled(false)
+			changed = append(changed, previous)
 		}
 
 		latestEnabled[key] = stub
 	}
 
 	if len(latestEnabled) == 0 {
-		return
+		return changed
 	}
 
 	for _, existing := range b.searcher.all() {
@@ -96,10 +171,16 @@ func (b *Budgerigar) ensureSingleEnabledByRoute(values ...*Stub) {
 		}
 
 		existing.SetEnabled(false)
+		changed = append(changed, existing)
 	}
+
+	return changed
 }
 
 func routeKey(service, method string) string {
+	service = strings.TrimSpace(service)
+	method = strings.TrimSpace(method)
+
 	var builder strings.Builder
 	builder.Grow(len(service) + len(method) + 1)
 	builder.WriteString(service)
@@ -111,6 +192,17 @@ func routeKey(service, method string) string {
 
 // DeleteByID deletes the Stub values with the given IDs from the Budgerigar's searcher.
 func (b *Budgerigar) DeleteByID(ids ...uuid.UUID) int {
+	b.persistentLock.Lock()
+	defer b.persistentLock.Unlock()
+
+	if b.persistent != nil {
+		if _, err := b.persistent.DeleteByID(context.Background(), ids...); err != nil {
+			log.Printf("[gripmock] failed to persist delete by id: %v", err)
+
+			return 0
+		}
+	}
+
 	return b.searcher.del(ids...)
 }
 
@@ -119,6 +211,17 @@ func (b *Budgerigar) DeleteByID(ids ...uuid.UUID) int {
 func (b *Budgerigar) DeleteSession(session string) int {
 	if session == "" {
 		return 0
+	}
+
+	b.persistentLock.Lock()
+	defer b.persistentLock.Unlock()
+
+	if b.persistent != nil {
+		if _, err := b.persistent.DeleteSession(context.Background(), session); err != nil {
+			log.Printf("[gripmock] failed to persist delete by session: %v", err)
+
+			return 0
+		}
 	}
 
 	all := b.searcher.all()
@@ -195,5 +298,39 @@ func (b *Budgerigar) Sessions() []string {
 
 // Clear removes all Stub values.
 func (b *Budgerigar) Clear() {
+	b.persistentLock.Lock()
+	defer b.persistentLock.Unlock()
+
+	if b.persistent != nil {
+		if err := b.persistent.Clear(context.Background()); err != nil {
+			log.Printf("[gripmock] failed to clear persistent stubs: %v", err)
+
+			return
+		}
+	}
+
 	b.searcher.clear()
+}
+
+func dedupeStubsByID(values []*Stub) []*Stub {
+	if len(values) == 0 {
+		return values
+	}
+
+	ordered := make([]*Stub, 0, len(values))
+	seen := make(map[uuid.UUID]int, len(values))
+
+	for _, value := range values {
+		idx, ok := seen[value.ID]
+		if ok {
+			ordered[idx] = value
+
+			continue
+		}
+
+		seen[value.ID] = len(ordered)
+		ordered = append(ordered, value)
+	}
+
+	return ordered
 }

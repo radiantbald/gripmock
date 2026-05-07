@@ -1,20 +1,33 @@
 import { useEffect, useState } from "react";
-import { Menu, useSidebarState } from "react-admin";
-import { Box, Chip, Typography } from "@mui/material";
+import { Menu, useGetList, useSidebarState } from "react-admin";
+import StorageIcon from "@mui/icons-material/Storage";
 import HubIcon from "@mui/icons-material/Hub";
-import SpaceDashboardIcon from "@mui/icons-material/SpaceDashboard";
+import { Box, Typography } from "@mui/material";
 
 import { getCurrentSession, subscribeSessionChanges } from "../../utils/session";
+import type { SessionRow } from "../../features/session/model";
 
 export const CustomMenu = () => {
-  const [session, setSession] = useState(() => getCurrentSession());
   const [sidebarOpen] = useSidebarState();
+  const [session, setSession] = useState(() => getCurrentSession());
+  const { data: sessions = [], refetch: refetchSessions } = useGetList<SessionRow>(
+    "sessions",
+    { pagination: { page: 1, perPage: 1000 } },
+    { retry: false, staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: true },
+  );
+  const sessionExistsInDb = sessions.some((row) => {
+    const value = String(row?.id || row?.session || row?.name || "").trim();
+    return value !== "" && value === session;
+  });
 
-  useEffect(() => {
-    const refresh = () => setSession(getCurrentSession());
-
-    return subscribeSessionChanges(refresh);
-  }, []);
+  useEffect(
+    () =>
+      subscribeSessionChanges(() => {
+        setSession(getCurrentSession());
+        void refetchSessions();
+      }),
+    [refetchSessions],
+  );
 
   return (
     <Menu
@@ -32,6 +45,24 @@ export const CustomMenu = () => {
           mr: sidebarOpen ? 1 : 0,
           justifyContent: "center",
         },
+        "& .sessions-menu-item": {
+          minHeight: 88,
+          alignItems: "center",
+          background:
+            "linear-gradient(120deg, rgba(255, 108, 55, 0.2) 0%, rgba(255, 108, 55, 0.12) 45%, rgba(15, 76, 129, 0.28) 100%)",
+          border: "1px solid rgba(255, 108, 55, 0.32)",
+          boxShadow: "inset 0 0 0 1px rgba(15, 76, 129, 0.2)",
+        },
+        "& .sessions-menu-item:hover": {
+          background:
+            "linear-gradient(120deg, rgba(255, 108, 55, 0.28) 0%, rgba(255, 108, 55, 0.18) 45%, rgba(15, 76, 129, 0.34) 100%)",
+        },
+        "& .sessions-menu-item .MuiListItemIcon-root": {
+          color: "primary.main",
+        },
+        "& .sessions-menu-item[aria-current='page']": {
+          borderColor: "primary.main",
+        },
         "& .RaMenuItemLink-root[aria-current='page'], & .MuiMenuItem-root[aria-current='page']": {
           backgroundColor: "rgba(255, 108, 55, 0.16)",
           color: "primary.main",
@@ -43,44 +74,32 @@ export const CustomMenu = () => {
         },
       }}
     >
-      <Box
-        px={sidebarOpen ? 2 : 1}
-        pt={1.25}
-        pb={1.5}
-        sx={{
-          borderBottom: "1px solid",
-          borderColor: "divider",
-          background: "linear-gradient(180deg, rgba(255,108,55,0.12) 0%, rgba(255,108,55,0) 100%)",
-          display: "flex",
-          alignItems: sidebarOpen ? "stretch" : "center",
-          justifyContent: sidebarOpen ? "initial" : "center",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-      >
-        {sidebarOpen ? (
-          <>
-            <Typography variant="caption" color="text.secondary">
-              Active Session
+      <Menu.Item
+        className="sessions-menu-item"
+        to="/session"
+        primaryText={
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
+            <Typography variant="body2" fontWeight={700}>
+              Sessions
             </Typography>
-            <Chip
-              size="small"
-              color={session ? "primary" : "default"}
-              variant={session ? "filled" : "outlined"}
-              label={session || "global"}
-              sx={{
-                mt: 0.5,
-                maxWidth: "100%",
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-              }}
-            />
-          </>
-        ) : (
-          <HubIcon fontSize="small" color={session ? "primary" : "disabled"} />
-        )}
-      </Box>
-      <Menu.Item to="/" primaryText="Dashboard" leftIcon={<SpaceDashboardIcon />} />
-      <Menu.ResourceItems />
+            {sidebarOpen ? (
+              <Typography
+                variant="caption"
+                sx={{
+                  maxWidth: 180,
+                  color: "text.secondary",
+                  lineHeight: 1.2,
+                }}
+                noWrap
+              >
+                {session || "No active session"}
+              </Typography>
+            ) : null}
+          </Box>
+        }
+        leftIcon={<HubIcon />}
+      />
+      {sessionExistsInDb ? <Menu.Item to="/stubs" primaryText="Stubs" leftIcon={<StorageIcon />} /> : null}
     </Menu>
   );
 };
