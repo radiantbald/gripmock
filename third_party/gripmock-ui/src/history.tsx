@@ -5,7 +5,6 @@ import {
   SearchInput,
   TextField,
   TopToolbar,
-  FilterButton,
   ExportButton,
 } from "react-admin";
 import { listContentSx } from "./components/table/listStyles";
@@ -28,7 +27,6 @@ const historyFilters = [
 
 const HistoryActions = () => (
   <TopToolbar>
-    <FilterButton />
     <ExportButton />
   </TopToolbar>
 );

@@ -139,6 +139,60 @@ func TestPutManySingleEnabledPerRoutePerSessionV2(t *testing.T) {
 	require.True(t, s.FindByID(oneB.ID).IsEnabled(), "session B stub must remain enabled")
 }
 
+func TestPutManySingleEnabledPerRouteServiceAliasV2(t *testing.T) {
+	t.Parallel()
+
+	s := stuber.NewBudgerigar()
+	enabled := true
+
+	full := &stuber.Stub{
+		ID:      uuid.New(),
+		Service: "calculator.v1.CalculatorService",
+		Method:  "MultiplyByFive",
+		Session: "A",
+		Enabled: &enabled,
+	}
+	short := &stuber.Stub{
+		ID:      uuid.New(),
+		Service: "CalculatorService",
+		Method:  "MultiplyByFive",
+		Session: "A",
+		Enabled: &enabled,
+	}
+
+	s.PutMany(full, short)
+
+	require.False(t, s.FindByID(full.ID).IsEnabled(), "full-name service stub should be disabled by short alias in same route")
+	require.True(t, s.FindByID(short.ID).IsEnabled(), "latest alias stub should remain enabled")
+}
+
+func TestPutManySingleEnabledPerRouteDifferentFullNamesV2(t *testing.T) {
+	t.Parallel()
+
+	s := stuber.NewBudgerigar()
+	enabled := true
+
+	left := &stuber.Stub{
+		ID:      uuid.New(),
+		Service: "foo.v1.UserService",
+		Method:  "Ping",
+		Session: "A",
+		Enabled: &enabled,
+	}
+	right := &stuber.Stub{
+		ID:      uuid.New(),
+		Service: "bar.v1.UserService",
+		Method:  "Ping",
+		Session: "A",
+		Enabled: &enabled,
+	}
+
+	s.PutMany(left, right)
+
+	require.True(t, s.FindByID(left.ID).IsEnabled(), "different fully-qualified services should remain independent")
+	require.True(t, s.FindByID(right.ID).IsEnabled(), "different fully-qualified services should remain independent")
+}
+
 func TestRelationshipV2(t *testing.T) {
 	t.Parallel()
 
@@ -807,6 +861,7 @@ func TestBidiStreamingFallback(t *testing.T) {
 		ID:      uuid.New(),
 		Service: "ChatService",
 		Method:  "Chat",
+		Session: "chat",
 		Input: stuber.InputData{
 			Equals: map[string]any{"user": "Charlie", "text": "Anyone there?"},
 		},
@@ -819,6 +874,7 @@ func TestBidiStreamingFallback(t *testing.T) {
 	query := stuber.QueryBidi{
 		Service: "ChatService",
 		Method:  "Chat",
+		Session: "chat",
 	}
 
 	result, err := s.FindByQueryBidi(query)
@@ -1014,16 +1070,12 @@ func TestBidiStreamingStatefulLogic(t *testing.T) {
 		{Equals: map[string]any{"message": "universe"}},
 		{Equals: map[string]any{"message": "farewell"}},
 	}, stuber.Output{Data: map[string]any{"response": "Pattern 2 completed"}})
+	stub2.Session = "bidi-stateful"
 
-	stub3 := newBidiStub([]stuber.InputData{
-		{Equals: map[string]any{"message": "hello"}},
-		{Equals: map[string]any{"message": "galaxy"}},
-		{Equals: map[string]any{"message": "adios"}},
-	}, stuber.Output{Data: map[string]any{"response": "Pattern 3 completed"}})
-
-	s.PutMany(stub1, stub2, stub3)
+	s.PutMany(stub1, stub2)
 
 	query := newBidiQuery()
+	query.Session = "bidi-stateful"
 	result, err := s.FindByQueryBidi(query)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -1031,8 +1083,8 @@ func TestBidiStreamingStatefulLogic(t *testing.T) {
 	// Test first message - all stubs should match "hello"
 	stub, err := result.Next(map[string]any{"message": "hello"})
 	require.NoError(t, err)
-	// Should return one of the matching stubs (could be any of the three)
-	require.Contains(t, []uuid.UUID{stub1.ID, stub2.ID, stub3.ID}, stub.ID)
+	// Should return one of the matching stubs.
+	require.Contains(t, []uuid.UUID{stub1.ID, stub2.ID}, stub.ID)
 
 	// Test second message - should filter based on the pattern
 	// If we send "world", only stub1 should match
@@ -1064,10 +1116,12 @@ func TestBidiStreamingStatefulLogicDifferentPattern(t *testing.T) {
 		{Equals: map[string]any{"message": "hello"}},
 		{Equals: map[string]any{"message": "universe"}},
 	}, stuber.Output{Data: map[string]any{"response": "Pattern 2"}})
+	stub2.Session = "bidi-pattern"
 
 	s.PutMany(stub1, stub2)
 
 	query := newBidiQuery()
+	query.Session = "bidi-pattern"
 
 	result, err := s.FindByQueryBidi(query)
 	require.NoError(t, err)
@@ -1176,6 +1230,7 @@ func TestBidiNestedStructures(t *testing.T) {
 		ID:      uuid.New(),
 		Service: "Svc",
 		Method:  "Mth",
+		Session: "nested",
 		Input: stuber.InputData{
 			Equals: map[string]any{"ids": []any{1.0, 2.0, 3.0}},
 		},
@@ -1183,7 +1238,7 @@ func TestBidiNestedStructures(t *testing.T) {
 	}
 	s.PutMany(stubMap, stubSlice)
 
-	query := stuber.QueryBidi{Service: "Svc", Method: "Mth"}
+	query := stuber.QueryBidi{Service: "Svc", Method: "Mth", Session: "nested"}
 	result, err := s.FindByQueryBidi(query)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -1340,12 +1395,14 @@ func TestPriorityHeadersOverEquals(t *testing.T) {
 
 	// Create stubs
 	stub1, stub2 := createTestStubs()
+	stub2.Session = "headers-priority"
 	s.PutMany(stub1, stub2)
 
 	// Test query with headers that should match stub2
 	query := stuber.Query{
 		Service: "helloworld.Greeter",
 		Method:  "SayHello",
+		Session: "headers-priority",
 		Headers: map[string]any{
 			"x-user":  "Ivan",
 			"x-token": "123",
@@ -1371,6 +1428,7 @@ func TestPriorityHeadersOverEquals(t *testing.T) {
 	queryWithoutHeaders := stuber.Query{
 		Service: "helloworld.Greeter",
 		Method:  "SayHello",
+		Session: "headers-priority",
 		Input: []map[string]any{
 			{"name": "Bob"},
 		},
@@ -1670,9 +1728,9 @@ func TestEmptyQueryInput(t *testing.T) {
 	t.Parallel()
 	s := newCleanBudgerigar(t)
 	s.PutMany(
-		newGreeterStreamingStub("Streaming Empty", map[string]any{}, nil),
-		newGreeterLegacyStub("Hello World", map[string]any{}, nil),
 		newGreeterLegacyStub("Hello Bob", map[string]any{"name": "Bob"}, nil),
+		newGreeterLegacyStub("Hello World", map[string]any{}, nil),
+		newGreeterStreamingStub("Streaming Empty", map[string]any{}, nil),
 	)
 
 	assertFindByEmptyQueryMessage(t, s, nil, "Streaming Empty")
@@ -1682,8 +1740,8 @@ func TestEmptyQueryInputWithStreaming(t *testing.T) {
 	t.Parallel()
 	s := newCleanBudgerigar(t)
 	s.PutMany(
-		newGreeterStreamingStub("Streaming Hello", map[string]any{}, nil),
 		newGreeterLegacyStub("Legacy Hello", map[string]any{}, nil),
+		newGreeterStreamingStub("Streaming Hello", map[string]any{}, nil),
 	)
 
 	assertFindByEmptyQueryMessage(t, s, nil, "Streaming Hello")
@@ -1705,8 +1763,8 @@ func TestEmptyQueryInputWithHeaders(t *testing.T) {
 	s := newCleanBudgerigar(t)
 	headers := map[string]any{"x-user": "admin"}
 	s.PutMany(
-		newGreeterStreamingStub("Admin Hello", map[string]any{}, headers),
 		newGreeterLegacyStub("Admin Legacy Hello", map[string]any{}, headers),
+		newGreeterStreamingStub("Admin Hello", map[string]any{}, headers),
 	)
 
 	assertFindByEmptyQueryMessage(t, s, headers, "Admin Hello")
@@ -1716,9 +1774,9 @@ func TestEmptyQueryInputMixedConditions(t *testing.T) {
 	t.Parallel()
 	s := newCleanBudgerigar(t)
 	s.PutMany(
-		newGreeterStreamingStub("Streaming Empty", map[string]any{}, nil),
 		newGreeterStreamingStub("Streaming Bob", map[string]any{"name": "Bob"}, nil),
 		newGreeterLegacyStub("Legacy Empty", map[string]any{}, nil),
+		newGreeterStreamingStub("Streaming Empty", map[string]any{}, nil),
 	)
 
 	assertFindByEmptyQueryMessage(t, s, nil, "Streaming Empty")
@@ -1935,7 +1993,7 @@ func TestMethodTypesEmptyInput(t *testing.T) {
 	// Test case 3: Unary method that cannot handle empty input
 	unaryNonEmptyStub := newGreeterUnarySayHello("Bob", "Hello Bob")
 
-	s.PutMany(unaryEmptyStub, clientStreamEmptyStub, unaryNonEmptyStub)
+	s.PutMany(unaryEmptyStub, unaryNonEmptyStub, clientStreamEmptyStub)
 
 	// Test empty query - should prioritize Inputs (newer) over Input (legacy)
 	query := stuber.Query{

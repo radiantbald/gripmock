@@ -1,13 +1,37 @@
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
-import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import ContentCopyOutlinedIcon from "@mui/icons-material/ContentCopyOutlined";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import { Box, IconButton, Tooltip } from "@mui/material";
-import { useCreatePath, useDelete, useNotify, useRecordContext, useRefresh } from "react-admin";
+import { useState } from "react";
+import { useCreatePath, useDataProvider, useNotify, useRecordContext, useRefresh } from "react-admin";
 import { Link as RouterLink } from "react-router-dom";
 
 import type { StubRecord } from "../../../types/entities";
 
+const CLONE_SUFFIX = " (clone)";
+const ACTION_ICON_SX = { fontSize: 18 } as const;
+const ACTION_BUTTON_SX = {
+  color: "text.secondary",
+  "&:hover": {
+    backgroundColor: "transparent",
+    color: "#FF6C37",
+  },
+  "&.Mui-focusVisible": {
+    backgroundColor: "transparent",
+    color: "#FF6C37",
+  },
+} as const;
+
+const buildCloneName = (name: unknown): string => {
+  const normalizedName = typeof name === "string" ? name.trim() : "";
+  if (!normalizedName) {
+    return CLONE_SUFFIX.trim();
+  }
+
+  return normalizedName.endsWith(CLONE_SUFFIX) ? normalizedName : `${normalizedName}${CLONE_SUFFIX}`;
+};
+
 const buildClonePayload = (record: StubRecord) => ({
+  name: buildCloneName(record?.name),
   service: record?.service,
   method: record?.method,
   enabled: record?.enabled,
@@ -19,26 +43,39 @@ const buildClonePayload = (record: StubRecord) => ({
 });
 
 export const RowActionsField = ({
-  allowDelete = false,
   allowClone = false,
 }: {
-  allowDelete?: boolean;
   allowClone?: boolean;
 }) => {
   const record = useRecordContext<StubRecord>();
+  const createPath = useCreatePath();
+  const dataProvider = useDataProvider();
   const notify = useNotify();
   const refresh = useRefresh();
-  const createPath = useCreatePath();
-  const [deleteOne, { isPending }] = useDelete();
+  const [isCloning, setIsCloning] = useState(false);
 
   if (!record?.id) {
     return null;
   }
 
-  const showPath = createPath({ resource: "stubs", type: "show", id: record.id });
-  const clonePath = `${createPath({ resource: "stubs", type: "create" })}?source=${encodeURIComponent(
-    JSON.stringify(buildClonePayload(record)),
-  )}`;
+  const editPath = createPath({ resource: "stubs", type: "edit", id: record.id });
+  const handleClone = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (isCloning) {
+      return;
+    }
+
+    try {
+      setIsCloning(true);
+      await dataProvider.create("stubs", { data: buildClonePayload(record) });
+      notify("Stub cloned", { type: "success" });
+      refresh();
+    } catch (error) {
+      notify((error as Error).message, { type: "error" });
+    } finally {
+      setIsCloning(false);
+    }
+  };
 
   return (
     <Box display="flex" alignItems="center" gap={0.5}>
@@ -46,48 +83,25 @@ export const RowActionsField = ({
         <Tooltip title="Clone stub">
           <IconButton
             size="small"
-            component={RouterLink}
-            to={clonePath}
-            onClick={(event) => event.stopPropagation()}
+            onClick={handleClone}
+            disabled={isCloning}
+            sx={ACTION_BUTTON_SX}
           >
-            <ContentCopyIcon fontSize="small" />
+            <ContentCopyOutlinedIcon sx={ACTION_ICON_SX} />
           </IconButton>
         </Tooltip>
       ) : null}
-      <Tooltip title="Open full details">
+      <Tooltip title="Edit stub">
         <IconButton
           size="small"
           component={RouterLink}
-          to={showPath}
+          to={editPath}
           onClick={(event) => event.stopPropagation()}
+          sx={ACTION_BUTTON_SX}
         >
-          <OpenInNewIcon fontSize="small" />
+          <EditOutlinedIcon sx={ACTION_ICON_SX} />
         </IconButton>
       </Tooltip>
-      {allowDelete ? (
-        <Tooltip title="Delete stub">
-          <IconButton
-            size="small"
-            color="error"
-            disabled={isPending}
-            onClick={async (event) => {
-              event.stopPropagation();
-              try {
-                await deleteOne("stubs", {
-                  id: record.id,
-                  previousData: record,
-                });
-                notify("Stub deleted", { type: "success" });
-                refresh();
-              } catch (error) {
-                notify((error as Error).message, { type: "error" });
-              }
-            }}
-          >
-            <DeleteOutlineIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      ) : null}
     </Box>
   );
 };

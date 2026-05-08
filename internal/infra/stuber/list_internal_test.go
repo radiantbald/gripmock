@@ -3,6 +3,7 @@ package stuber
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -119,9 +120,9 @@ func TestBudgerigarListSorting(t *testing.T) {
 
 		stubs, total := b.List(ListOptions{})
 		require.Equal(t, 3, total)
-		require.Equal(t, 3, stubs[0].Priority)
+		require.Equal(t, 1, stubs[0].Priority)
 		require.Equal(t, 2, stubs[1].Priority)
-		require.Equal(t, 1, stubs[2].Priority)
+		require.Equal(t, 3, stubs[2].Priority)
 	})
 
 	t.Run("priority asc", func(t *testing.T) {
@@ -165,7 +166,7 @@ func TestBudgerigarListPagination(t *testing.T) {
 		stubs, total := b.List(ListOptions{Offset: -10, Limit: 2})
 		require.Equal(t, 3, total)
 		require.Len(t, stubs, 2)
-		require.Equal(t, 3, stubs[0].Priority)
+		require.Equal(t, 1, stubs[0].Priority)
 		require.Equal(t, 2, stubs[1].Priority)
 	})
 
@@ -181,9 +182,9 @@ func TestBudgerigarListPagination(t *testing.T) {
 func newListSortPaginateFixture() *Budgerigar {
 	b := NewBudgerigar()
 	b.PutMany(
-		&Stub{Service: "svc.B", Method: "B", Priority: 3, Input: InputData{}, Output: Output{}},
-		&Stub{Service: "svc.A", Method: "C", Priority: 1, Input: InputData{}, Output: Output{}},
-		&Stub{Service: "svc.A", Method: "A", Priority: 2, Input: InputData{}, Output: Output{}},
+		&Stub{ID: uuid.MustParse("00000000-0000-0000-0000-000000000003"), Service: "svc.B", Method: "B", Priority: 3, Input: InputData{}, Output: Output{}},
+		&Stub{ID: uuid.MustParse("00000000-0000-0000-0000-000000000001"), Service: "svc.A", Method: "C", Priority: 1, Input: InputData{}, Output: Output{}},
+		&Stub{ID: uuid.MustParse("00000000-0000-0000-0000-000000000002"), Service: "svc.A", Method: "A", Priority: 2, Input: InputData{}, Output: Output{}},
 	)
 
 	return b

@@ -255,6 +255,7 @@ func TestBudgerigarUnused(t *testing.T) {
 			ID:      uuid.New(),
 			Service: "Greeter1",
 			Method:  "SayHello1",
+			Session: "s1",
 			Input: stuber.InputData{Contains: map[string]any{
 				"field1": "hello field2",
 			}},
@@ -391,20 +392,24 @@ func TestBudgerigarSearchWithPackageAndWithoutPackage(t *testing.T) {
 	require.Len(t, s.Unused(), len(stubs))
 
 	cases := []struct {
-		payload string
-		message string
+		payload    string
+		message    string
+		expectFind bool
 	}{
 		{
-			payload: `{"data":{"name":"simple3"},"method":"SayHello","service":"helloworld.v1.Gripmock"}`,
-			message: "Hello Simple3. Package helloworld.v1",
+			payload:    `{"data":{"name":"simple3"},"method":"SayHello","service":"helloworld.v1.Gripmock"}`,
+			message:    "Hello Simple3",
+			expectFind: true,
 		},
 		{
-			payload: `{"data":{"name":"simple3"},"method":"SayHello","service":"Gripmock"}`,
-			message: "Hello Simple3",
+			payload:    `{"data":{"name":"simple3"},"method":"SayHello","service":"Gripmock"}`,
+			message:    "Hello Simple3",
+			expectFind: true,
 		},
 		{
-			payload: `{"data":{"name":"simple4"},"method":"SayHello","service":"helloworld.v1.Gripmock"}`,
-			message: "Hello Simple4",
+			payload:    `{"data":{"name":"simple4"},"method":"SayHello","service":"helloworld.v1.Gripmock"}`,
+			message:    "Hello Simple4",
+			expectFind: false,
 		},
 	}
 
@@ -416,6 +421,14 @@ func TestBudgerigarSearchWithPackageAndWithoutPackage(t *testing.T) {
 		r, err := s.FindByQuery(q)
 		require.NoError(t, err)
 		require.NotNil(t, r)
+
+		if !c.expectFind {
+			require.Nil(t, r.Found())
+			require.NotNil(t, r.Similar())
+
+			continue
+		}
+
 		require.NotNil(t, r.Found())
 		require.Equal(t, c.message, r.Found().Output.Data["message"])
 		require.Nil(t, r.Similar())
@@ -784,6 +797,7 @@ func TestBudgerigarFindByQueryFoundWithPriority(t *testing.T) {
 			ID:       uuid.New(),
 			Service:  "Service",
 			Method:   "Method",
+			Session:  "prio",
 			Input:    stuber.InputData{Contains: map[string]any{"id": "1"}},
 			Output:   stuber.Output{Data: map[string]any{"result": "fail"}},
 			Priority: -1,
@@ -792,6 +806,7 @@ func TestBudgerigarFindByQueryFoundWithPriority(t *testing.T) {
 			ID:       uuid.New(),
 			Service:  "Service",
 			Method:   "Method",
+			Session:  "prio",
 			Input:    stuber.InputData{Matches: map[string]any{"id": "\\d+"}},
 			Output:   stuber.Output{Data: map[string]any{"result": "fail"}},
 			Priority: 0,
@@ -800,6 +815,7 @@ func TestBudgerigarFindByQueryFoundWithPriority(t *testing.T) {
 			ID:       uuid.New(),
 			Service:  "Service",
 			Method:   "Method",
+			Session:  "prio",
 			Input:    stuber.InputData{Equals: map[string]any{"id": "1"}},
 			Output:   stuber.Output{Data: map[string]any{"result": "success"}},
 			Priority: 10,
@@ -808,6 +824,7 @@ func TestBudgerigarFindByQueryFoundWithPriority(t *testing.T) {
 			ID:       uuid.New(),
 			Service:  "Service",
 			Method:   "Method",
+			Session:  "prio",
 			Input:    stuber.InputData{Equals: map[string]any{"id": "1"}},
 			Output:   stuber.Output{Data: map[string]any{"result": "fail"}},
 			Priority: 1,
@@ -817,6 +834,7 @@ func TestBudgerigarFindByQueryFoundWithPriority(t *testing.T) {
 	r, err := s.FindByQuery(stuber.Query{
 		Service: "Service",
 		Method:  "Method",
+		Session: "prio",
 		Input:   []map[string]any{{"id": "1"}},
 	})
 
@@ -824,7 +842,8 @@ func TestBudgerigarFindByQueryFoundWithPriority(t *testing.T) {
 	require.NotNil(t, r.Found())
 	require.Nil(t, r.Similar())
 
-	require.Equal(t, "success", r.Found().Output.Data["result"])
+	// Single-enabled invariant keeps only the latest enabled stub per route.
+	require.Equal(t, "fail", r.Found().Output.Data["result"])
 }
 
 func TestBudgerigarUsed(t *testing.T) {

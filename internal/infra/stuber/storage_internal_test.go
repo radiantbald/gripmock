@@ -227,7 +227,7 @@ func TestFindAllSorted(t *testing.T) {
 
 	s.upsert(item1, item2, item3, item4)
 
-	t.Run("sorted by score descending", func(t *testing.T) {
+	t.Run("sorted by id ascending", func(t *testing.T) {
 		t.Parallel()
 
 		seq, err := s.findAll("Greeter1", "SayHello1")
@@ -236,10 +236,9 @@ func TestFindAllSorted(t *testing.T) {
 		results := collectStubs(seq)
 		require.Len(t, results, 3)
 
-		// Should be sorted by score in descending order: 30, 20, 10
-		require.Equal(t, 30, results[0].Priority)
-		require.Equal(t, 20, results[1].Priority)
-		require.Equal(t, 10, results[2].Priority)
+		// IDs must be returned in ascending order.
+		require.LessOrEqual(t, results[0].ID.String(), results[1].ID.String())
+		require.LessOrEqual(t, results[1].ID.String(), results[2].ID.String())
 	})
 
 	t.Run("single item", func(t *testing.T) {
@@ -421,9 +420,9 @@ func TestStorageFindAllHEapPathSingleIndexManyItems(t *testing.T) {
 	}
 
 	require.Len(t, results, 12)
-	// Should be sorted descending by score
+	// IDs must be returned in ascending order.
 	for i := range len(results) - 1 {
-		require.GreaterOrEqual(t, results[i].Priority, results[i+1].Priority)
+		require.LessOrEqual(t, results[i].ID.String(), results[i+1].ID.String())
 	}
 }
 
@@ -433,11 +432,16 @@ func TestStorageFindAllHEapPathMultipleIndexes(t *testing.T) {
 	s := newStorage()
 
 	// posByPN with "pkg.Svc" returns both "pkg.Svc" and "Svc" indexes when both exist
+	id1 := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	id2 := uuid.MustParse("00000000-0000-0000-0000-000000000002")
+	id3 := uuid.MustParse("00000000-0000-0000-0000-000000000003")
+	id4 := uuid.MustParse("00000000-0000-0000-0000-000000000004")
+
 	s.upsert(
-		newTestStub("pkg.Greeter", "SayHello", 1),
-		newTestStub("pkg.Greeter", "SayHello", 2),
-		newTestStub("Greeter", "SayHello", 10),
-		newTestStub("Greeter", "SayHello", 20),
+		newTestStubWithID(id2, "pkg.Greeter", "SayHello", 1),
+		newTestStubWithID(id4, "pkg.Greeter", "SayHello", 2),
+		newTestStubWithID(id1, "Greeter", "SayHello", 10),
+		newTestStubWithID(id3, "Greeter", "SayHello", 20),
 	)
 
 	seq, err := s.findAll("pkg.Greeter", "SayHello")
@@ -449,10 +453,10 @@ func TestStorageFindAllHEapPathMultipleIndexes(t *testing.T) {
 	}
 
 	require.Len(t, results, 4)
-	require.Equal(t, 20, results[0].Priority)
-	require.Equal(t, 10, results[1].Priority)
-	require.Equal(t, 2, results[2].Priority)
-	require.Equal(t, 1, results[3].Priority)
+	require.Equal(t, id1, results[0].ID)
+	require.Equal(t, id2, results[1].ID)
+	require.Equal(t, id3, results[2].ID)
+	require.Equal(t, id4, results[3].ID)
 }
 
 func TestStorageFindAllYieldEarlyExit(t *testing.T) {
@@ -527,7 +531,7 @@ func TestStorageFindAllSliceSortPath(t *testing.T) {
 	require.Len(t, results, 5)
 
 	for i := range len(results) - 1 {
-		require.GreaterOrEqual(t, results[i].Priority, results[i+1].Priority)
+		require.LessOrEqual(t, results[i].ID.String(), results[i+1].ID.String())
 	}
 }
 
@@ -599,10 +603,13 @@ func TestStorageFindAllThreeItemSort(t *testing.T) {
 	t.Parallel()
 
 	s := newStorage()
+	id1 := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	id2 := uuid.MustParse("00000000-0000-0000-0000-000000000002")
+	id3 := uuid.MustParse("00000000-0000-0000-0000-000000000003")
 	s.upsert(
-		newTestStub("Tri", "Sort", 10),
-		newTestStub("Tri", "Sort", 5),
-		newTestStub("Tri", "Sort", 20),
+		newTestStubWithID(id3, "Tri", "Sort", 10),
+		newTestStubWithID(id1, "Tri", "Sort", 5),
+		newTestStubWithID(id2, "Tri", "Sort", 20),
 	)
 	seq, err := s.findAll("Tri", "Sort")
 	require.NoError(t, err)
@@ -613,10 +620,10 @@ func TestStorageFindAllThreeItemSort(t *testing.T) {
 	}
 
 	require.Len(t, results, 3)
-	// Must be sorted descending by priority
-	require.Equal(t, 20, results[0].Priority)
-	require.Equal(t, 10, results[1].Priority)
-	require.Equal(t, 5, results[2].Priority)
+	// Must be sorted ascending by ID.
+	require.Equal(t, id1, results[0].ID)
+	require.Equal(t, id2, results[1].ID)
+	require.Equal(t, id3, results[2].ID)
 }
 
 func TestStorageFindByMethodAvailable(t *testing.T) {

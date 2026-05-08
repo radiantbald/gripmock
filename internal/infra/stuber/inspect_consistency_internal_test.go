@@ -37,12 +37,13 @@ func TestInspectConsistencyWithFindByQuery(t *testing.T) {
 
 		exact := newStub("s.demo", "Hello", "exact")
 		contains := newStub("s.demo", "Hello", "contains")
+		contains.Session = "s1"
 		contains.Input = stuber.InputData{Contains: map[string]any{"name": "Al"}}
 
 		tc := inspectConsistencyCase{
 			name:            "exactPreferredOverContains",
 			stubs:           []*stuber.Stub{exact, contains},
-			query:           stuber.Query{Service: "s.demo", Method: "Hello", Input: []map[string]any{{"name": "Alex"}}, Headers: nil},
+			query:           stuber.Query{Service: "s.demo", Method: "Hello", Session: "s1", Input: []map[string]any{{"name": "Alex"}}, Headers: nil},
 			expectedMatched: exact.ID,
 		}
 
@@ -53,6 +54,7 @@ func TestInspectConsistencyWithFindByQuery(t *testing.T) {
 		t.Parallel()
 
 		prod := newStub("s.demo", "Hello", "prod")
+		prod.Session = "s1"
 		prod.Headers = stuber.InputHeader{Equals: map[string]any{"x-env": "prod"}}
 		generic := newStub("s.demo", "Hello", "generic")
 
@@ -64,7 +66,7 @@ func TestInspectConsistencyWithFindByQuery(t *testing.T) {
 				Method:  "Hello",
 				Headers: map[string]any{"x-env": "prod"},
 				Input:   []map[string]any{{"name": "Alex"}},
-				Session: "",
+				Session: "s1",
 			},
 			expectedMatched: prod.ID,
 		}
@@ -100,6 +102,7 @@ func TestInspectConsistencyWithFindByQuery(t *testing.T) {
 		t.Parallel()
 
 		once := newStub("s.demo", "Hello", "once")
+		once.Session = "s1"
 		once.Options = stuber.StubOptions{Times: 1}
 		once.Priority = 10
 		fallback := newStub("s.demo", "Hello", "fallback")
@@ -107,10 +110,10 @@ func TestInspectConsistencyWithFindByQuery(t *testing.T) {
 		tc := inspectConsistencyCase{
 			name:            "timesExhaustionMatchesFallback",
 			stubs:           []*stuber.Stub{once, fallback},
-			query:           stuber.Query{Service: "s.demo", Method: "Hello", Input: []map[string]any{{"name": "Alex"}}},
+			query:           stuber.Query{Service: "s.demo", Method: "Hello", Session: "s1", Input: []map[string]any{{"name": "Alex"}}},
 			expectedMatched: fallback.ID,
 			beforeInspect: func(s *stuber.Budgerigar) {
-				_, err := s.FindByQuery(stuber.Query{Service: "s.demo", Method: "Hello", Input: []map[string]any{{"name": "Alex"}}})
+				_, err := s.FindByQuery(stuber.Query{Service: "s.demo", Method: "Hello", Session: "s1", Input: []map[string]any{{"name": "Alex"}}})
 				require.NoError(t, err)
 			},
 		}

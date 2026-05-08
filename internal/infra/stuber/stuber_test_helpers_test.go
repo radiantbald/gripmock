@@ -38,10 +38,10 @@ func runFindBySortedTests(t *testing.T, create func() *stuber.Budgerigar) {
 
 	s := create()
 
-	stub1 := &stuber.Stub{ID: uuid.New(), Service: "Greeter1", Method: "SayHello1", Priority: 10}
-	stub2 := &stuber.Stub{ID: uuid.New(), Service: "Greeter1", Method: "SayHello1", Priority: 30}
-	stub3 := &stuber.Stub{ID: uuid.New(), Service: "Greeter1", Method: "SayHello1", Priority: 20}
-	stub4 := &stuber.Stub{ID: uuid.New(), Service: "Greeter2", Method: "SayHello2", Priority: 50}
+	stub1 := &stuber.Stub{ID: uuid.MustParse("00000000-0000-0000-0000-000000000003"), Service: "Greeter1", Method: "SayHello1", Priority: 10}
+	stub2 := &stuber.Stub{ID: uuid.MustParse("00000000-0000-0000-0000-000000000001"), Service: "Greeter1", Method: "SayHello1", Priority: 30}
+	stub3 := &stuber.Stub{ID: uuid.MustParse("00000000-0000-0000-0000-000000000002"), Service: "Greeter1", Method: "SayHello1", Priority: 20}
+	stub4 := &stuber.Stub{ID: uuid.MustParse("00000000-0000-0000-0000-000000000004"), Service: "Greeter2", Method: "SayHello2", Priority: 50}
 
 	s.PutMany(stub1, stub2, stub3, stub4)
 
@@ -49,14 +49,14 @@ func runFindBySortedTests(t *testing.T, create func() *stuber.Budgerigar) {
 	require.NoError(t, err)
 	require.Len(t, results, 3)
 
-	require.Equal(t, 30, results[0].Priority)
-	require.Equal(t, 20, results[1].Priority)
-	require.Equal(t, 10, results[2].Priority)
+	require.Equal(t, stub2.ID, results[0].ID)
+	require.Equal(t, stub3.ID, results[1].ID)
+	require.Equal(t, stub1.ID, results[2].ID)
 
 	results, err = s.FindBy("Greeter2", "SayHello2")
 	require.NoError(t, err)
 	require.Len(t, results, 1)
-	require.Equal(t, 50, results[0].Priority)
+	require.Equal(t, stub4.ID, results[0].ID)
 
 	_, err = s.FindBy("Greeter3", "SayHello3")
 	require.ErrorIs(t, err, stuber.ErrServiceNotFound)

@@ -13,8 +13,6 @@ import {
   BooleanField,
   Show,
   SimpleShowLayout,
-  SearchInput,
-  FilterButton,
   TopToolbar,
   ExportButton,
   CreateButton,
@@ -39,6 +37,47 @@ import { getCurrentSession, subscribeSessionChanges } from "./utils/session";
 import type { SessionRow } from "./features/session/model";
 
 const RADIUS_PX = "10px";
+const stubsListSx = {
+  ...listContentSx,
+  height: "100%",
+  "& .RaList-toolbar": {
+    minHeight: 40,
+    height: 40,
+    paddingTop: 0,
+    paddingBottom: 0,
+    alignItems: "center",
+  },
+  "& .RaList-actions": {
+    minHeight: 40,
+    height: 40,
+    paddingTop: 0,
+    paddingBottom: 0,
+    marginTop: 0,
+    marginBottom: 0,
+    display: "flex",
+    alignItems: "center",
+  },
+  "& .RaList-actions .MuiToolbar-root": {
+    minHeight: "32px !important",
+    height: 32,
+    paddingTop: 0,
+    paddingBottom: 0,
+  },
+  "& .RaList-main": {
+    height: "100%",
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column",
+  },
+  "& .RaList-content": {
+    ...listContentSx["& .RaList-content"],
+    flex: 1,
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+  },
+} as const;
 
 // Export function for stubs list
 const exportStubs = (stubs: object[]) => {
@@ -226,12 +265,6 @@ const MethodFilter = (props: Record<string, unknown>) => {
 
 // Filters for stubs
 const stubFilters = [
-  <SearchInput
-    key="search"
-    source="q"
-    placeholder="Search stubs..."
-    alwaysOn
-  />,
   <NameFilter key="name" source="name" label="Name" />,
   <ServiceFilter key="service" source="service" label="Service" />,
   <MethodFilter key="method" source="method" label="Method" />,
@@ -239,7 +272,6 @@ const stubFilters = [
 
 const StubListActions = () => (
   <TopToolbar>
-    <FilterButton />
     <ExportButton />
     <CreateButton />
   </TopToolbar>
@@ -248,7 +280,6 @@ const StubListActions = () => (
 // Custom toolbar for used/unused stubs (without create button)
 const UsedUnusedStubListActions = () => (
   <TopToolbar>
-    <FilterButton />
     <ExportButton />
   </TopToolbar>
 );
@@ -299,11 +330,9 @@ const CreateStubToolbar = () => (
 
 const StubsListPage = ({
   actions,
-  allowDelete,
   allowClone,
 }: {
   actions: ReactElement;
-  allowDelete?: boolean;
   allowClone?: boolean;
 }) => {
   const gridSize = "small";
@@ -313,14 +342,13 @@ const StubsListPage = ({
       filters={stubFilters}
       actions={actions}
       exporter={exportStubs}
-      filterDefaultValues={{ q: "" }}
-      perPage={25}
-      sx={listContentSx}
+      perPage={1000}
+      pagination={false}
+      sx={stubsListSx}
     >
       <ActiveFiltersSummary />
       <StubsDatagrid
         gridSize={gridSize}
-        allowDelete={allowDelete}
         allowClone={allowClone}
       />
     </List>
@@ -345,7 +373,6 @@ export const StubList = () => {
   return (
     <StubsListPage
       actions={<StubListActions />}
-      allowDelete
       allowClone
     />
   );
@@ -451,7 +478,7 @@ export const StubCreate = () => {
             alignSelf: "start",
           }}
         >
-          <Box sx={{ width: "100%", fontSize: 16, fontWeight: 600, color: "primary.main", mb: 1 }}>
+          <Box sx={{ width: "100%", fontSize: 16, fontWeight: 600, color: "#FF6C37", mb: 1 }}>
             Request Match
           </Box>
           <Box
@@ -466,7 +493,7 @@ export const StubCreate = () => {
             }}
           >
             <KeyValueTableInput
-              source="headers"
+              source="headers.equals"
               label="Request headers"
               helperText="Matcher for incoming request metadata."
               maxTableHeight={140}
@@ -491,7 +518,7 @@ export const StubCreate = () => {
             alignSelf: "start",
           }}
         >
-          <Box sx={{ width: "100%", fontSize: 16, fontWeight: 600, color: "primary.main", mb: 1 }}>
+          <Box sx={{ width: "100%", fontSize: 16, fontWeight: 600, color: "#FF6C37", mb: 1 }}>
             Response Stub
           </Box>
           <Box
@@ -620,7 +647,7 @@ export const StubEdit = () => {
             overflow: "hidden",
           }}
         >
-          <Box sx={{ width: "100%", fontSize: 16, fontWeight: 600, color: "primary.main", mb: 1 }}>
+          <Box sx={{ width: "100%", fontSize: 16, fontWeight: 600, color: "#FF6C37", mb: 1 }}>
             Request Match
           </Box>
           <Box
@@ -635,7 +662,7 @@ export const StubEdit = () => {
             }}
           >
             <KeyValueTableInput
-              source="headers"
+              source="headers.equals"
               label="Request headers"
               helperText="Matcher for incoming request metadata."
               maxTableHeight={140}
@@ -659,7 +686,7 @@ export const StubEdit = () => {
             overflow: "hidden",
           }}
         >
-          <Box sx={{ width: "100%", fontSize: 16, fontWeight: 600, color: "primary.main", mb: 1 }}>
+          <Box sx={{ width: "100%", fontSize: 16, fontWeight: 600, color: "#FF6C37", mb: 1 }}>
             Response Stub
           </Box>
           <Box

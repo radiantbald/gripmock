@@ -24,6 +24,32 @@ type StubMatcherInputProps = {
   mode: "create" | "edit";
 };
 
+const matcherKeys = new Set(["equals", "contains", "matches", "glob", "anyOf", "ignoreArrayOrder"]);
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isMatcherObject = (value: unknown): value is Record<string, unknown> =>
+  isPlainObject(value) && Object.keys(value).some((key) => matcherKeys.has(key));
+
+const normalizeInputMatcher = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      if (!isPlainObject(item)) {
+        return item;
+      }
+
+      return isMatcherObject(item) ? item : { equals: item };
+    });
+  }
+
+  if (!isPlainObject(value)) {
+    return value;
+  }
+
+  return isMatcherObject(value) ? value : { equals: value };
+};
+
 const prettyJson = (value: unknown) => {
   if (value === undefined || value === null) {
     return "";
@@ -133,16 +159,17 @@ export const StubMatcherInput = ({
 
     try {
       const parsed = JSON.parse(nextText);
+      const normalized = normalizeInputMatcher(parsed);
 
-      if (Array.isArray(parsed)) {
-        setValue(inputsSource, parsed, { shouldDirty: true });
+      if (Array.isArray(normalized)) {
+        setValue(inputsSource, normalized, { shouldDirty: true });
         setValue(inputSource, undefined, { shouldDirty: true });
         setParseError(null);
         return;
       }
 
-      if (parsed && typeof parsed === "object") {
-        setValue(inputSource, parsed, { shouldDirty: true });
+      if (normalized && typeof normalized === "object") {
+        setValue(inputSource, normalized, { shouldDirty: true });
         setValue(inputsSource, undefined, { shouldDirty: true });
         setParseError(null);
         return;

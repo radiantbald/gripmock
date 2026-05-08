@@ -3,7 +3,6 @@ import {
   List,
   TextField,
   SearchInput,
-  FilterButton,
   TopToolbar,
   ExportButton,
 } from "react-admin";
@@ -19,7 +18,6 @@ import {
 // Custom toolbar
 const ServiceListActions = () => (
   <TopToolbar>
-    <FilterButton />
     <ExportButton />
   </TopToolbar>
 );

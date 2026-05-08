@@ -140,20 +140,23 @@ func (b *Budgerigar) ensureSingleEnabledByRoute(values ...*Stub) []*Stub {
 		return nil
 	}
 
-	latestEnabled := make(map[string]*Stub, len(values))
+	latestEnabled := make([]*Stub, 0, len(values))
 	changed := make([]*Stub, 0, len(values))
 	for _, stub := range values {
 		if !stub.IsEnabled() {
 			continue
 		}
 
-		key := routeKey(stub.Service, stub.Method, stub.Session)
-		if previous, ok := latestEnabled[key]; ok && previous.ID != stub.ID {
+		for _, previous := range latestEnabled {
+			if previous.ID == stub.ID || !sameEnabledRoute(previous, stub) {
+				continue
+			}
+
 			previous.SetEnabled(false)
 			changed = append(changed, previous)
 		}
 
-		latestEnabled[key] = stub
+		latestEnabled = append(latestEnabled, stub)
 	}
 
 	if len(latestEnabled) == 0 {
@@ -165,32 +168,58 @@ func (b *Budgerigar) ensureSingleEnabledByRoute(values ...*Stub) []*Stub {
 			continue
 		}
 
-		candidate, ok := latestEnabled[routeKey(existing.Service, existing.Method, existing.Session)]
-		if !ok || candidate.ID == existing.ID {
-			continue
-		}
+		for _, candidate := range latestEnabled {
+			if candidate.ID == existing.ID || !sameEnabledRoute(existing, candidate) {
+				continue
+			}
 
-		existing.SetEnabled(false)
-		changed = append(changed, existing)
+			existing.SetEnabled(false)
+			changed = append(changed, existing)
+			break
+		}
 	}
 
 	return changed
 }
 
-func routeKey(service, method, session string) string {
-	service = strings.TrimSpace(service)
-	method = strings.TrimSpace(method)
-	session = strings.TrimSpace(session)
+func sameEnabledRoute(left, right *Stub) bool {
+	if strings.TrimSpace(left.Method) != strings.TrimSpace(right.Method) {
+		return false
+	}
 
-	var builder strings.Builder
-	builder.Grow(len(service) + len(method) + len(session) + 2)
-	builder.WriteString(service)
-	builder.WriteString("/")
-	builder.WriteString(method)
-	builder.WriteString("/")
-	builder.WriteString(session)
+	if strings.TrimSpace(left.Session) != strings.TrimSpace(right.Session) {
+		return false
+	}
 
-	return builder.String()
+	return sameServiceAlias(left.Service, right.Service)
+}
+
+func sameServiceAlias(left, right string) bool {
+	left = strings.TrimSpace(left)
+	right = strings.TrimSpace(right)
+
+	if left == right {
+		return true
+	}
+
+	leftShort, leftHasDot := shortServiceName(left)
+	rightShort, rightHasDot := shortServiceName(right)
+
+	if leftShort != rightShort {
+		return false
+	}
+
+	// Full names are distinct unless one side is an explicit short alias.
+	return !leftHasDot || !rightHasDot
+}
+
+func shortServiceName(service string) (string, bool) {
+	index := strings.LastIndex(service, ".")
+	if index == -1 {
+		return service, false
+	}
+
+	return service[index+1:], true
 }
 
 // DeleteByID deletes the Stub values with the given IDs from the Budgerigar's searcher.

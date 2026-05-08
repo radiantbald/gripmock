@@ -4,10 +4,14 @@ import {
   AccordionSummary,
   Box,
   Chip,
+  IconButton,
   Stack,
+  Tooltip,
   Typography,
 } from "@mui/material";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import { useEffect, useState } from "react";
 import {
   RecordContextProvider,
@@ -32,7 +36,78 @@ type ServiceGroup = {
 };
 
 const RADIUS_PX = "10px";
+const THIN_CHEVRON_SX = { fontSize: 18 } as const;
+const ICON_BUTTON_ACCENT_SX = {
+  color: "text.secondary",
+  "&:hover": {
+    backgroundColor: "transparent",
+    color: "#FF6C37",
+  },
+  "&.Mui-focusVisible": {
+    backgroundColor: "transparent",
+    color: "#FF6C37",
+  },
+} as const;
 const LIST_ROW_HEIGHT_PX = 30;
+const COLUMN_HEADER_HEIGHT_PX = 36;
+const META_CHIP_SX = {
+  borderRadius: RADIUS_PX,
+  fontSize: 12,
+  fontWeight: 500,
+  letterSpacing: 0,
+  "&.MuiChip-outlined": {
+    borderWidth: "1px",
+  },
+  "& .MuiChip-label": {
+    px: 1.1,
+    lineHeight: 1.2,
+  },
+} as const;
+
+const GRPC_STATUS_LABELS: Record<number, string> = {
+  0: "OK",
+  1: "CANCELLED",
+  2: "UNKNOWN",
+  3: "INVALID_ARGUMENT",
+  4: "DEADLINE_EXCEEDED",
+  5: "NOT_FOUND",
+  6: "ALREADY_EXISTS",
+  7: "PERMISSION_DENIED",
+  8: "RESOURCE_EXHAUSTED",
+  9: "FAILED_PRECONDITION",
+  10: "ABORTED",
+  11: "OUT_OF_RANGE",
+  12: "UNIMPLEMENTED",
+  13: "INTERNAL",
+  14: "UNAVAILABLE",
+  15: "DATA_LOSS",
+  16: "UNAUTHENTICATED",
+};
+
+const getGrpcStatusChipColor = (code: number): "success" | "error" | "warning" | "default" => {
+  if (code === 0) {
+    return "success";
+  }
+
+  if ([1, 2, 7, 13, 15, 16].includes(code)) {
+    return "error";
+  }
+
+  if ([3, 4, 5, 6, 8, 9, 10, 11, 14].includes(code)) {
+    return "warning";
+  }
+
+  return "default";
+};
+
+const normalizeValue = (value: unknown): string =>
+  typeof value === "string" ? value.trim() : "";
+
+const sameRoute = (left: StubRecord, right: StubRecord): boolean =>
+  normalizeValue(left.service) === normalizeValue(right.service) &&
+  normalizeValue(left.method) === normalizeValue(right.method) &&
+  normalizeValue((left as StubRecord & { session?: unknown }).session) ===
+    normalizeValue((right as StubRecord & { session?: unknown }).session);
 
 const buildGroupedTree = (records: StubRecord[]): ServiceGroup[] => {
   const serviceMap = new Map<string, Map<string, StubRecord[]>>();
@@ -99,19 +174,30 @@ const densitySx = (gridSize: "small" | "medium") =>
 const StubNode = ({
   stub,
   gridSize,
-  allowDelete,
   allowClone,
+  isUpdating,
+  onToggleEnabled,
 }: {
   stub: StubRecord;
   gridSize: "small" | "medium";
-  allowDelete?: boolean;
   allowClone?: boolean;
+  isUpdating?: boolean;
+  onToggleEnabled: (stub: StubRecord, nextEnabled: boolean) => Promise<void>;
 }) => {
   const d = densitySx(gridSize);
-  const notify = useNotify();
-  const refresh = useRefresh();
-  const [updateOne, { isPending: isUpdating }] = useUpdate();
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isStubHovered, setIsStubHovered] = useState(false);
   const [isStatusHovered, setIsStatusHovered] = useState(false);
+  const grpcStatusCode = typeof stub.output?.code === "number" ? stub.output.code : 0;
+  const grpcStatusName = GRPC_STATUS_LABELS[grpcStatusCode] || "UNKNOWN_STATUS";
+  const grpcStatusColor = getGrpcStatusChipColor(grpcStatusCode);
+  const showGrpcStatusDescription = isExpanded || isStubHovered;
+  const showRowActions = isExpanded || isStubHovered;
+  const actionCount = 1 + (allowClone ? 1 : 0);
+  const actionButtonWidthPx = 32;
+  const actionGapPx = 4;
+  const actionsSlotWidthPx =
+    actionCount * actionButtonWidthPx + Math.max(0, actionCount - 1) * actionGapPx;
   const isDisabled = stub.enabled === false;
   const nextEnabled = isDisabled;
   const statusLabel = isDisabled ? "Disabled" : "Enabled";
@@ -119,6 +205,7 @@ const StubNode = ({
   const statusActionColor = isDisabled ? "success" : "error";
   const statusSlotWidth = 92;
   const statusSlotHeight = 22;
+  const stubNameFontSize = d.text * 1.3;
   const statusControlSx = {
     width: "100%",
     height: "100%",
@@ -138,23 +225,15 @@ const StubNode = ({
       return;
     }
 
-    try {
-      await updateOne("stubs", {
-        id: stub.id,
-        data: { ...stub, enabled: nextEnabled },
-        previousData: stub,
-      });
-      notify(nextEnabled ? "Stub enabled" : "Stub disabled", { type: "success" });
-      refresh();
-    } catch (error) {
-      notify((error as Error).message, { type: "error" });
-    }
+    await onToggleEnabled(stub, nextEnabled);
   };
 
   return (
     <Accordion
       disableGutters
       elevation={0}
+      expanded={isExpanded}
+      onChange={(_, expanded) => setIsExpanded(expanded)}
       sx={{
         bgcolor: "transparent",
         borderRadius: 0,
@@ -162,7 +241,9 @@ const StubNode = ({
       }}
     >
       <AccordionSummary
-        expandIcon={<ExpandMoreIcon fontSize="small" />}
+        expandIcon={<KeyboardArrowDownIcon sx={THIN_CHEVRON_SX} />}
+        onMouseEnter={() => setIsStubHovered(true)}
+        onMouseLeave={() => setIsStubHovered(false)}
         sx={{
           px: d.stubPx,
           pl: 0,
@@ -252,7 +333,14 @@ const StubNode = ({
                 }}
               />
             </Box>
-            <Typography sx={{ fontWeight: 600, fontSize: d.text, lineHeight: 1.2 }}>
+            <Typography
+              sx={{
+                fontWeight: 600,
+                fontSize: stubNameFontSize,
+                lineHeight: 1.15,
+                color: isExpanded ? "#FF6C37" : "text.primary",
+              }}
+            >
               {stub.name?.trim() || "(unnamed stub)"}
             </Typography>
             {typeof stub.options?.times === "number" ? (
@@ -270,19 +358,64 @@ const StubNode = ({
               alignItems: "center",
               minHeight: LIST_ROW_HEIGHT_PX,
               flexShrink: 0,
-              gap: 1,
+              gap: 0,
             }}
           >
-            <OutputKindChip record={stub} />
+            <Box sx={{ mr: 1 }}>
+              <OutputKindChip record={stub} />
+            </Box>
             <Chip
               size="small"
               variant="outlined"
-              label={`code: ${typeof stub.output?.code === "number" ? stub.output.code : 0}`}
-              sx={{ borderRadius: RADIUS_PX }}
+              color={grpcStatusColor}
+              label={
+                <Box
+                  component="span"
+                  sx={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    minWidth: 0,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <Box component="span">{grpcStatusCode}</Box>
+                  <Box
+                    component="span"
+                    sx={{
+                      maxWidth: showGrpcStatusDescription ? 200 : 0,
+                      opacity: showGrpcStatusDescription ? 1 : 0,
+                      ml: showGrpcStatusDescription ? 0.5 : 0,
+                      overflow: "hidden",
+                      whiteSpace: "nowrap",
+                      transition:
+                        "max-width 180ms ease, opacity 180ms ease, margin-left 180ms ease",
+                    }}
+                  >
+                    - {grpcStatusName}
+                  </Box>
+                </Box>
+              }
+              sx={{
+                ...META_CHIP_SX,
+                mr: showRowActions ? 0.75 : 0,
+              }}
             />
-            <RecordContextProvider value={stub}>
-              <RowActionsField allowDelete={allowDelete} allowClone={allowClone} />
-            </RecordContextProvider>
+            <Box
+              sx={{
+                width: showRowActions ? `${actionsSlotWidthPx}px` : 0,
+                opacity: showRowActions ? 1 : 0,
+                pointerEvents: showRowActions ? "auto" : "none",
+                overflow: "hidden",
+                transform: showRowActions ? "translateX(0)" : "translateX(8px)",
+                transition: "width 220ms ease, opacity 180ms ease, transform 220ms ease",
+              }}
+            >
+              <Box sx={{ width: `${actionsSlotWidthPx}px`, display: "flex", justifyContent: "flex-end" }}>
+                <RecordContextProvider value={stub}>
+                  <RowActionsField allowClone={allowClone} />
+                </RecordContextProvider>
+              </Box>
+            </Box>
           </Box>
         </Box>
       </AccordionSummary>
@@ -299,20 +432,88 @@ const StubNode = ({
 
 export const StubsDatagrid = ({
   gridSize,
-  allowDelete,
   allowClone,
 }: {
   gridSize: "small" | "medium";
-  allowDelete?: boolean;
   allowClone?: boolean;
 }) => {
   const { data, isPending } = useListContext<StubRecord>();
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const [updateOne] = useUpdate();
   const d = densitySx(gridSize);
   const [selectedServiceName, setSelectedServiceName] = useState<string>("");
   const [selectedMethodName, setSelectedMethodName] = useState<string>("");
+  const [isStubsExpanded, setIsStubsExpanded] = useState(false);
+  const [optimisticEnabledByID, setOptimisticEnabledByID] = useState<Record<string, boolean>>({});
+  const [updatingByID, setUpdatingByID] = useState<Record<string, boolean>>({});
 
   const records = data || [];
-  const grouped = buildGroupedTree(records);
+  const optimisticRecords = records.map((record) => {
+    const optimisticEnabled = optimisticEnabledByID[record.id];
+    if (typeof optimisticEnabled !== "boolean") {
+      return record;
+    }
+
+    return { ...record, enabled: optimisticEnabled };
+  });
+  const grouped = buildGroupedTree(optimisticRecords);
+
+  useEffect(() => {
+    setOptimisticEnabledByID((current) => {
+      const byID = new Map(records.map((item) => [item.id, item.enabled !== false]));
+      let changed = false;
+      const next: Record<string, boolean> = {};
+
+      Object.entries(current).forEach(([id, enabled]) => {
+        const actualEnabled = byID.get(id);
+        if (typeof actualEnabled !== "boolean" || actualEnabled === enabled) {
+          changed = true;
+          return;
+        }
+        next[id] = enabled;
+      });
+
+      return changed ? next : current;
+    });
+  }, [records]);
+
+  const handleToggleEnabled = async (stub: StubRecord, nextEnabled: boolean) => {
+    let rollbackState: Record<string, boolean> = {};
+    setOptimisticEnabledByID((current) => {
+      rollbackState = current;
+      const nextState = { ...current, [stub.id]: nextEnabled };
+      if (nextEnabled) {
+        records.forEach((candidate) => {
+          if (candidate.id !== stub.id && sameRoute(candidate, stub)) {
+            nextState[candidate.id] = false;
+          }
+        });
+      }
+
+      return nextState;
+    });
+    setUpdatingByID((current) => ({ ...current, [stub.id]: true }));
+
+    try {
+      await updateOne("stubs", {
+        id: stub.id,
+        data: { ...stub, enabled: nextEnabled },
+        previousData: stub,
+      });
+      notify(nextEnabled ? "Stub enabled" : "Stub disabled", { type: "success" });
+      refresh();
+    } catch (error) {
+      setOptimisticEnabledByID(rollbackState);
+      notify((error as Error).message, { type: "error" });
+    } finally {
+      setUpdatingByID((current) => {
+        const nextState = { ...current };
+        delete nextState[stub.id];
+        return nextState;
+      });
+    }
+  };
 
   useEffect(() => {
     if (grouped.length === 0) {
@@ -370,10 +571,14 @@ export const StubsDatagrid = ({
     <Box
       sx={{
         display: "grid",
-        gridTemplateColumns: "minmax(210px, 0.85fr) minmax(230px, 1fr) minmax(520px, 2fr)",
+        gridTemplateColumns: isStubsExpanded
+          ? "minmax(0, 0fr) minmax(0, 0fr) minmax(0, 1fr)"
+          : "minmax(0, 0.85fr) minmax(0, 1fr) minmax(0, 2fr)",
         gap: 0,
-        height: "calc(100vh - 180px)",
+        height: "100%",
+        flex: 1,
         minHeight: 0,
+        transition: "grid-template-columns 320ms cubic-bezier(0.22, 1, 0.36, 1)",
       }}
     >
       <Box
@@ -387,9 +592,25 @@ export const StubsDatagrid = ({
           minHeight: 0,
           display: "flex",
           flexDirection: "column",
+          minWidth: 0,
+          opacity: isStubsExpanded ? 0 : 1,
+          pointerEvents: isStubsExpanded ? "none" : "auto",
+          borderColor: isStubsExpanded ? "transparent" : "divider",
+          transition: "opacity 180ms ease, border-color 180ms ease",
+          willChange: "opacity",
         }}
       >
-        <Box sx={{ px: 1.25, py: 0.75, borderBottom: "1px solid", borderColor: "divider" }}>
+        <Box
+          sx={{
+            px: 1.25,
+            py: 0.75,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            height: COLUMN_HEADER_HEIGHT_PX,
+            display: "flex",
+            alignItems: "center",
+          }}
+        >
           <Typography sx={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.2, textTransform: "uppercase" }}>
             Services
           </Typography>
@@ -415,15 +636,23 @@ export const StubsDatagrid = ({
                   borderRadius: RADIUS_PX,
                   cursor: "pointer",
                   border: "1px solid",
-                  borderColor: isSelected ? "primary.main" : "transparent",
-                  bgcolor: isSelected ? "action.selected" : "transparent",
+                  borderColor: "transparent",
+                  bgcolor: "transparent",
                   "&:hover": {
-                    bgcolor: isSelected ? "action.selected" : "action.hover",
+                    bgcolor: "action.hover",
                   },
                 }}
               >
                 <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
-                  <Typography sx={{ fontWeight: 600, fontSize: d.text, lineHeight: 1.2 }} noWrap>
+                  <Typography
+                    sx={{
+                      fontWeight: 600,
+                      fontSize: d.text,
+                      lineHeight: 1.2,
+                      color: isSelected ? "#FF6C37" : "text.primary",
+                    }}
+                    noWrap
+                  >
                     {serviceGroup.name}
                   </Typography>
                   <Typography
@@ -450,9 +679,25 @@ export const StubsDatagrid = ({
           minHeight: 0,
           display: "flex",
           flexDirection: "column",
+          minWidth: 0,
+          opacity: isStubsExpanded ? 0 : 1,
+          pointerEvents: isStubsExpanded ? "none" : "auto",
+          borderColor: isStubsExpanded ? "transparent" : "divider",
+          transition: "opacity 180ms ease, border-color 180ms ease",
+          willChange: "opacity",
         }}
       >
-        <Box sx={{ px: 1.25, py: 0.75, borderBottom: "1px solid", borderColor: "divider" }}>
+        <Box
+          sx={{
+            px: 1.25,
+            py: 0.75,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            height: COLUMN_HEADER_HEIGHT_PX,
+            display: "flex",
+            alignItems: "center",
+          }}
+        >
           <Typography sx={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.2, textTransform: "uppercase" }}>
             Methods
           </Typography>
@@ -473,15 +718,23 @@ export const StubsDatagrid = ({
                   borderRadius: RADIUS_PX,
                   cursor: "pointer",
                   border: "1px solid",
-                  borderColor: isSelected ? "primary.main" : "transparent",
-                  bgcolor: isSelected ? "action.selected" : "transparent",
+                  borderColor: "transparent",
+                  bgcolor: "transparent",
                   "&:hover": {
-                    bgcolor: isSelected ? "action.selected" : "action.hover",
+                    bgcolor: "action.hover",
                   },
                 }}
               >
                 <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
-                  <Typography sx={{ fontWeight: 600, fontSize: d.text, lineHeight: 1.2 }} noWrap>
+                  <Typography
+                    sx={{
+                      fontWeight: 600,
+                      fontSize: d.text,
+                      lineHeight: 1.2,
+                      color: isSelected ? "#FF6C37" : "text.primary",
+                    }}
+                    noWrap
+                  >
                     {methodGroup.name}
                   </Typography>
                   <Typography
@@ -515,10 +768,38 @@ export const StubsDatagrid = ({
           flexDirection: "column",
         }}
       >
-        <Box sx={{ px: 1.25, py: 0.75, borderBottom: "1px solid", borderColor: "divider" }}>
-          <Typography sx={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.2, textTransform: "uppercase" }}>
-            Stubs
+        <Box
+          sx={{
+            px: 1.25,
+            py: 0.75,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            height: COLUMN_HEADER_HEIGHT_PX,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 1,
+          }}
+        >
+          <Typography sx={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.2 }}>
+            {isStubsExpanded
+              ? `${selectedService?.name || "(no service)"} - ${selectedMethod?.name || "(no method)"} - STUBS`
+              : "STUBS"}
           </Typography>
+          <Tooltip title={isStubsExpanded ? "Show Services and Methods" : "Expand STUBS"}>
+            <IconButton
+              size="small"
+              aria-label={isStubsExpanded ? "Collapse STUBS panel" : "Expand STUBS panel"}
+              onClick={() => setIsStubsExpanded((current) => !current)}
+              sx={{
+                ...ICON_BUTTON_ACCENT_SX,
+                transform: isStubsExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 220ms ease",
+              }}
+            >
+              {isStubsExpanded ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
+            </IconButton>
+          </Tooltip>
         </Box>
         <Box sx={{ display: "flex", flexDirection: "column", p: 0.35, gap: 0.2, minHeight: 0, overflow: "auto" }}>
           {stubs.map((stub) => (
@@ -526,8 +807,9 @@ export const StubsDatagrid = ({
               key={stub.id}
               stub={stub}
               gridSize={gridSize}
-              allowDelete={allowDelete}
               allowClone={allowClone}
+              isUpdating={Boolean(updatingByID[stub.id])}
+              onToggleEnabled={handleToggleEnabled}
             />
           ))}
           {stubs.length === 0 ? (
