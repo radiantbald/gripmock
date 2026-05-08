@@ -17,8 +17,8 @@ func (s *mockableHealthServer) findStub(ctx context.Context, method, service str
 
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
 		query.Headers = processHeaders(md)
-		query.Session = sessionFromMetadata(md)
 	}
+	query.Session = sessionFromContext(ctx)
 
 	result, err := s.storage.FindByQuery(query)
 	if err != nil || result == nil || result.Found() == nil {

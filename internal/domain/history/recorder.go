@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,6 +14,9 @@ import (
 
 // CallRecord represents a single gRPC call made to the mock.
 type CallRecord struct {
+	CallID    string           `json:"callId,omitempty"`    // Stable call identifier for UI/sniffer.
+	Transport string           `json:"transport,omitempty"` // Call source: mock/proxy.
+	Client    string           `json:"client,omitempty"`    // Client identifier (e.g. gRPC user-agent).
 	StubID    uuid.UUID        `json:"stubId,omitempty"`
 	Service   string           `json:"service,omitempty"`
 	Method    string           `json:"method,omitempty"`
@@ -21,9 +25,11 @@ type CallRecord struct {
 	Requests  []map[string]any `json:"requests,omitempty"`  // For streaming calls with multiple messages.
 	Response  map[string]any   `json:"response,omitempty"`  // Deprecated: use Responses.
 	Responses []map[string]any `json:"responses,omitempty"` // For streaming calls with multiple messages.
-	Code      uint32           `json:"code,omitempty"`      // gRPC status code (e.g., codes.OK, codes.NotFound).
-	Error     string           `json:"error,omitempty"`
-	Timestamp time.Time        `json:"timestamp"`
+	// ResponseTimestamps contains per-response send time in server clock order.
+	ResponseTimestamps []time.Time `json:"responseTimestamps,omitempty"`
+	Code               uint32      `json:"code,omitempty"` // gRPC status code (e.g., codes.OK, codes.NotFound).
+	Error              string      `json:"error,omitempty"`
+	Timestamp          time.Time   `json:"timestamp"`
 }
 
 // Recorder records gRPC calls for inspection and verification.
@@ -48,6 +54,11 @@ type Reader interface {
 	FilterByMethod(service, method string) []CallRecord
 }
 
+// Subscriber provides a stream of newly recorded calls.
+type Subscriber interface {
+	Subscribe(buffer int) (<-chan CallRecord, func())
+}
+
 // SessionCleaner removes records for a specific session.
 type SessionCleaner interface {
 	DeleteSession(session string) int
@@ -62,6 +73,8 @@ type MemoryStore struct {
 	messageMaxBytes int64
 	redactKeys      map[string]struct{} // lowercased keys to redact
 	currentBytes    int64
+	subscribers     map[uint64]chan CallRecord
+	nextSubscriber  atomic.Uint64
 }
 
 // MemoryStoreOption configures MemoryStore.
@@ -92,7 +105,10 @@ func WithRedactKeys(keys []string) MemoryStoreOption {
 // NewMemoryStore creates a store with optional byte limit.
 // limitBytes <= 0 means unlimited.
 func NewMemoryStore(limitBytes int64, opts ...MemoryStoreOption) *MemoryStore {
-	s := &MemoryStore{limitBytes: limitBytes}
+	s := &MemoryStore{
+		limitBytes:  limitBytes,
+		subscribers: make(map[uint64]chan CallRecord),
+	}
 
 	for _, opt := range opts {
 		opt(s)
@@ -103,6 +119,18 @@ func NewMemoryStore(limitBytes int64, opts ...MemoryStoreOption) *MemoryStore {
 
 // Record implements Recorder.
 func (s *MemoryStore) Record(call CallRecord) {
+	if call.CallID == "" {
+		call.CallID = uuid.NewString()
+	}
+
+	if call.Timestamp.IsZero() {
+		call.Timestamp = time.Now()
+	}
+
+	if call.Transport == "" {
+		call.Transport = "mock"
+	}
+
 	if len(s.redactKeys) > 0 {
 		call = redactRecord(call, s.redactKeys)
 	}
@@ -112,17 +140,21 @@ func (s *MemoryStore) Record(call CallRecord) {
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	sz := estimateRecordSize(call)
 	s.calls = append(s.calls, call)
 	s.currentBytes += sz
 
-	for s.limitBytes > 0 && s.currentBytes > s.limitBytes && len(s.calls) > 0 {
+	for s.limitBytes > 0 && s.currentBytes > s.limitBytes && len(s.calls) > 1 {
 		evicted := s.calls[0]
 		s.calls = s.calls[1:]
 		s.currentBytes -= estimateRecordSize(evicted)
 	}
+
+	subscribers := s.snapshotSubscribersLocked()
+	s.mu.Unlock()
+
+	notifySubscribers(subscribers, call)
 }
 
 const fallbackRecordSize = 1024
@@ -137,11 +169,28 @@ func redactRecord(c CallRecord, keys map[string]struct{}) CallRecord {
 		c.Request = redactMap(c.Request, keys)
 	}
 
+	if len(c.Requests) > 0 {
+		c.Requests = redactMessages(c.Requests, keys)
+	}
+
 	if c.Response != nil {
 		c.Response = redactMap(c.Response, keys)
 	}
 
+	if len(c.Responses) > 0 {
+		c.Responses = redactMessages(c.Responses, keys)
+	}
+
 	return c
+}
+
+func redactMessages(messages []map[string]any, keys map[string]struct{}) []map[string]any {
+	out := make([]map[string]any, 0, len(messages))
+	for _, message := range messages {
+		out = append(out, redactMap(message, keys))
+	}
+
+	return out
 }
 
 func redactMap(m map[string]any, keys map[string]struct{}) map[string]any {
@@ -217,13 +266,35 @@ func truncateRecord(c CallRecord, maxBytes int64) CallRecord {
 		}
 	}
 
+	if len(c.Requests) > 0 {
+		c.Requests = truncateMessages(c.Requests, maxBytes)
+	}
+
 	if c.Response != nil {
 		if b, err := json.Marshal(c.Response); err == nil && int64(len(b)) > maxBytes {
 			c.Response = truncatedMarker
 		}
 	}
 
+	if len(c.Responses) > 0 {
+		c.Responses = truncateMessages(c.Responses, maxBytes)
+	}
+
 	return c
+}
+
+func truncateMessages(messages []map[string]any, maxBytes int64) []map[string]any {
+	out := make([]map[string]any, 0, len(messages))
+	for _, message := range messages {
+		if b, err := json.Marshal(message); err == nil && int64(len(b)) > maxBytes {
+			out = append(out, truncatedMarker)
+			continue
+		}
+
+		out = append(out, message)
+	}
+
+	return out
 }
 
 func estimateRecordSize(c CallRecord) int64 {
@@ -315,4 +386,62 @@ func (s *MemoryStore) DeleteSession(session string) int {
 	s.currentBytes = bytesAfter
 
 	return deleted
+}
+
+func (s *MemoryStore) Subscribe(buffer int) (<-chan CallRecord, func()) {
+	if buffer <= 0 {
+		buffer = 1
+	}
+
+	ch := make(chan CallRecord, buffer)
+	id := s.nextSubscriber.Add(1)
+
+	s.mu.Lock()
+	s.subscribers[id] = ch
+	s.mu.Unlock()
+
+	unsubscribe := func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+
+		existing, ok := s.subscribers[id]
+		if !ok {
+			return
+		}
+
+		delete(s.subscribers, id)
+		close(existing)
+	}
+
+	return ch, unsubscribe
+}
+
+func (s *MemoryStore) snapshotSubscribersLocked() []chan CallRecord {
+	if len(s.subscribers) == 0 {
+		return nil
+	}
+
+	out := make([]chan CallRecord, 0, len(s.subscribers))
+	for _, subscriber := range s.subscribers {
+		out = append(out, subscriber)
+	}
+
+	return out
+}
+
+func notifySubscribers(subscribers []chan CallRecord, call CallRecord) {
+	for _, subscriber := range subscribers {
+		safePublish(subscriber, call)
+	}
+}
+
+func safePublish(ch chan CallRecord, call CallRecord) {
+	defer func() {
+		_ = recover()
+	}()
+
+	select {
+	case ch <- call:
+	default:
+	}
 }

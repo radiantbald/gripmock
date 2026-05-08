@@ -2,6 +2,7 @@ package history_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -42,4 +43,37 @@ func TestMemoryStoreDeleteSessionEmptySessionNop(t *testing.T) {
 	// Assert
 	require.Equal(t, 0, deleted)
 	require.Len(t, store.All(), 1)
+}
+
+func TestMemoryStoreRecordSetsDefaults(t *testing.T) {
+	t.Parallel()
+
+	store := history.NewMemoryStore(0)
+	store.Record(history.CallRecord{Service: "svc", Method: "M"})
+
+	records := store.All()
+	require.Len(t, records, 1)
+	require.NotEmpty(t, records[0].CallID)
+	require.Equal(t, "mock", records[0].Transport)
+	require.False(t, records[0].Timestamp.IsZero())
+}
+
+func TestMemoryStoreSubscribeReceivesEvents(t *testing.T) {
+	t.Parallel()
+
+	store := history.NewMemoryStore(0)
+	events, unsubscribe := store.Subscribe(1)
+	defer unsubscribe()
+
+	store.Record(history.CallRecord{Service: "svc", Method: "M"})
+
+	select {
+	case event := <-events:
+		require.Equal(t, "svc", event.Service)
+		require.Equal(t, "M", event.Method)
+		require.Equal(t, "mock", event.Transport)
+		require.NotEmpty(t, event.CallID)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("expected history event")
+	}
 }

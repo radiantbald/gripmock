@@ -28,11 +28,7 @@ func (m *grpcMocker) proxyRoute() *proxyroutes.Route {
 }
 
 func (m *grpcMocker) sessionFromContext(ctx context.Context) string {
-	if md, ok := metadata.FromIncomingContext(ctx); ok {
-		return sessionFromMetadata(md)
-	}
-
-	return ""
+	return sessionFromContext(ctx)
 }
 
 func (m *grpcMocker) newCaptureRequestContext(ctx context.Context) captureRequestContext {

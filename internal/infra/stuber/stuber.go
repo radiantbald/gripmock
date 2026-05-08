@@ -147,7 +147,7 @@ func (b *Budgerigar) ensureSingleEnabledByRoute(values ...*Stub) []*Stub {
 			continue
 		}
 
-		key := routeKey(stub.Service, stub.Method)
+		key := routeKey(stub.Service, stub.Method, stub.Session)
 		if previous, ok := latestEnabled[key]; ok && previous.ID != stub.ID {
 			previous.SetEnabled(false)
 			changed = append(changed, previous)
@@ -165,7 +165,7 @@ func (b *Budgerigar) ensureSingleEnabledByRoute(values ...*Stub) []*Stub {
 			continue
 		}
 
-		candidate, ok := latestEnabled[routeKey(existing.Service, existing.Method)]
+		candidate, ok := latestEnabled[routeKey(existing.Service, existing.Method, existing.Session)]
 		if !ok || candidate.ID == existing.ID {
 			continue
 		}
@@ -177,15 +177,18 @@ func (b *Budgerigar) ensureSingleEnabledByRoute(values ...*Stub) []*Stub {
 	return changed
 }
 
-func routeKey(service, method string) string {
+func routeKey(service, method, session string) string {
 	service = strings.TrimSpace(service)
 	method = strings.TrimSpace(method)
+	session = strings.TrimSpace(session)
 
 	var builder strings.Builder
-	builder.Grow(len(service) + len(method) + 1)
+	builder.Grow(len(service) + len(method) + len(session) + 2)
 	builder.WriteString(service)
 	builder.WriteString("/")
 	builder.WriteString(method)
+	builder.WriteString("/")
+	builder.WriteString(session)
 
 	return builder.String()
 }

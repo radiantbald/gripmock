@@ -10,6 +10,7 @@ import HistoryIcon from "@mui/icons-material/History";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
 import BugReportIcon from "@mui/icons-material/BugReport";
 import HubIcon from "@mui/icons-material/Hub";
+import TravelExploreIcon from "@mui/icons-material/TravelExplore";
 
 import dataProvider from "./gripmock";
 import { CustomLayout } from "./components/Layout/CustomLayout";
@@ -94,6 +95,12 @@ const SessionScopePage = wrapLazy(
     return { default: module.SessionScopePage };
   }),
 );
+const SnifferPage = wrapLazy(
+  lazy(async () => {
+    const module = await import("./sniffer");
+    return { default: module.SnifferPage };
+  }),
+);
 const VerifyPage = wrapLazy(
   lazy(async () => {
     const module = await import("./verify");
@@ -135,6 +142,12 @@ export const App = () => {
       layout={CustomLayout}
       theme={customDarkTheme}
     >
+      <Resource
+        icon={TravelExploreIcon}
+        name="sniffer"
+        list={SnifferPage}
+        options={{ label: "Sniffer" }}
+      />
       <Resource
         icon={HubIcon}
         name="session"

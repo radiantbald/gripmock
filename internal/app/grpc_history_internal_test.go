@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/dynamicpb"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -268,4 +269,90 @@ func TestHistoryServerStreamWithError(t *testing.T) {
 	recorder, ok := mocker.recorder.(*history.MemoryStore)
 	require.True(t, ok, testRecorderShouldBeMemoryStore)
 	require.Equal(t, 0, recorder.Count())
+}
+
+func TestHistoryServerStreamStubMissRecorded(t *testing.T) {
+	t.Parallel()
+
+	mocker := createTestMockerWithRecorder(t)
+	mocker.fullMethod = testServiceName + "/" + testMethodName
+	mocker.fullServiceName = testServiceName
+	mocker.serviceName = testServiceName
+	mocker.methodName = testMethodName
+
+	inputMsg := dynamicpb.NewMessage(mocker.inputDesc)
+	stream := &mockFullServerStream{
+		ctx:              t.Context(),
+		sentMessages:     make([]*dynamicpb.Message, 0),
+		receivedMessages: []*dynamicpb.Message{inputMsg},
+		recvMsgLimit:     1,
+	}
+
+	err := mocker.handleServerStream(stream)
+	require.Error(t, err)
+
+	recorder, ok := mocker.recorder.(*history.MemoryStore)
+	require.True(t, ok, testRecorderShouldBeMemoryStore)
+	require.Equal(t, 1, recorder.Count())
+
+	calls := recorder.Filter(history.FilterOpts{})
+	require.Len(t, calls, 1)
+	require.Equal(t, uint32(codes.NotFound), calls[0].Code)
+	require.NotEmpty(t, calls[0].Error)
+	require.Len(t, calls[0].Requests, 1)
+}
+
+func TestHistoryUnaryStubMissRecorded(t *testing.T) {
+	t.Parallel()
+
+	mocker := createTestMockerWithRecorder(t)
+	mocker.fullMethod = testServiceName + "/" + testMethodName
+	mocker.fullServiceName = testServiceName
+	mocker.serviceName = testServiceName
+	mocker.methodName = testMethodName
+
+	req := dynamicpb.NewMessage(mocker.inputDesc)
+	_, err := mocker.handleUnary(t.Context(), req)
+	require.Error(t, err)
+
+	recorder, ok := mocker.recorder.(*history.MemoryStore)
+	require.True(t, ok, testRecorderShouldBeMemoryStore)
+	require.Equal(t, 1, recorder.Count())
+
+	calls := recorder.Filter(history.FilterOpts{})
+	require.Len(t, calls, 1)
+	require.Equal(t, uint32(codes.NotFound), calls[0].Code)
+	require.NotEmpty(t, calls[0].Error)
+	require.Len(t, calls[0].Requests, 1)
+}
+
+func TestHistoryClientStreamStubMissRecorded(t *testing.T) {
+	t.Parallel()
+
+	mocker := createTestMockerWithRecorder(t)
+	mocker.fullMethod = testServiceName + "/" + testMethodName
+	mocker.fullServiceName = testServiceName
+	mocker.serviceName = testServiceName
+	mocker.methodName = testMethodName
+
+	inputMsg := dynamicpb.NewMessage(mocker.inputDesc)
+	stream := &mockFullServerStream{
+		ctx:              t.Context(),
+		sentMessages:     make([]*dynamicpb.Message, 0),
+		receivedMessages: []*dynamicpb.Message{inputMsg},
+		recvMsgLimit:     1,
+	}
+
+	err := mocker.handleClientStream(stream)
+	require.Error(t, err)
+
+	recorder, ok := mocker.recorder.(*history.MemoryStore)
+	require.True(t, ok, testRecorderShouldBeMemoryStore)
+	require.Equal(t, 1, recorder.Count())
+
+	calls := recorder.Filter(history.FilterOpts{})
+	require.Len(t, calls, 1)
+	require.Equal(t, uint32(codes.NotFound), calls[0].Code)
+	require.NotEmpty(t, calls[0].Error)
+	require.Len(t, calls[0].Requests, 1)
 }

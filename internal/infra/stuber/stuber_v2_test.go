@@ -104,6 +104,41 @@ func TestPutManySingleEnabledPerRouteTrimmedV2(t *testing.T) {
 	require.True(t, s.FindByID(second.ID).IsEnabled())
 }
 
+func TestPutManySingleEnabledPerRoutePerSessionV2(t *testing.T) {
+	t.Parallel()
+
+	s := stuber.NewBudgerigar()
+	enabled := true
+
+	oneA := &stuber.Stub{
+		ID:      uuid.New(),
+		Service: "Calculator",
+		Method:  "MultiplyByFive",
+		Session: "A",
+		Enabled: &enabled,
+	}
+	twoA := &stuber.Stub{
+		ID:      uuid.New(),
+		Service: "Calculator ",
+		Method:  "MultiplyByFive ",
+		Session: "A",
+		Enabled: &enabled,
+	}
+	oneB := &stuber.Stub{
+		ID:      uuid.New(),
+		Service: "Calculator",
+		Method:  "MultiplyByFive",
+		Session: "B",
+		Enabled: &enabled,
+	}
+
+	s.PutMany(oneA, twoA, oneB)
+
+	require.False(t, s.FindByID(oneA.ID).IsEnabled(), "previous stub in session A must be disabled")
+	require.True(t, s.FindByID(twoA.ID).IsEnabled(), "latest stub in session A must remain enabled")
+	require.True(t, s.FindByID(oneB.ID).IsEnabled(), "session B stub must remain enabled")
+}
+
 func TestRelationshipV2(t *testing.T) {
 	t.Parallel()
 

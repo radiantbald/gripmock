@@ -69,3 +69,35 @@ func TestTrackerCanDeleteOnlyByOwner(t *testing.T) {
 	require.False(t, canDeleteByOther)
 	require.False(t, canDeleteWithoutOwner)
 }
+
+func TestTrackerAssignClientAndResolveSession(t *testing.T) {
+	t.Parallel()
+
+	// Arrange
+	tracker := session.NewTracker()
+
+	// Act
+	ok := tracker.AssignClient("172.21.0.4", "A")
+	mapped := tracker.SessionByClient("172.21.0.4")
+
+	// Assert
+	require.True(t, ok)
+	require.Equal(t, "A", mapped)
+}
+
+func TestTrackerForgetSessionRemovesClientRoutes(t *testing.T) {
+	t.Parallel()
+
+	// Arrange
+	tracker := session.NewTracker()
+	now := time.Now()
+	tracker.Touch("A", now)
+	tracker.AssignClient("172.21.0.4", "A")
+
+	// Act
+	tracker.Forget("A")
+	mapped := tracker.SessionByClient("172.21.0.4")
+
+	// Assert
+	require.Empty(t, mapped)
+}

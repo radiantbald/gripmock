@@ -14,6 +14,7 @@ type Tracker struct {
 	lastSeen     map[string]time.Time
 	blockedUntil map[string]time.Time
 	owners       map[string]string
+	clientRoutes map[string]string
 }
 
 func NewTracker() *Tracker {
@@ -21,6 +22,7 @@ func NewTracker() *Tracker {
 		lastSeen:     make(map[string]time.Time),
 		blockedUntil: make(map[string]time.Time),
 		owners:       make(map[string]string),
+		clientRoutes: make(map[string]string),
 	}
 }
 
@@ -64,6 +66,11 @@ func (t *Tracker) Forget(sessionID string) {
 	t.mu.Lock()
 	delete(t.lastSeen, sessionID)
 	delete(t.owners, sessionID)
+	for clientID, mappedSessionID := range t.clientRoutes {
+		if mappedSessionID == sessionID {
+			delete(t.clientRoutes, clientID)
+		}
+	}
 	t.blockedUntil[sessionID] = time.Now().Add(deletedSessionKickWindow)
 	t.mu.Unlock()
 }
@@ -145,6 +152,33 @@ func (t *Tracker) Sessions() []string {
 	return sessions
 }
 
+func (t *Tracker) AssignClient(clientID string, sessionID string) bool {
+	clientID = strings.TrimSpace(clientID)
+	sessionID = strings.TrimSpace(sessionID)
+	if clientID == "" || sessionID == "" {
+		return false
+	}
+
+	t.mu.Lock()
+	t.clientRoutes[clientID] = sessionID
+	t.mu.Unlock()
+
+	return true
+}
+
+func (t *Tracker) SessionByClient(clientID string) string {
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		return ""
+	}
+
+	t.mu.RLock()
+	sessionID := strings.TrimSpace(t.clientRoutes[clientID])
+	t.mu.RUnlock()
+
+	return sessionID
+}
+
 //nolint:gochecknoglobals
 var defaultTracker = NewTracker()
 
@@ -174,6 +208,14 @@ func TouchWithOwner(sessionID string, ownerID string) {
 
 func CanDelete(sessionID string, ownerID string) bool {
 	return defaultTracker.CanDelete(sessionID, ownerID)
+}
+
+func AssignClient(clientID string, sessionID string) bool {
+	return defaultTracker.AssignClient(clientID, sessionID)
+}
+
+func SessionByClient(clientID string) string {
+	return defaultTracker.SessionByClient(clientID)
 }
 
 func trimOwner(ownerID string) string {

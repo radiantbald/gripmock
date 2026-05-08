@@ -58,6 +58,7 @@ func (m *grpcMocker) proxyServerStreamWithRequest(
 	}
 
 	responses := make([]map[string]any, 0, proxyMessagesInitCap)
+	responseTimestamps := make([]time.Time, 0, proxyMessagesInitCap)
 	captureCtx := m.newCaptureRequestContext(stream.Context())
 	requestData := convertToMap(req)
 	recordDelay := route.Source.RecordDelay
@@ -83,10 +84,13 @@ func (m *grpcMocker) proxyServerStreamWithRequest(
 				)
 			}
 
+			m.recordProxyCall(stream.Context(), startTime, []map[string]any{requestData}, responses, responseTimestamps, err)
+
 			return err
 		}
 
 		responses = append(responses, messageToMap(resp))
+		responseTimestamps = append(responseTimestamps, time.Now())
 
 		if err = stream.SendMsg(resp); err != nil {
 			return err
@@ -109,6 +113,8 @@ func (m *grpcMocker) proxyServerStreamWithRequest(
 			recordDelay, time.Since(startTime),
 		)
 	}
+
+	m.recordProxyCall(stream.Context(), startTime, []map[string]any{requestData}, responses, responseTimestamps, nil)
 
 	return nil
 }
@@ -161,11 +167,13 @@ func (m *grpcMocker) proxyClientStreamWithRequests(
 		requests = append(requests, convertToMap(req))
 
 		if err = clientStream.SendMsg(req); err != nil {
+			m.recordProxyCall(stream.Context(), startTime, requests, nil, nil, err)
 			return err
 		}
 	}
 
 	if err = clientStream.CloseSend(); err != nil {
+		m.recordProxyCall(stream.Context(), startTime, requests, nil, nil, err)
 		return err
 	}
 
@@ -190,6 +198,8 @@ func (m *grpcMocker) proxyClientStreamWithRequests(
 			)
 		}
 
+		m.recordProxyCall(stream.Context(), startTime, requests, nil, nil, err)
+
 		return err
 	}
 
@@ -198,6 +208,7 @@ func (m *grpcMocker) proxyClientStreamWithRequests(
 	}
 
 	if err = stream.SendMsg(resp); err != nil {
+		m.recordProxyCall(stream.Context(), startTime, requests, nil, nil, err)
 		return err
 	}
 
@@ -213,6 +224,15 @@ func (m *grpcMocker) proxyClientStreamWithRequests(
 			recordDelay, time.Since(startTime),
 		)
 	}
+
+	m.recordProxyCall(
+		stream.Context(),
+		startTime,
+		requests,
+		[]map[string]any{messageToMap(resp)},
+		[]time.Time{time.Now()},
+		nil,
+	)
 
 	return nil
 }
@@ -256,11 +276,13 @@ func (m *grpcMocker) proxyBidiStreamWithRequests(
 		stream.SetTrailer(trailer)
 	}
 
+	requests, responses, responseTimestamps := state.snapshot()
+	captureErr := sanitizeCapturedStreamError(selectCaptureError(firstErr, secondErr), len(responses) > 0)
 	if capture {
-		requests, responses := state.snapshot()
-
 		m.captureBidiResult(clientStream, captureCtx, requests, responses, firstErr, secondErr, route.Source.RecordDelay, time.Since(startTime))
 	}
+
+	m.recordProxyCall(stream.Context(), startTime, requests, responses, responseTimestamps, captureErr)
 
 	if firstErr != nil {
 		return firstErr
@@ -398,15 +420,17 @@ func sanitizeCapturedStreamError(err error, hasResponses bool) error {
 }
 
 type bidiCaptureState struct {
-	mu        sync.Mutex
-	requests  []map[string]any
-	responses []map[string]any
+	mu                 sync.Mutex
+	requests           []map[string]any
+	responses          []map[string]any
+	responseTimestamps []time.Time
 }
 
 func newBidiCaptureState() *bidiCaptureState {
 	return &bidiCaptureState{
-		requests:  make([]map[string]any, 0, proxyMessagesInitCap),
-		responses: make([]map[string]any, 0, proxyMessagesInitCap),
+		requests:           make([]map[string]any, 0, proxyMessagesInitCap),
+		responses:          make([]map[string]any, 0, proxyMessagesInitCap),
+		responseTimestamps: make([]time.Time, 0, proxyMessagesInitCap),
 	}
 }
 
@@ -422,14 +446,16 @@ func (s *bidiCaptureState) appendResponse(resp map[string]any) {
 	defer s.mu.Unlock()
 
 	s.responses = append(s.responses, resp)
+	s.responseTimestamps = append(s.responseTimestamps, time.Now())
 }
 
-func (s *bidiCaptureState) snapshot() ([]map[string]any, []map[string]any) {
+func (s *bidiCaptureState) snapshot() ([]map[string]any, []map[string]any, []time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	requests := append([]map[string]any(nil), s.requests...)
 	responses := append([]map[string]any(nil), s.responses...)
+	responseTimestamps := append([]time.Time(nil), s.responseTimestamps...)
 
-	return requests, responses
+	return requests, responses, responseTimestamps
 }

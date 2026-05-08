@@ -560,6 +560,38 @@ paths:
                 $ref: '#/components/schemas/HistoryList'
         '500':
           description: Internal Server Error
+  /history/stream:
+    get:
+      tags:
+        - history
+      summary: Stream call history
+      description: Streams recorded gRPC calls as Server-Sent Events (event type "call").
+      operationId: streamHistory
+      parameters:
+        - name: service
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: method
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: session
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: SSE stream established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '503':
+          description: History disabled or stream unavailable
   /verify:
     post:
       tags:
@@ -879,6 +911,15 @@ components:
     CallRecord:
       type: object
       properties:
+        callId:
+          type: string
+          description: Stable call identifier for sniffer/live UI.
+        transport:
+          type: string
+          description: Call source ("mock" or "proxy").
+        client:
+          type: string
+          description: Stable peer identifier derived from gRPC peer address (host/IP without ephemeral port).
         service:
           type: string
         method:
@@ -916,6 +957,12 @@ components:
           items:
             type: object
             additionalProperties: true
+        responseTimestamps:
+          type: array
+          description: Per-response server send timestamp (same order as responses)
+          items:
+            type: string
+            format: date-time
         code:
           type: integer
           description: gRPC status code (e.g., 0 for OK, 5 for NotFound)
@@ -1142,7 +1189,16 @@ components:
         sessions:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/Session'
+    Session:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+        name:
+          type: string
     DashboardInfo:
       type: object
       required:
@@ -1300,7 +1356,7 @@ components:
         priority:
           type: integer
           default: 0
-          description: Deprecated: kept for backward compatibility and ignored by matcher.
+          description: "Deprecated: kept for backward compatibility and ignored by matcher."
           x-go-type-skip-optional-pointer: true
         headers:
           $ref: '#/components/schemas/StubHeaders'

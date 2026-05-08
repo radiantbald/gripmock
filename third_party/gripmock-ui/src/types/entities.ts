@@ -48,13 +48,21 @@ export type ServiceRecord = {
 
 export type HistoryRecord = {
   id?: string;
+  callId?: string;
+  transport?: string;
+  client?: string;
   service?: string;
   method?: string;
   stubId?: string;
+  session?: string;
   timestamp?: string;
+  code?: number;
   error?: string;
   request?: unknown;
+  requests?: unknown[];
   response?: unknown;
+  responses?: unknown[];
+  responseTimestamps?: string[];
 };
 
 export type StubRecord = {

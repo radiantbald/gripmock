@@ -116,3 +116,20 @@ func TestRespWriterMultipleWrites(t *testing.T) {
 	require.Equal(t, len(data1)+len(data2), rw.bytesWritten)
 	require.Equal(t, "hello world", w.Body.String())
 }
+
+func TestRespWriterFlush(t *testing.T) {
+	t.Parallel()
+
+	w := httptest.NewRecorder()
+	rw := &responseWriter{
+		w:            w,
+		status:       http.StatusOK,
+		bytesWritten: 0,
+	}
+
+	_, ok := any(rw).(http.Flusher)
+	require.True(t, ok, "responseWriter should implement http.Flusher")
+
+	rw.Flush()
+	require.True(t, w.Flushed)
+}

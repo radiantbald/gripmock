@@ -206,7 +206,14 @@ const dataProvider: DataProvider = {
         throw new Error("Descriptor file is required");
       }
 
-      const data = asRow(await apiClient.requestBinary<Row>(`/${canonical}`, file));
+      const data = asRow(
+        await apiClient.requestBinary<Row>(`/${canonical}`, file, {
+          skipSessionHeader: true,
+          headers: {
+            "X-Gripmock-Descriptor-Filename": file.name,
+          },
+        }),
+      );
       const id = typeof data.time === "string" ? data.time : file.name;
       return { data: { id, ...data } } as RAResult<any>;
     }

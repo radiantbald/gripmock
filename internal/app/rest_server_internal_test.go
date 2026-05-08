@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/protobuf/proto"
 
@@ -405,6 +407,37 @@ func (s *RestServerTestSuite) TestAddDescriptors() {
 	}
 
 	s.Contains(ids, "helloworld.Greeter")
+}
+
+// TestAddDescriptorsFromProtoSource tests POST /api/descriptors with raw .proto content.
+func (s *RestServerTestSuite) TestAddDescriptorsFromProtoSource() {
+	body := []byte(`edition = "2023";
+package multiplier.v1;
+
+service MultiplierService {
+  rpc StreamMultiplyByFive (MultiplyRequest) returns (stream MultiplyResponse) {}
+}
+
+message MultiplyRequest {
+  int32 value = 1;
+}
+
+message MultiplyResponse {
+  int32 value = 1;
+}`)
+
+	w := s.addDescriptorsPayloadWithFilename(s.server, body, "multiplier.proto")
+	s.Equal(http.StatusOK, w.Code)
+
+	var addResp struct {
+		Message    string   `json:"message"`
+		ServiceIDs []string `json:"serviceIDs"`
+	}
+
+	err := json.Unmarshal(w.Body.Bytes(), &addResp)
+	s.Require().NoError(err)
+	s.Equal("ok", addResp.Message)
+	s.Contains(addResp.ServiceIDs, "multiplier.v1.MultiplierService")
 }
 
 // TestListDescriptors tests GET /api/descriptors.
@@ -1039,6 +1072,39 @@ func (s *RestServerTestSuite) TestListHistory_SessionFromHeader() {
 	var list []map[string]any
 	s.Require().NoError(json.Unmarshal(w.Body.Bytes(), &list))
 	s.Len(list, 2)
+}
+
+func (s *RestServerTestSuite) TestStreamHistorySendsLiveEvents() {
+	server := s.newRestServerWithStore(history.NewMemoryStore(0))
+	store, ok := server.history.(*history.MemoryStore)
+	s.Require().True(ok)
+
+	ctx, cancel := context.WithCancel(s.T().Context())
+	defer cancel()
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/history/stream?service=svc&method=M", nil)
+	w := httptest.NewRecorder()
+	done := make(chan struct{})
+
+	go func() {
+		server.StreamHistory(w, req, rest.StreamHistoryParams{Service: ptrString("svc"), Method: ptrString("M")})
+		close(done)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	store.Record(history.CallRecord{
+		Service:   "svc",
+		Method:    "M",
+		Transport: "proxy",
+	})
+
+	require.Eventually(s.T(), func() bool {
+		body := w.Body.String()
+		return strings.Contains(body, "event: call") && strings.Contains(body, "\"transport\":\"proxy\"")
+	}, time.Second, 25*time.Millisecond)
+
+	cancel()
+	<-done
 }
 
 // TestListHistory_RedactsSensitiveKeys tests that ListHistory returns redacted values when store has redact keys.
@@ -1694,8 +1760,19 @@ func (s *RestServerTestSuite) greeterDescriptorSetBytes() []byte {
 }
 
 func (s *RestServerTestSuite) addDescriptorsPayload(server *RestServer, payload []byte) *httptest.ResponseRecorder {
+	return s.addDescriptorsPayloadWithFilename(server, payload, "")
+}
+
+func (s *RestServerTestSuite) addDescriptorsPayloadWithFilename(
+	server *RestServer,
+	payload []byte,
+	filename string,
+) *httptest.ResponseRecorder {
 	req := httptest.NewRequestWithContext(s.T().Context(), http.MethodPost, "/api/descriptors", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/octet-stream")
+	if filename != "" {
+		req.Header.Set(descriptorUploadFilenameHeader, filename)
+	}
 
 	w := httptest.NewRecorder()
 	server.AddDescriptors(w, req)
@@ -1751,6 +1828,18 @@ func (s *RestServerTestSuite) listHistory(server *RestServer, prepare func(*http
 
 	w := httptest.NewRecorder()
 	server.ListHistory(w, req)
+
+	return w
+}
+
+func (s *RestServerTestSuite) streamHistory(server *RestServer, prepare func(*http.Request)) *httptest.ResponseRecorder {
+	req := httptest.NewRequestWithContext(s.T().Context(), http.MethodGet, "/api/history/stream", nil)
+	if prepare != nil {
+		prepare(req)
+	}
+
+	w := httptest.NewRecorder()
+	server.StreamHistory(w, req, rest.StreamHistoryParams{})
 
 	return w
 }

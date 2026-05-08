@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -117,19 +118,60 @@ func sessionFromMetadata(md metadata.MD) string {
 
 func sessionFromContext(ctx context.Context) string {
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
-		return sessionFromMetadata(md)
+		if sessionID := sessionFromMetadata(md); sessionID != "" {
+			return sessionID
+		}
+	}
+
+	clientID := clientFromContext(ctx)
+	if clientID == "" {
+		return ""
+	}
+
+	if sessionID := session.SessionByClient(clientID); sessionID != "" {
+		session.Touch(sessionID)
+		return sessionID
 	}
 
 	return ""
 }
 
+func clientFromContext(ctx context.Context) string {
+	if grpcPeer, ok := peer.FromContext(ctx); ok && grpcPeer != nil && grpcPeer.Addr != nil {
+		if addr := stablePeerAddress(grpcPeer.Addr.String()); addr != "" {
+			return addr
+		}
+	}
+
+	return ""
+}
+
+func stablePeerAddress(raw string) string {
+	peerAddr := strings.TrimSpace(raw)
+	if peerAddr == "" {
+		return ""
+	}
+
+	// tcp peers include ephemeral source port; strip it to keep client id stable across reconnects.
+	host, _, err := net.SplitHostPort(peerAddr)
+	if err == nil {
+		host = strings.TrimSpace(host)
+		if host != "" {
+			return host
+		}
+	}
+
+	return peerAddr
+}
+
 type bidiRecordingStream struct {
 	grpc.ServerStream
 
-	requests  []map[string]any
-	responses []map[string]any
-	stubID    uuid.UUID
-	maxItems  int
+	requests           []map[string]any
+	responses          []map[string]any
+	responseTimestamps []time.Time
+	stubID             uuid.UUID
+	maxItems           int
 }
 
 func (s *bidiRecordingStream) RecvMsg(m any) error {
@@ -153,6 +195,7 @@ func (s *bidiRecordingStream) SendMsg(m any) error {
 
 	if msgMap := protoToMap(m); msgMap != nil && len(s.responses) < s.maxItems {
 		s.responses = append(s.responses, msgMap)
+		s.responseTimestamps = append(s.responseTimestamps, time.Now())
 	}
 
 	return nil
@@ -161,6 +204,8 @@ func (s *bidiRecordingStream) SendMsg(m any) error {
 func (s *bidiRecordingStream) getRequests() []map[string]any { return s.requests }
 
 func (s *bidiRecordingStream) getResponses() []map[string]any { return s.responses }
+
+func (s *bidiRecordingStream) getResponseTimestamps() []time.Time { return s.responseTimestamps }
 
 func (s *bidiRecordingStream) setStubID(id uuid.UUID) { s.stubID = id }
 
@@ -173,6 +218,7 @@ func (m *grpcMocker) recordCall(
 	timestamp time.Time,
 	requests []map[string]any,
 	responses []map[string]any,
+	responseTimestamps []time.Time,
 	errMsg string,
 ) {
 	if m.recorder == nil || len(requests) == 0 {
@@ -184,15 +230,17 @@ func (m *grpcMocker) recordCall(
 	}
 
 	rec := history.CallRecord{
-		Service:   m.fullServiceName,
-		Method:    m.methodName,
-		Session:   sessionFromContext(ctx),
-		Requests:  requests,
-		Responses: responses,
-		Error:     errMsg,
-		Code:      code,
-		StubID:    stubID,
-		Timestamp: timestamp,
+		Service:            m.fullServiceName,
+		Method:             m.methodName,
+		Session:            sessionFromContext(ctx),
+		Client:             clientFromContext(ctx),
+		Requests:           requests,
+		Responses:          responses,
+		ResponseTimestamps: responseTimestamps,
+		Error:              errMsg,
+		Code:               code,
+		StubID:             stubID,
+		Timestamp:          timestamp,
 	}
 
 	if len(requests) > 0 {
@@ -349,8 +397,8 @@ func (m *grpcMocker) newQuery(ctx context.Context, msg *dynamicpb.Message) stube
 	md, ok := metadata.FromIncomingContext(ctx)
 	if ok {
 		query.Headers = processHeaders(md)
-		query.Session = sessionFromMetadata(md)
 	}
+	query.Session = sessionFromContext(ctx)
 
 	return query
 }
@@ -365,8 +413,8 @@ func (m *grpcMocker) newQueryBidi(ctx context.Context) stuber.QueryBidi {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if ok {
 		query.Headers = processHeaders(md)
-		query.Session = sessionFromMetadata(md)
 	}
+	query.Session = sessionFromContext(ctx)
 
 	return query
 }
@@ -515,6 +563,18 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 	result, err = m.ensureServerStreamResult(query, result, err)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
+			// Record stub misses for known methods so sniffer still shows failed calls.
+			m.recordCall(
+				stream.Context(),
+				uuid.Nil,
+				uint32(codes.NotFound),
+				requestTime,
+				[]map[string]any{convertToMap(inputMsg)},
+				nil,
+				nil,
+				err.Error(),
+			)
+
 			return &serverStreamFallbackError{err: err, request: inputMsg}
 		}
 
@@ -564,7 +624,8 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 
 	if found.Output.Stream != nil {
 		if len(found.Output.Stream) > 0 {
-			if err := m.handleArrayStreamData(stream, found, inputMsg, requestTime); err != nil {
+			streamResponses, streamResponseTimestamps, err := m.handleArrayStreamData(stream, found, inputMsg, requestTime)
+			if err != nil {
 				return err
 			}
 
@@ -572,14 +633,16 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 				return err
 			}
 
-			streamResponses := make([]map[string]any, len(found.Output.Stream))
-			for i, item := range found.Output.Stream {
-				if m, ok := item.(map[string]any); ok {
-					streamResponses[i] = m
-				}
-			}
-
-			m.recordCall(stream.Context(), found.ID, uint32(codes.OK), requestTime, []map[string]any{requestData}, streamResponses, "")
+			m.recordCall(
+				stream.Context(),
+				found.ID,
+				uint32(codes.OK),
+				requestTime,
+				[]map[string]any{requestData},
+				streamResponses,
+				streamResponseTimestamps,
+				"",
+			)
 
 			return nil
 		}
@@ -595,6 +658,7 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 			requestTime,
 			[]map[string]any{requestData},
 			[]map[string]any{outputToUse.Data},
+			[]time.Time{time.Now()},
 			"",
 		)
 
@@ -613,6 +677,7 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 		requestTime,
 		[]map[string]any{requestData},
 		[]map[string]any{outputToUse.Data},
+		[]time.Time{time.Now()},
 		"",
 	)
 
@@ -641,19 +706,21 @@ func (m *grpcMocker) handleArrayStreamData(
 	found *stuber.Stub,
 	inputMsg *dynamicpb.Message,
 	requestTime time.Time,
-) error {
+) ([]map[string]any, []time.Time, error) {
 	done := stream.Context().Done()
+	sentResponses := make([]map[string]any, 0, len(found.Output.Stream))
+	sentTimestamps := make([]time.Time, 0, len(found.Output.Stream))
 
 	for i, streamData := range found.Output.Stream {
 		select {
 		case <-done:
-			return stream.Context().Err()
+			return nil, nil, stream.Context().Err()
 		default:
 		}
 
 		outputData, ok := streamData.(map[string]any)
 		if !ok {
-			return status.Errorf(
+			return nil, nil, status.Errorf(
 				codes.Internal,
 				"invalid data format in stream array at index %d: got %T, expected map[string]any",
 				i, streamData,
@@ -661,7 +728,7 @@ func (m *grpcMocker) handleArrayStreamData(
 		}
 
 		if err := m.delay(stream.Context(), found.Output.Delay); err != nil {
-			return err
+			return nil, nil, err
 		}
 
 		outputDataCopy := deepCopyMapAny(outputData)
@@ -684,20 +751,23 @@ func (m *grpcMocker) handleArrayStreamData(
 			RequestID:    found.ID.String(),
 		}
 		if err := m.templateEngine.ProcessMap(outputDataCopy, templateData); err != nil {
-			return errors.Wrap(err, "failed to process dynamic templates")
+			return nil, nil, errors.Wrap(err, "failed to process dynamic templates")
 		}
 
 		outputMsg, err := m.newOutputMessage(outputDataCopy)
 		if err != nil {
-			return errors.Wrap(err, "failed to convert response to dynamic message")
+			return nil, nil, errors.Wrap(err, "failed to convert response to dynamic message")
 		}
 
 		if err := sendStreamMessage(stream, outputMsg); err != nil {
-			return err
+			return nil, nil, err
 		}
+
+		sentResponses = append(sentResponses, outputDataCopy)
+		sentTimestamps = append(sentTimestamps, time.Now())
 	}
 
-	return nil
+	return sentResponses, sentTimestamps, nil
 }
 
 //nolint:cyclop,funlen
@@ -965,17 +1035,42 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 			result = &stuber.Result{}
 		}
 
-		return nil, &unaryStubMissError{err: status.Error(codes.NotFound, errorFormatter.FormatStubNotFoundError(query, result).Error())}
+		stubMissErr := status.Error(codes.NotFound, errorFormatter.FormatStubNotFoundError(query, result).Error())
+		m.recordCall(
+			ctx,
+			uuid.Nil,
+			uint32(codes.NotFound),
+			requestTime,
+			[]map[string]any{convertToMap(req)},
+			nil,
+			nil,
+			stubMissErr.Error(),
+		)
+
+		return nil, &unaryStubMissError{err: stubMissErr}
 	}
 
 	found := result.Found()
+	requestData := convertToMap(req)
+	recordUnaryError := func(callErr error) {
+		if callErr == nil {
+			return
+		}
+
+		code := uint32(codes.Internal)
+		if st, ok := status.FromError(callErr); ok {
+			code = uint32(st.Code())
+		}
+
+		m.recordCall(ctx, found.ID, code, requestTime, []map[string]any{requestData}, nil, nil, callErr.Error())
+	}
 
 	if err := m.delay(ctx, found.Output.Delay); err != nil {
+		recordUnaryError(err)
 		return nil, err
 	}
 
 	outputToUse := found.Output
-	requestData := convertToMap(req)
 
 	headers := make(map[string]any)
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
@@ -999,13 +1094,17 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 	if err := m.templateEngine.ProcessMap(outputDataCopy, templateData); err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("failed to process dynamic templates")
 
-		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to process dynamic templates: %v", err))
+		callErr := status.Error(codes.Internal, fmt.Sprintf("failed to process dynamic templates: %v", err))
+		recordUnaryError(callErr)
+		return nil, callErr
 	}
 
 	if template.HasTemplatesInHeaders(outputToUse.Headers) {
 		headersCopy := deepCopyStringMap(outputToUse.Headers)
 		if err := m.templateEngine.ProcessHeaders(headersCopy, templateData); err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("failed to process header templates: %v", err))
+			callErr := status.Error(codes.Internal, fmt.Sprintf("failed to process header templates: %v", err))
+			recordUnaryError(callErr)
+			return nil, callErr
 		}
 
 		outputToUse.Headers = headersCopy
@@ -1014,13 +1113,16 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 	if outputToUse.Error != "" && template.IsTemplateString(outputToUse.Error) {
 		errorStr, err := m.templateEngine.ProcessError(outputToUse.Error, templateData)
 		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("failed to process error template: %v", err))
+			callErr := status.Error(codes.Internal, fmt.Sprintf("failed to process error template: %v", err))
+			recordUnaryError(callErr)
+			return nil, callErr
 		}
 
 		outputToUse.Error = errorStr
 	}
 
 	if err := m.setResponseHeadersAny(ctx, nil, outputToUse.Headers); err != nil {
+		recordUnaryError(err)
 		return nil, err //nolint:wrapcheck
 	}
 
@@ -1028,7 +1130,7 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 
 	if err := m.handleOutputError(ctx, nil, outputToUse); err != nil {
 		code := status.Code(err)
-		m.recordCall(ctx, found.ID, uint32(code), requestTime, []map[string]any{requestData}, nil, err.Error())
+		m.recordCall(ctx, found.ID, uint32(code), requestTime, []map[string]any{requestData}, nil, nil, err.Error())
 		outputToUse.Error = err.Error()
 
 		return nil, err //nolint:wrapcheck
@@ -1036,10 +1138,20 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 
 	outputMsg, err := m.newOutputMessage(outputDataCopy)
 	if err != nil {
+		recordUnaryError(err)
 		return nil, err //nolint:wrapcheck
 	}
 
-	m.recordCall(ctx, found.ID, uint32(codes.OK), requestTime, []map[string]any{requestData}, []map[string]any{outputDataCopy}, "")
+	m.recordCall(
+		ctx,
+		found.ID,
+		uint32(codes.OK),
+		requestTime,
+		[]map[string]any{requestData},
+		[]map[string]any{outputDataCopy},
+		[]time.Time{time.Now()},
+		"",
+	)
 
 	return outputMsg, nil
 }
@@ -1284,6 +1396,17 @@ func (m *grpcMocker) handleClientStream(stream grpc.ServerStream) error {
 	found, err := m.tryFindStub(stream, messages)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
+			m.recordCall(
+				stream.Context(),
+				uuid.Nil,
+				uint32(codes.NotFound),
+				requestTime,
+				messages,
+				nil,
+				nil,
+				err.Error(),
+			)
+
 			return &clientStreamFallbackError{err: err, requests: originalMessages}
 		}
 
@@ -1411,7 +1534,16 @@ func (m *grpcMocker) sendClientStreamResponse(
 
 	err = stream.SendMsg(outputMsg)
 	if err == nil {
-		m.recordCall(stream.Context(), found.ID, uint32(codes.OK), requestTime, messages, []map[string]any{outputDataCopy}, "")
+		m.recordCall(
+			stream.Context(),
+			found.ID,
+			uint32(codes.OK),
+			requestTime,
+			messages,
+			[]map[string]any{outputDataCopy},
+			[]time.Time{time.Now()},
+			"",
+		)
 	}
 
 	return err
@@ -1440,10 +1572,11 @@ func (m *grpcMocker) handleBidiStream(stream grpc.ServerStream) error {
 	}
 
 	recordingStream := &bidiRecordingStream{
-		ServerStream: stream,
-		requests:     make([]map[string]any, 0, bidiRecordingStreamInitCap),
-		responses:    make([]map[string]any, 0, bidiRecordingStreamResponsesCap),
-		maxItems:     maxHistoryStreamMsgs,
+		ServerStream:       stream,
+		requests:           make([]map[string]any, 0, bidiRecordingStreamInitCap),
+		responses:          make([]map[string]any, 0, bidiRecordingStreamResponsesCap),
+		responseTimestamps: make([]time.Time, 0, bidiRecordingStreamResponsesCap),
+		maxItems:           maxHistoryStreamMsgs,
 	}
 
 	requestTime := time.Now()
@@ -1567,17 +1700,20 @@ func (m *grpcMocker) recordBidiStream(
 
 	requests := stream.getRequests()
 	responses := stream.getResponses()
+	responseTimestamps := stream.getResponseTimestamps()
 
 	rec := history.CallRecord{
-		Service:   m.fullServiceName,
-		Method:    m.methodName,
-		Session:   sessionFromContext(stream.Context()),
-		Requests:  requests,
-		Responses: responses,
-		Code:      code,
-		Error:     errMsg,
-		StubID:    stream.getStubID(),
-		Timestamp: requestTime,
+		Service:            m.fullServiceName,
+		Method:             m.methodName,
+		Session:            sessionFromContext(stream.Context()),
+		Client:             clientFromContext(stream.Context()),
+		Requests:           requests,
+		Responses:          responses,
+		ResponseTimestamps: responseTimestamps,
+		Code:               code,
+		Error:              errMsg,
+		StubID:             stream.getStubID(),
+		Timestamp:          requestTime,
 	}
 
 	if len(requests) > 0 {
@@ -1811,17 +1947,23 @@ func (s *GRPCServer) createServer(ctx context.Context) *grpc.Server {
 func (s *GRPCServer) handleUnknownService(_ any, stream grpc.ServerStream) error {
 	fullMethod, ok := grpc.MethodFromServerStream(stream)
 	if !ok {
-		return status.Error(codes.Unimplemented, "method not found")
+		err := status.Error(codes.Unimplemented, "method not found")
+		s.recordUnknownCall(stream.Context(), unknownValue, unknownValue, err)
+		return err
 	}
 
 	serviceName, methodName := splitMethodName(fullMethod)
 	if serviceName == unknownValue || methodName == unknownValue {
-		return status.Error(codes.Unimplemented, "method not found")
+		err := status.Error(codes.Unimplemented, "method not found")
+		s.recordUnknownCall(stream.Context(), serviceName, methodName, err)
+		return err
 	}
 
 	methodDesc, err := s.findMethodDescriptor(serviceName, methodName)
 	if err != nil {
-		return status.Error(codes.Unimplemented, err.Error())
+		st := status.Error(codes.Unimplemented, err.Error())
+		s.recordUnknownCall(stream.Context(), serviceName, methodName, st)
+		return st
 	}
 
 	templateEngine := template.New(stream.Context(), nil)
@@ -1859,6 +2001,37 @@ func (s *GRPCServer) handleUnknownService(_ any, stream grpc.ServerStream) error
 	}
 
 	return stream.SendMsg(resp)
+}
+
+func (s *GRPCServer) recordUnknownCall(ctx context.Context, serviceName string, methodName string, callErr error) {
+	if s.recorder == nil {
+		return
+	}
+
+	code := uint32(codes.Unknown)
+	errorMessage := ""
+
+	if callErr != nil {
+		errorMessage = callErr.Error()
+		if st, ok := status.FromError(callErr); ok {
+			code = uint32(st.Code())
+			if st.Message() != "" {
+				errorMessage = st.Message()
+			}
+		}
+	}
+
+	s.recorder.Record(history.CallRecord{
+		CallID:    uuid.NewString(),
+		Transport: "mock",
+		Service:   serviceName,
+		Method:    methodName,
+		Session:   sessionFromContext(ctx),
+		Client:    clientFromContext(ctx),
+		Code:      code,
+		Error:     errorMessage,
+		Timestamp: time.Now(),
+	})
 }
 
 func (s *GRPCServer) findMethodDescriptor(serviceName, methodName string) (protoreflect.MethodDescriptor, error) { //nolint:ireturn

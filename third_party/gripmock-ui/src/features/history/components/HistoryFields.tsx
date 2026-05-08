@@ -14,7 +14,9 @@ export const ErrorChipField = ({ record }: { record?: HistoryRecord }) => {
 };
 
 export const RequestPreviewField = ({ record }: { record: HistoryRecord }) => {
-  const request = record?.request;
+  const request =
+    record?.request ||
+    (Array.isArray(record?.requests) && record.requests.length > 0 ? record.requests[0] : null);
   const size = request ? JSON.stringify(request).length : 0;
   const keys =
     request && typeof request === "object"
@@ -45,21 +47,30 @@ export const HistoryDetails = ({ record }: { record?: HistoryRecord }) => {
           <Typography variant="body2">Service: {resolvedRecord.service || "-"}</Typography>
           <Typography variant="body2">Method: {resolvedRecord.method || "-"}</Typography>
           <Typography variant="body2">Stub ID: {resolvedRecord.stubId || "-"}</Typography>
+          <Typography variant="body2">Call ID: {resolvedRecord.callId || "-"}</Typography>
+          <Typography variant="body2">Transport: {resolvedRecord.transport || "-"}</Typography>
+          <Typography variant="body2">Code: {resolvedRecord.code ?? "-"}</Typography>
           <Typography variant="body2">Timestamp: {resolvedRecord.timestamp || "-"}</Typography>
           <Box>
             <Typography variant="subtitle2">Request</Typography>
-            <JsonField
-              source="request"
-              reactJsonOptions={{ theme: jsonTheme, collapsed: 1 }}
-            />
+            <JsonField source="request" reactJsonOptions={{ theme: jsonTheme, collapsed: 1 }} />
           </Box>
+          {Array.isArray(resolvedRecord.requests) && resolvedRecord.requests.length > 1 ? (
+            <Box>
+              <Typography variant="subtitle2">Requests</Typography>
+              <JsonField source="requests" reactJsonOptions={{ theme: jsonTheme, collapsed: 2 }} />
+            </Box>
+          ) : null}
           <Box>
             <Typography variant="subtitle2">Response</Typography>
-            <JsonField
-              source="response"
-              reactJsonOptions={{ theme: jsonTheme, collapsed: 1 }}
-            />
+            <JsonField source="response" reactJsonOptions={{ theme: jsonTheme, collapsed: 1 }} />
           </Box>
+          {Array.isArray(resolvedRecord.responses) && resolvedRecord.responses.length > 1 ? (
+            <Box>
+              <Typography variant="subtitle2">Responses</Typography>
+              <JsonField source="responses" reactJsonOptions={{ theme: jsonTheme, collapsed: 2 }} />
+            </Box>
+          ) : null}
         </Box>
       </CardContent>
     </Card>

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"io"
+	"net"
 	"testing"
 	"time"
 
@@ -11,11 +12,13 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/dynamicpb"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
+	sessioninfra "github.com/bavix/gripmock/v3/internal/infra/session"
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
 	"github.com/bavix/gripmock/v3/internal/infra/types"
 )
@@ -541,6 +544,28 @@ func TestSessionFromMetadataHeaderAbsent(t *testing.T) {
 
 	// Assert
 	require.Empty(t, result)
+}
+
+func TestSessionFromContextUsesPeerBindingWhenHeaderMissing(t *testing.T) {
+	// Arrange
+	const (
+		peerHost  = "172.21.199.199"
+		sessionID = "peer-bound-session"
+	)
+	sessioninfra.AssignClient(peerHost, sessionID)
+
+	ctx := peer.NewContext(context.Background(), &peer.Peer{
+		Addr: &net.TCPAddr{
+			IP:   net.ParseIP(peerHost),
+			Port: 54321,
+		},
+	})
+
+	// Act
+	result := sessionFromContext(ctx)
+
+	// Assert
+	require.Equal(t, sessionID, result)
 }
 
 // TestConvertToMap_Proto3DefaultValues verifies that scalar fields with default values (e.g. 0.0)

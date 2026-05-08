@@ -46,6 +46,13 @@ func (m *grpcMocker) proxyUnary(
 		m.recordUnaryStub(ctx, req, resp, route, header, trailer, err, elapsed)
 	}
 
+	requestData := convertToMap(req)
+	responses := make([]map[string]any, 0, 1)
+	if responseData := messageToMap(resp); responseData != nil {
+		responses = append(responses, responseData)
+	}
+	m.recordProxyCall(ctx, startTime, []map[string]any{requestData}, responses, []time.Time{time.Now()}, err)
+
 	return resp, err
 }
 

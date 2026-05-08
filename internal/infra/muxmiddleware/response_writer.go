@@ -26,3 +26,12 @@ func (rw *responseWriter) WriteHeader(statusCode int) {
 	rw.status = statusCode
 	rw.w.WriteHeader(statusCode)
 }
+
+func (rw *responseWriter) Flush() {
+	flusher, ok := rw.w.(http.Flusher)
+	if !ok {
+		return
+	}
+
+	flusher.Flush()
+}

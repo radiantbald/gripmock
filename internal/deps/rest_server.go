@@ -146,6 +146,9 @@ func (b *Builder) RestServe(
 	router.Path("/api/sessions").Methods(http.MethodPost).Handler(
 		withMCPMiddlewares(http.HandlerFunc(apiServer.SessionsCreate)),
 	)
+	router.Path("/api/sessions/peers").Methods(http.MethodPost).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.SessionsAssignPeer)),
+	)
 
 	router.Path("/metrics").Handler(telemetry.MetricsHandler(b.promReg))
 

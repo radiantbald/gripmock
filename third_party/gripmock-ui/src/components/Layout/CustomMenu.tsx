@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { Menu, useGetList, useSidebarState } from "react-admin";
 import StorageIcon from "@mui/icons-material/Storage";
-import HubIcon from "@mui/icons-material/Hub";
-import { Box, Typography } from "@mui/material";
+import TravelExploreIcon from "@mui/icons-material/TravelExplore";
 
 import { getCurrentSession, subscribeSessionChanges } from "../../utils/session";
 import type { SessionRow } from "../../features/session/model";
@@ -45,24 +44,6 @@ export const CustomMenu = () => {
           mr: sidebarOpen ? 1 : 0,
           justifyContent: "center",
         },
-        "& .sessions-menu-item": {
-          minHeight: 88,
-          alignItems: "center",
-          background:
-            "linear-gradient(120deg, rgba(255, 108, 55, 0.2) 0%, rgba(255, 108, 55, 0.12) 45%, rgba(15, 76, 129, 0.28) 100%)",
-          border: "1px solid rgba(255, 108, 55, 0.32)",
-          boxShadow: "inset 0 0 0 1px rgba(15, 76, 129, 0.2)",
-        },
-        "& .sessions-menu-item:hover": {
-          background:
-            "linear-gradient(120deg, rgba(255, 108, 55, 0.28) 0%, rgba(255, 108, 55, 0.18) 45%, rgba(15, 76, 129, 0.34) 100%)",
-        },
-        "& .sessions-menu-item .MuiListItemIcon-root": {
-          color: "primary.main",
-        },
-        "& .sessions-menu-item[aria-current='page']": {
-          borderColor: "primary.main",
-        },
         "& .RaMenuItemLink-root[aria-current='page'], & .MuiMenuItem-root[aria-current='page']": {
           backgroundColor: "rgba(255, 108, 55, 0.16)",
           color: "primary.main",
@@ -74,31 +55,7 @@ export const CustomMenu = () => {
         },
       }}
     >
-      <Menu.Item
-        className="sessions-menu-item"
-        to="/session"
-        primaryText={
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
-            <Typography variant="body2" fontWeight={700}>
-              Sessions
-            </Typography>
-            {sidebarOpen ? (
-              <Typography
-                variant="caption"
-                sx={{
-                  maxWidth: 180,
-                  color: "text.secondary",
-                  lineHeight: 1.2,
-                }}
-                noWrap
-              >
-                {session || "No active session"}
-              </Typography>
-            ) : null}
-          </Box>
-        }
-        leftIcon={<HubIcon />}
-      />
+      <Menu.Item to="/sniffer" primaryText="Sniffer" leftIcon={<TravelExploreIcon />} />
       {sessionExistsInDb ? <Menu.Item to="/stubs" primaryText="Stubs" leftIcon={<StorageIcon />} /> : null}
     </Menu>
   );

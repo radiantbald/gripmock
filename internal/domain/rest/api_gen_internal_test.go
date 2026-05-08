@@ -156,6 +156,11 @@ func (m *mockServer) ListHistory(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(HistoryList{}) //nolint:errchkjson
 }
 
+func (m *mockServer) StreamHistory(w http.ResponseWriter, _ *http.Request, _ StreamHistoryParams) {
+	m.called["StreamHistory"] = true
+	w.WriteHeader(http.StatusOK)
+}
+
 func (m *mockServer) VerifyCalls(w http.ResponseWriter, _ *http.Request) {
 	m.called["VerifyCalls"] = true
 
@@ -210,6 +215,8 @@ func TestHandlerRoutes(t *testing.T) {
 		{http.MethodPost, "/stubs/inspect", "InspectStubs"},
 		{http.MethodGet, "/stubs/unused", "ListUnusedStubs"},
 		{http.MethodGet, "/stubs/used", "ListUsedStubs"},
+		{http.MethodGet, "/history", "ListHistory"},
+		{http.MethodGet, "/history/stream", "StreamHistory"},
 		{http.MethodDelete, "/stubs/" + validID, "DeleteStubByID"},
 		{http.MethodGet, "/stubs/" + validID, "FindByID"},
 	}

@@ -43,6 +43,7 @@ export const normalizeHistoryRows = (json: Row[]): Row[] =>
   json.map((item, index) => ({
     id:
       item.id ||
+      item.callId ||
       `${item.timestamp || "no-ts"}-${item.service || "svc"}-${item.method || "m"}-${index}`,
     ...item,
   }));

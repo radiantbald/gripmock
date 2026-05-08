@@ -9,6 +9,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"sort"
@@ -18,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bufbuild/protocompile"
 	"github.com/cockroachdb/errors"
 	"github.com/go-playground/validator/v10"
 	"github.com/goccy/go-json"
@@ -45,6 +47,7 @@ import (
 	protosetinfra "github.com/bavix/gripmock/v3/internal/infra/protoset"
 	sessioninfra "github.com/bavix/gripmock/v3/internal/infra/session"
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
+	"github.com/bavix/gripmock/v3/internal/pbs"
 )
 
 // Extender defines the interface for extending stub functionality.
@@ -134,9 +137,11 @@ func (h *RestServer) SetSessionsRepository(repository *pgsessions.Repository) {
 }
 
 const (
-	servicesListCap   = 16
-	serviceMethodsCap = 32
-	stubSchemaURL     = "https://bavix.github.io/gripmock/schema/stub.json"
+	servicesListCap                = 16
+	serviceMethodsCap              = 32
+	stubSchemaURL                  = "https://bavix.github.io/gripmock/schema/stub.json"
+	historyStreamTick              = 15 * time.Second
+	descriptorUploadFilenameHeader = "X-Gripmock-Descriptor-Filename"
 )
 
 var (
@@ -310,7 +315,42 @@ func (h *RestServer) SessionsCreate(w http.ResponseWriter, r *http.Request) {
 
 	h.writeResponse(r.Context(), w, rest.Session{
 		Id:   strconv.FormatInt(row.ID, 10),
-		Name: row.Name,
+		Name: nilIfEmpty(row.Name),
+	})
+}
+
+// SessionsAssignPeer binds a stable peer identifier to a session for gRPC calls without explicit session header.
+func (h *RestServer) SessionsAssignPeer(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Peer    string `json:"peer"`
+		Session string `json:"session"`
+	}
+
+	byt, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.validationError(r.Context(), w, errors.Wrap(err, "failed to read request body"))
+		return
+	}
+	if err = json.Unmarshal(byt, &payload); err != nil {
+		h.validationError(r.Context(), w, errors.Wrap(err, "invalid sessions peer assignment payload"))
+		return
+	}
+
+	peerID := strings.TrimSpace(payload.Peer)
+	sessionID := strings.TrimSpace(payload.Session)
+	if peerID == "" || sessionID == "" {
+		h.validationError(r.Context(), w, errors.New("peer and session are required"))
+		return
+	}
+
+	if !sessioninfra.AssignClient(peerID, sessionID) {
+		h.validationError(r.Context(), w, errors.New("failed to assign peer to session"))
+		return
+	}
+
+	h.writeResponse(r.Context(), w, rest.MessageOK{
+		Message: "peer assigned to session",
+		Time:    time.Now(),
 	})
 }
 
@@ -774,7 +814,7 @@ func mcpDescriptorsAdd(h *RestServer, args map[string]any) (map[string]any, erro
 		return nil, mcpDescriptorSetBase64ArgError(err)
 	}
 
-	serviceIDs, err := registerDescriptorBytes(h, payload)
+	serviceIDs, err := registerDescriptorBytes(h, payload, "")
 	if err != nil {
 		return nil, mcpDescriptorRegistrationArgError(err)
 	}
@@ -1587,6 +1627,27 @@ func filterHistory(h *RestServer, opts history.FilterOpts, limit int) []rest.Cal
 	return out
 }
 
+func historyFilterFromRequest(r *http.Request) (history.FilterOpts, int) {
+	query := r.URL.Query()
+	sessionID := strings.TrimSpace(query.Get("session"))
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(muxmiddleware.FromRequest(r))
+	}
+
+	limit := 0
+	if rawLimit := strings.TrimSpace(query.Get("limit")); rawLimit != "" {
+		if parsedLimit, err := strconv.Atoi(rawLimit); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	return history.FilterOpts{
+		Service: strings.TrimSpace(query.Get("service")),
+		Method:  strings.TrimSpace(query.Get("method")),
+		Session: sessionID,
+	}, limit
+}
+
 func mcpIntArg(args map[string]any, key string, defaultValue int) (int, error) {
 	raw, ok := args[key]
 	if !ok || raw == nil {
@@ -1619,14 +1680,108 @@ func (h *RestServer) ListHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	calls := h.history.Filter(history.FilterOpts{Session: muxmiddleware.FromRequest(r)})
+	opts, limit := historyFilterFromRequest(r)
+	out := filterHistory(h, opts, limit)
+	h.writeResponse(r.Context(), w, out)
+}
 
-	out := make(rest.HistoryList, len(calls))
-	for i, c := range calls {
-		out[i] = h.historyCallRecordToRest(c)
+// StreamHistory returns recorded gRPC calls as Server-Sent Events.
+func (h *RestServer) StreamHistory(w http.ResponseWriter, r *http.Request, params rest.StreamHistoryParams) {
+	if h.history == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		h.writeResponseError(r.Context(), w, errors.New("history is disabled"))
+		return
 	}
 
-	h.writeResponse(r.Context(), w, out)
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		h.writeResponseError(r.Context(), w, errors.New("streaming is not supported"))
+		return
+	}
+
+	subscriber, ok := h.history.(history.Subscriber)
+	if !ok {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		h.writeResponseError(r.Context(), w, errors.New("history stream is not supported by store"))
+		return
+	}
+
+	sessionID := strings.TrimSpace(muxmiddleware.FromRequest(r))
+	if params.Session != nil && strings.TrimSpace(*params.Session) != "" {
+		sessionID = strings.TrimSpace(*params.Session)
+	}
+
+	opts := history.FilterOpts{
+		Service: strings.TrimSpace(stringFromPtr(params.Service)),
+		Method:  strings.TrimSpace(stringFromPtr(params.Method)),
+		Session: sessionID,
+	}
+	calls, unsubscribe := subscriber.Subscribe(128)
+	defer unsubscribe()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	heartbeat := time.NewTicker(historyStreamTick)
+	defer heartbeat.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-heartbeat.C:
+			if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		case call, ok := <-calls:
+			if !ok {
+				return
+			}
+			if !historyCallMatchesFilter(call, opts) {
+				continue
+			}
+
+			record := h.historyCallRecordToRest(call)
+			payload, err := json.Marshal(record)
+			if err != nil {
+				continue
+			}
+
+			if _, err := io.WriteString(w, "event: call\n"); err != nil {
+				return
+			}
+			if _, err := io.WriteString(w, "data: "); err != nil {
+				return
+			}
+			if _, err := w.Write(payload); err != nil {
+				return
+			}
+			if _, err := io.WriteString(w, "\n\n"); err != nil {
+				return
+			}
+
+			flusher.Flush()
+		}
+	}
+}
+
+func historyCallMatchesFilter(call history.CallRecord, opts history.FilterOpts) bool {
+	if opts.Service != "" && call.Service != opts.Service {
+		return false
+	}
+	if opts.Method != "" && call.Method != opts.Method {
+		return false
+	}
+	if opts.Session != "" && call.Session != "" && call.Session != opts.Session {
+		return false
+	}
+
+	return true
 }
 
 func (h *RestServer) historyCallRecordToRest(c history.CallRecord) rest.CallRecord {
@@ -1636,6 +1791,20 @@ func (h *RestServer) historyCallRecordToRest(c history.CallRecord) rest.CallReco
 	r := rest.CallRecord{
 		Service: &service,
 		Method:  &method,
+	}
+
+	if c.CallID != "" {
+		callID := c.CallID
+		r.CallId = &callID
+	}
+
+	if c.Transport != "" {
+		transport := c.Transport
+		r.Transport = &transport
+	}
+	if c.Client != "" {
+		client := c.Client
+		r.Client = &client
 	}
 
 	if c.StubID != uuid.Nil {
@@ -1655,18 +1824,25 @@ func (h *RestServer) historyCallRecordToRest(c history.CallRecord) rest.CallReco
 	} else if c.Response != nil {
 		r.Response = &c.Response
 	}
+	if len(c.ResponseTimestamps) > 0 {
+		responseTimestamps := append([]time.Time(nil), c.ResponseTimestamps...)
+		r.ResponseTimestamps = &responseTimestamps
+	}
 
 	if c.Error != "" {
 		r.Error = &c.Error
 	}
 
-	if c.Code != 0 {
-		code := int(c.Code)
-		r.Code = &code
-	}
+	code := int(c.Code)
+	r.Code = &code
 
 	if !c.Timestamp.IsZero() {
 		r.Timestamp = &c.Timestamp
+	}
+
+	if c.Session != "" {
+		session := c.Session
+		r.Session = &session
 	}
 
 	return r
@@ -1785,7 +1961,7 @@ func (h *RestServer) AddDescriptors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	serviceIDs, err := registerDescriptorBytes(h, byt)
+	serviceIDs, err := registerDescriptorBytes(h, byt, r.Header.Get(descriptorUploadFilenameHeader))
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		h.writeResponseError(r.Context(), w, err)
@@ -1820,20 +1996,16 @@ func unregisterService(h *RestServer, serviceID string) int {
 	return h.restDescriptors.UnregisterByService(serviceID)
 }
 
-func registerDescriptorBytes(h *RestServer, byt []byte) ([]string, error) {
+func registerDescriptorBytes(h *RestServer, byt []byte, sourceName string) ([]string, error) {
 	h.descriptorOpsMu.Lock()
 	defer h.descriptorOpsMu.Unlock()
 
-	var fds descriptorpb.FileDescriptorSet
-	if err := proto.Unmarshal(byt, &fds); err != nil {
-		return nil, invalidFileDescriptorSetError(err)
+	fds, err := decodeDescriptorSet(byt, sourceName)
+	if err != nil {
+		return nil, err
 	}
 
-	if len(fds.GetFile()) == 0 {
-		return nil, ErrFileDescriptorSetNoFiles
-	}
-
-	files, err := decodeDescriptorFiles(&fds)
+	files, err := decodeDescriptorFiles(fds)
 	if err != nil {
 		return nil, err
 	}
@@ -1852,6 +2024,79 @@ func registerDescriptorBytes(h *RestServer, byt []byte) ([]string, error) {
 	sort.Strings(serviceIDs)
 
 	return serviceIDs, nil
+}
+
+func decodeDescriptorSet(byt []byte, sourceName string) (*descriptorpb.FileDescriptorSet, error) {
+	fds := new(descriptorpb.FileDescriptorSet)
+	if err := proto.Unmarshal(byt, fds); err == nil {
+		if len(fds.GetFile()) == 0 {
+			return nil, ErrFileDescriptorSetNoFiles
+		}
+
+		return fds, nil
+	}
+
+	compiled, err := compileProtoSourceDescriptorSet(byt, sourceName)
+	if err != nil {
+		return nil, invalidFileDescriptorSetError(err)
+	}
+
+	if len(compiled.GetFile()) == 0 {
+		return nil, ErrFileDescriptorSetNoFiles
+	}
+
+	return compiled, nil
+}
+
+func compileProtoSourceDescriptorSet(byt []byte, sourceName string) (*descriptorpb.FileDescriptorSet, error) {
+	fileName := normalizeProtoUploadFileName(sourceName)
+	fallbackResolver, err := pbs.NewResolver()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create fallback proto resolver")
+	}
+
+	sourceResolver := &protocompile.SourceResolver{
+		Accessor: func(path string) (io.ReadCloser, error) {
+			if path != fileName {
+				return nil, protoregistry.NotFound
+			}
+
+			return io.NopCloser(bytes.NewReader(byt)), nil
+		},
+	}
+
+	compiler := protocompile.Compiler{
+		Resolver: protocompile.CompositeResolver{
+			sourceResolver,
+			fallbackResolver,
+		},
+	}
+
+	compiled, err := compiler.Compile(context.Background(), fileName)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to compile proto source")
+	}
+
+	files := make([]*descriptorpb.FileDescriptorProto, 0, len(compiled))
+	for _, file := range compiled {
+		files = append(files, protodesc.ToFileDescriptorProto(file))
+	}
+
+	return &descriptorpb.FileDescriptorSet{File: files}, nil
+}
+
+func normalizeProtoUploadFileName(sourceName string) string {
+	name := strings.TrimSpace(sourceName)
+	if name == "" {
+		return "upload.proto"
+	}
+
+	base := filepath.Base(name)
+	if base == "." || base == string(filepath.Separator) || base == "" {
+		return "upload.proto"
+	}
+
+	return filepath.ToSlash(base)
 }
 
 func decodeDescriptorFiles(fds *descriptorpb.FileDescriptorSet) ([]protoreflect.FileDescriptor, error) {
@@ -2142,7 +2387,7 @@ func toRestInspectReport(report stuber.InspectReport) rest.InspectReport {
 			Method:           candidate.Method,
 			Session:          candidate.Session,
 			Priority:         candidate.Priority,
-			Enabled:          candidate.Enabled,
+			Enabled:          boolPtr(candidate.Enabled),
 			Times:            candidate.Times,
 			Used:             candidate.Used,
 			Specificity:      candidate.Specificity,
@@ -2204,6 +2449,7 @@ func (h *RestServer) toRestStub(stub *stuber.Stub) rest.Stub {
 
 	id := h.ensurePublicID(stub.ID)
 	out.Id = &id
+	out.Enabled = boolPtr(stub.IsEnabled())
 
 	return out
 }
@@ -2265,6 +2511,10 @@ func intFromPtr(value *int) int {
 	}
 
 	return *value
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }
 
 func (h *RestServer) ensurePublicID(privateID uuid.UUID) rest.ID {
@@ -2651,7 +2901,7 @@ func (h *RestServer) sessionsForResponse() []rest.Session {
 	for _, item := range rows {
 		result = append(result, rest.Session{
 			Id:   strconv.FormatInt(item.ID, 10),
-			Name: item.Name,
+			Name: nilIfEmpty(item.Name),
 		})
 	}
 

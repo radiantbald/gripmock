@@ -61,7 +61,7 @@ export const apiClient = {
       Accept: "application/json",
       "Content-Type": "application/json",
       [API_CONFIG.INTERNAL_HEADER]: API_CONFIG.INTERNAL_VALUE,
-      ...getSessionHeader(),
+      ...(options.skipSessionHeader ? {} : getSessionHeader()),
       ...getClientHeader(),
       ...(options.headers || {}),
     };
@@ -102,12 +102,18 @@ export const apiClient = {
     return payload as T;
   },
 
-  async requestBinary<T>(path: string, file: File): Promise<T> {
+  async requestBinary<T>(
+    path: string,
+    file: File,
+    options: { headers?: Record<string, string>; skipSessionHeader?: boolean } = {},
+  ): Promise<T> {
     return this.request<T>(path, {
       method: "POST",
       body: file,
+      skipSessionHeader: options.skipSessionHeader,
       headers: {
         "Content-Type": "application/octet-stream",
+        ...(options.headers || {}),
       },
     });
   },
