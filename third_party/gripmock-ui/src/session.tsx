@@ -37,6 +37,8 @@ import { SessionScopeChip } from "./features/session/components/SessionScopeChip
 import { normalizeSessionId, type SessionRow } from "./features/session/model";
 import { apiClient } from "./dataProvider/apiClient";
 
+const RADIUS_PX = "10px";
+
 const toDigits = (value: string): string => value.replace(/\D/g, "");
 const isMySession = (sessionId: string, phone: string): boolean => {
   const phoneDigits = toDigits(phone);
@@ -222,7 +224,7 @@ export const SessionScopePage = () => {
     <Box p={1.5} width="100%">
       <Card
         sx={{
-          borderRadius: 1,
+          borderRadius: RADIUS_PX,
           border: "1px solid",
           borderColor: alpha("#ffffff", 0.14),
           boxShadow: "none",
@@ -280,7 +282,7 @@ export const SessionScopePage = () => {
                   sx={{
                     border: "1px solid",
                     borderColor: "divider",
-                    borderRadius: 1,
+                    borderRadius: RADIUS_PX,
                     overflow: "hidden",
                     bgcolor: "background.paper",
                   }}
@@ -371,7 +373,7 @@ export const SessionScopePage = () => {
           sx: {
             bgcolor: "#2b3345",
             color: "#e8ebf2",
-            borderRadius: 2,
+            borderRadius: RADIUS_PX,
             minWidth: 430,
           },
         }}

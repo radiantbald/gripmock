@@ -20,16 +20,16 @@ func TestDurationUnmarshalJSON(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "string with ms",
+			name:    "string with ms is invalid",
 			input:   `"100ms"`,
-			want:    100 * time.Millisecond,
-			wantErr: false,
+			want:    0,
+			wantErr: true,
 		},
 		{
-			name:    "string with seconds",
+			name:    "string with seconds is invalid",
 			input:   `"2s"`,
-			want:    2 * time.Second,
-			wantErr: false,
+			want:    0,
+			wantErr: true,
 		},
 		{
 			name:    "invalid duration string",
@@ -38,10 +38,16 @@ func TestDurationUnmarshalJSON(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "numeric nanoseconds",
-			input:   "1000000000",
-			want:    time.Second,
+			name:    "numeric milliseconds",
+			input:   "100",
+			want:    100 * time.Millisecond,
 			wantErr: false,
+		},
+		{
+			name:    "plain numeric string is invalid",
+			input:   `"250"`,
+			want:    0,
+			wantErr: true,
 		},
 	}
 
@@ -71,7 +77,7 @@ func TestDurationMarshalJSON(t *testing.T) {
 	t.Parallel()
 
 	duration := types.Duration(100 * time.Millisecond)
-	expected := `"100ms"`
+	expected := `100`
 
 	got, err := json.Marshal(duration)
 	require.NoError(t, err)

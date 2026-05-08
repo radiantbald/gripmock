@@ -1,0 +1,1 @@
+import{j as a}from"./chunk-vendor-react-BZyukpAH.js";import{aa as i}from"./chunk-vendor-ui-CBzLJQie.js";const e=({session:o})=>a.jsx(i,{color:o?"primary":"default",variant:o?"filled":"outlined",label:o||"Global (no X-GripMock-Session)",sx:{fontFamily:"ui-monospace, SFMono-Regular, Menlo, monospace",maxWidth:"100%"}});export{e as S};

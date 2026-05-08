@@ -7,9 +7,6 @@ import {
   TopToolbar,
   ExportButton,
 } from "react-admin";
-import { useState } from "react";
-import { readGridDensity, writeGridDensity, type GridDensity } from "./utils/uiPreferences";
-import { DensityToolbarControl } from "./components/table/DensityToolbarControl";
 import { listContentSx } from "./components/table/listStyles";
 import { ActiveFiltersSummary } from "./components/table/ActiveFiltersSummary";
 import { ServiceDetails } from "./features/services/components/ServiceDetails";
@@ -20,19 +17,10 @@ import {
 } from "./features/services/components/ServiceFields";
 
 // Custom toolbar
-const SERVICES_GRID_DENSITY_KEY = "gripmock.ui.services.density";
-
-const ServiceListActions = ({
-  density,
-  onDensityChange,
-}: {
-  density: GridDensity;
-  onDensityChange: (next: GridDensity) => void;
-}) => (
+const ServiceListActions = () => (
   <TopToolbar>
     <FilterButton />
     <ExportButton />
-    <DensityToolbarControl density={density} onChange={onDensityChange} />
   </TopToolbar>
 );
 
@@ -48,33 +36,16 @@ const serviceFilters = [
 
 // Service List component
 export const ServiceList = () => {
-  const [density, setDensity] = useState<GridDensity>(() =>
-    readGridDensity(SERVICES_GRID_DENSITY_KEY),
-  );
-  const gridSize = density === "compact" ? "small" : "medium";
-  const gridDensitySx =
-    gridSize === "small"
-      ? {
-          "& .RaDatagrid-rowCell": { py: 0.35, fontSize: 12 },
-          "& .RaDatagrid-headerCell": { py: 0.65 },
-        }
-      : {
-          "& .RaDatagrid-rowCell": { py: 1.15, fontSize: 14 },
-          "& .RaDatagrid-headerCell": { py: 1.1 },
-        };
+  const gridSize = "small";
+  const gridDensitySx = {
+    "& .RaDatagrid-rowCell": { py: 0.35, fontSize: 12 },
+    "& .RaDatagrid-headerCell": { py: 0.65 },
+  };
 
   return (
     <List
       filters={serviceFilters}
-      actions={
-        <ServiceListActions
-          density={density}
-          onDensityChange={(next) => {
-            setDensity(next);
-            writeGridDensity(SERVICES_GRID_DENSITY_KEY, next);
-          }}
-        />
-      }
+      actions={<ServiceListActions />}
       filterDefaultValues={{ q: "" }}
       perPage={25}
       sx={listContentSx}

@@ -42,17 +42,17 @@ func TestDelayWithTypesDuration(t *testing.T) {
 	require.Equal(t, 100*time.Millisecond, time.Duration(unmarshaledStub.Output.Delay))
 }
 
-func TestDelayStringFormat(t *testing.T) {
+func TestDelayNumericMillisecondsFormat(t *testing.T) {
 	t.Parallel()
 
-	// Test with string format (e.g., "100ms", "2.5s", "1h30m")
+	// Test with numeric milliseconds format.
 	jsonData := `{
 		"service": "test.Service",
 		"method": "TestMethod",
 		"input": {"contains": {"key": "value"}},
 		"output": {
 			"data": {"result": "success"},
-			"delay": "100ms"
+			"delay": 100
 		}
 	}`
 

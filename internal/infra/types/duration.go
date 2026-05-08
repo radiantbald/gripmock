@@ -7,30 +7,23 @@ import (
 )
 
 // Duration is a custom type alias for time.Duration that provides
-// JSON marshaling/unmarshaling support for string values like "100ms".
+// JSON marshaling/unmarshaling support for numeric millisecond values.
 type Duration time.Duration
 
 // UnmarshalJSON implements json.Unmarshaler interface.
 func (d *Duration) UnmarshalJSON(data []byte) error {
-	// Try to unmarshal as string first
-	var s string
-
-	err := json.Unmarshal(data, &s)
-	if err == nil {
-		duration, err := time.ParseDuration(s)
-		if err != nil {
-			return err
-		}
-
-		*d = Duration(duration)
-
-		return nil
+	var numeric float64
+	if err := json.Unmarshal(data, &numeric); err != nil {
+		return err
 	}
 
-	return json.Unmarshal(data, (*time.Duration)(d))
+	*d = Duration(time.Duration(numeric * float64(time.Millisecond)))
+
+	return nil
 }
 
 // MarshalJSON implements json.Marshaler interface.
 func (d Duration) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Duration(d).String())
+	milliseconds := float64(time.Duration(d)) / float64(time.Millisecond)
+	return json.Marshal(milliseconds)
 }

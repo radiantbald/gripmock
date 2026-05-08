@@ -31,6 +31,8 @@ type StreamHandlers = {
   onError: () => void;
 };
 
+const RADIUS_PX = "10px";
+
 const panelHeaderSx = {
   px: 1.25,
   py: 0.875,
@@ -301,6 +303,11 @@ export const SnifferPage = () => {
     }));
   }, [selected]);
   const orderedResponseEntries = useMemo(() => [...responseEntries].reverse(), [responseEntries]);
+  const isSingleResponseView = orderedResponseEntries.length <= 1;
+  const singleResponseEntry = orderedResponseEntries[0];
+  const responseHeaderTimestamp = isSingleResponseView
+    ? formatServerReceivedAt(singleResponseEntry?.timestamp || selected?.timestamp)
+    : undefined;
 
   useEffect(() => {
     setExpandedResponseKeys(() => {
@@ -370,7 +377,7 @@ export const SnifferPage = () => {
       <Paper
         sx={{
           overflow: "hidden",
-          borderRadius: 2,
+          borderRadius: RADIUS_PX,
           border: "1px solid",
           borderColor: "divider",
           boxShadow: "0 10px 28px rgba(0,0,0,0.16)",
@@ -468,7 +475,7 @@ export const SnifferPage = () => {
       {!selected ? (
         <Paper
           sx={{
-            borderRadius: 2,
+            borderRadius: RADIUS_PX,
             border: "1px solid",
             borderColor: "divider",
             boxShadow: "0 10px 28px rgba(0,0,0,0.16)",
@@ -492,7 +499,7 @@ export const SnifferPage = () => {
           <Paper
             sx={{
               overflow: "hidden",
-              borderRadius: 2,
+              borderRadius: RADIUS_PX,
               border: "1px solid",
               borderColor: "divider",
               display: "flex",
@@ -524,7 +531,7 @@ export const SnifferPage = () => {
           <Paper
             sx={{
               overflow: "hidden",
-              borderRadius: 2,
+              borderRadius: RADIUS_PX,
               border: "1px solid",
               borderColor: "divider",
               display: "flex",
@@ -537,11 +544,17 @@ export const SnifferPage = () => {
               sx={panelHeaderSx}
             >
               <Typography variant="subtitle2" sx={panelTitleSx}>
-                Responses
+                {isSingleResponseView ? "Response" : "Responses"}
               </Typography>
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
                 <Chip size="small" color={codeToChipColor(selectedCode)} variant="outlined" label={`Code: ${selectedCode ?? 0}`} />
-                <Chip size="small" variant="outlined" label={`${orderedResponseEntries.length} items`} />
+                {isSingleResponseView ? (
+                  <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+                    {responseHeaderTimestamp}
+                  </Typography>
+                ) : (
+                  <Chip size="small" variant="outlined" label={`${orderedResponseEntries.length} items`} />
+                )}
               </Box>
             </Box>
             <Divider />
@@ -589,7 +602,7 @@ export const SnifferPage = () => {
                       variant="outlined"
                       onClick={handleAssignPeerSession}
                       disabled={!canAssignPeerSession}
-                      sx={{ textTransform: "none", fontWeight: 700, borderRadius: 2, px: 2.25, py: 0.9 }}
+                      sx={{ textTransform: "none", fontWeight: 700, borderRadius: RADIUS_PX, px: 2.25, py: 0.9 }}
                     >
                       Assign session
                     </Button>
@@ -597,7 +610,7 @@ export const SnifferPage = () => {
                       variant="contained"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={isUploadingProto}
-                      sx={{ textTransform: "none", fontWeight: 700, borderRadius: 2, px: 2.25, py: 0.9 }}
+                      sx={{ textTransform: "none", fontWeight: 700, borderRadius: RADIUS_PX, px: 2.25, py: 0.9 }}
                     >
                       {isUploadingProto ? "Uploading..." : "Upload proto"}
                     </Button>
@@ -606,98 +619,93 @@ export const SnifferPage = () => {
               </Box>
             ) : (
               <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.25 }}>
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                  {orderedResponseEntries.map((entry) => (
-                    <Accordion
-                      key={entry.key}
-                      disableGutters
-                      elevation={0}
-                      square
-                      expanded={expandedResponseKeys.has(entry.key)}
-                      onChange={(_, expanded) => {
-                        setExpandedResponseKeys((current) => {
-                          const next = new Set(current);
-                          if (expanded) {
-                            next.add(entry.key);
-                          } else {
-                            next.delete(entry.key);
-                          }
-                          return next;
-                        });
-                      }}
-                      sx={{
-                        border: "1px solid",
-                        borderColor: "divider",
-                        borderRadius: 1.5,
-                        overflow: "hidden",
-                        "&::before": { display: "none" },
-                        bgcolor: "background.paper",
-                      }}
-                    >
-                      <AccordionSummary
-                        expandIcon={<ExpandMoreRoundedIcon fontSize="small" />}
-                        sx={{
-                          px: 1,
-                          minHeight: 36,
-                          bgcolor: "action.hover",
-                          "&.Mui-expanded": { minHeight: 36 },
-                          "& .MuiAccordionSummary-content": {
-                            my: 0.4,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            gap: 1.2,
-                          },
-                          "& .MuiAccordionSummary-content.Mui-expanded": { my: 0.4 },
+                {isSingleResponseView ? (
+                  <Box component="pre" sx={jsonTextSx}>
+                    {formatJsonPayload(singleResponseEntry?.payload ?? {})}
+                  </Box>
+                ) : (
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                    {orderedResponseEntries.map((entry) => (
+                      <Accordion
+                        key={entry.key}
+                        disableGutters
+                        elevation={0}
+                        square
+                        expanded={expandedResponseKeys.has(entry.key)}
+                        onChange={(_, expanded) => {
+                          setExpandedResponseKeys((current) => {
+                            const next = new Set(current);
+                            if (expanded) {
+                              next.add(entry.key);
+                            } else {
+                              next.delete(entry.key);
+                            }
+                            return next;
+                          });
                         }}
-                      >
-                        <Box sx={{ minWidth: 0, display: "flex", alignItems: "center", gap: 0.75 }}>
-                          <Typography
-                            variant="caption"
-                            sx={{
-                              color: "text.secondary",
-                              fontWeight: 700,
-                              fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                              flexShrink: 0,
-                            }}
-                          >
-                            #{entry.index + 1}
-                          </Typography>
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{
-                              minWidth: 0,
-                              display: "block",
-                              fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                              maxWidth: "100%",
-                            }}
-                          >
-                            {formatJsonInlinePayload(entry.payload)}
-                          </Typography>
-                        </Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
-                          {formatServerReceivedAt(entry.timestamp || selected?.timestamp)}
-                        </Typography>
-                      </AccordionSummary>
-                      <AccordionDetails
                         sx={{
-                          p: 1,
-                          borderTop: "1px solid",
+                          border: "1px solid",
                           borderColor: "divider",
+                          borderRadius: RADIUS_PX,
+                          overflow: "hidden",
+                          "&::before": { display: "none" },
                           bgcolor: "background.paper",
                         }}
                       >
-                        <Box component="pre" sx={jsonTextSx}>
-                          {formatJsonPayload(entry.payload)}
-                        </Box>
-                      </AccordionDetails>
-                    </Accordion>
-                  ))}
-                </Box>
+                        <AccordionSummary
+                          expandIcon={<ExpandMoreRoundedIcon fontSize="small" />}
+                          sx={{
+                            px: 1,
+                            minHeight: 36,
+                            bgcolor: "action.hover",
+                            "&.Mui-expanded": { minHeight: 36 },
+                            "& .MuiAccordionSummary-content": {
+                              my: 0.4,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 1.2,
+                            },
+                            "& .MuiAccordionSummary-content.Mui-expanded": { my: 0.4 },
+                          }}
+                        >
+                          <Box sx={{ minWidth: 0, display: "flex", alignItems: "center", gap: 0.75 }}>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{
+                                minWidth: 0,
+                                display: "block",
+                                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                maxWidth: "100%",
+                              }}
+                            >
+                              {formatJsonInlinePayload(entry.payload)}
+                            </Typography>
+                          </Box>
+                          <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+                            {formatServerReceivedAt(entry.timestamp || selected?.timestamp)}
+                          </Typography>
+                        </AccordionSummary>
+                        <AccordionDetails
+                          sx={{
+                            p: 1,
+                            borderTop: "1px solid",
+                            borderColor: "divider",
+                            bgcolor: "background.paper",
+                          }}
+                        >
+                          <Box component="pre" sx={jsonTextSx}>
+                            {formatJsonPayload(entry.payload)}
+                          </Box>
+                        </AccordionDetails>
+                      </Accordion>
+                    ))}
+                  </Box>
+                )}
               </Box>
             )}
           </Paper>

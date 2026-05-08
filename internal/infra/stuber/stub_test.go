@@ -133,12 +133,12 @@ func TestOutputDelayJsonSerialization(t *testing.T) {
 
 	jsonData, err := json.Marshal(output)
 	require.NoError(t, err)
-	require.Contains(t, string(jsonData), `"delay":"100ms"`)
+	require.Contains(t, string(jsonData), `"delay":100`)
 
 	// Test JSON deserialization with delay
 	var decodedOutput stuber.Output
 
-	err = json.Unmarshal([]byte(`{"headers":{"content-type":"application/json"},"data":{"message":"Hello World"},"delay":"200ms"}`),
+	err = json.Unmarshal([]byte(`{"headers":{"content-type":"application/json"},"data":{"message":"Hello World"},"delay":200}`),
 		&decodedOutput)
 	require.NoError(t, err)
 	require.Equal(t, types.Duration(200*time.Millisecond), decodedOutput.Delay)

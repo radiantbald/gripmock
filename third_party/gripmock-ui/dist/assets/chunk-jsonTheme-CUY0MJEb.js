@@ -1,0 +1,1 @@
+import{j as t}from"./chunk-vendor-react-BZyukpAH.js";import{R as n}from"./chunk-vendor-json-view-HJSHNvse.js";import{e as c}from"./chunk-vendor-admin-hmwoFqaa.js";const f=({source:o,jsonString:s=!1,reactJsonOptions:e={}})=>{let r=c()?.[o];if(s&&typeof r=="string")try{r=JSON.parse(r)}catch{r={}}return t.jsx(n,{...e,src:r||{}})},u=()=>"monokai";export{f as J,u};

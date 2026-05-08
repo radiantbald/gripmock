@@ -8,10 +8,6 @@ import {
   FilterButton,
   ExportButton,
 } from "react-admin";
-import { useState } from "react";
-
-import { readGridDensity, writeGridDensity, type GridDensity } from "./utils/uiPreferences";
-import { DensityToolbarControl } from "./components/table/DensityToolbarControl";
 import { listContentSx } from "./components/table/listStyles";
 import { ActiveFiltersSummary } from "./components/table/ActiveFiltersSummary";
 import type { HistoryRecord } from "./types/entities";
@@ -30,50 +26,24 @@ const historyFilters = [
   />,
 ];
 
-const HISTORY_GRID_DENSITY_KEY = "gripmock.ui.history.density";
-
-const HistoryActions = ({
-  density,
-  onDensityChange,
-}: {
-  density: GridDensity;
-  onDensityChange: (next: GridDensity) => void;
-}) => (
+const HistoryActions = () => (
   <TopToolbar>
     <FilterButton />
     <ExportButton />
-    <DensityToolbarControl density={density} onChange={onDensityChange} />
   </TopToolbar>
 );
 
 export const HistoryList = () => {
-  const [density, setDensity] = useState<GridDensity>(() =>
-    readGridDensity(HISTORY_GRID_DENSITY_KEY),
-  );
-  const gridSize = density === "compact" ? "small" : "medium";
-  const gridDensitySx =
-    gridSize === "small"
-      ? {
-          "& .RaDatagrid-rowCell": { py: 0.35, fontSize: 12 },
-          "& .RaDatagrid-headerCell": { py: 0.65 },
-        }
-      : {
-          "& .RaDatagrid-rowCell": { py: 1.15, fontSize: 14 },
-          "& .RaDatagrid-headerCell": { py: 1.1 },
-        };
+  const gridSize = "small";
+  const gridDensitySx = {
+    "& .RaDatagrid-rowCell": { py: 0.35, fontSize: 12 },
+    "& .RaDatagrid-headerCell": { py: 0.65 },
+  };
 
   return (
     <List
       filters={historyFilters}
-      actions={
-        <HistoryActions
-          density={density}
-          onDensityChange={(next) => {
-            setDensity(next);
-            writeGridDensity(HISTORY_GRID_DENSITY_KEY, next);
-          }}
-        />
-      }
+      actions={<HistoryActions />}
       perPage={25}
       sx={listContentSx}
     >

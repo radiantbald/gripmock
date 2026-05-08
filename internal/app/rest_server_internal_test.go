@@ -1507,32 +1507,32 @@ func (s *RestServerTestSuite) TestAddStubWithDelay() {
 		description    string
 	}{
 		{
-			name: "unary stub with string delay",
+			name: "unary stub with numeric delay",
 			jsonData: `[{
 				"service": "test.Service",
 				"method": "TestMethod",
 				"input": {"contains": {"key": "value"}},
 				"output": {
 					"data": {"result": "success"},
-					"delay": "100ms"
+					"delay": 100
 				}
 			}]`,
 			expectedStatus: http.StatusOK,
-			description:    "should accept delay in string format (100ms)",
+			description:    "should accept delay in numeric milliseconds format (100)",
 		},
 		{
-			name: "unary stub with longer delay",
+			name: "unary stub with longer numeric delay",
 			jsonData: `[{
 				"service": "test.Service",
 				"method": "TestMethod",
 				"input": {"contains": {"key": "value"}},
 				"output": {
 					"data": {"result": "success"},
-					"delay": "2s"
+					"delay": 2000
 				}
 			}]`,
 			expectedStatus: http.StatusOK,
-			description:    "should accept delay in string format (2s)",
+			description:    "should accept delay in numeric milliseconds format (2000)",
 		},
 		{
 			name: "client stream stub with delay",
@@ -1542,7 +1542,7 @@ func (s *RestServerTestSuite) TestAddStubWithDelay() {
 				"inputs": [{"contains": {"key": "value"}}],
 				"output": {
 					"data": {"result": "success"},
-					"delay": "500ms"
+					"delay": 500
 				}
 			}]`,
 			expectedStatus: http.StatusOK,
@@ -1556,7 +1556,7 @@ func (s *RestServerTestSuite) TestAddStubWithDelay() {
 				"input": {"contains": {"key": "value"}},
 				"output": {
 					"stream": [{"result": "response"}],
-					"delay": "1s"
+					"delay": 1000
 				}
 			}]`,
 			expectedStatus: http.StatusOK,
@@ -1570,7 +1570,7 @@ func (s *RestServerTestSuite) TestAddStubWithDelay() {
 				"inputs": [{"contains": {"key": "value"}}],
 				"output": {
 					"stream": [{"result": "response"}],
-					"delay": "750ms"
+					"delay": 750
 				}
 			}]`,
 			expectedStatus: http.StatusOK,
@@ -1597,7 +1597,7 @@ func (s *RestServerTestSuite) TestAddStubWithDelay() {
 				"input": {"contains": {"key": "value"}},
 				"output": {
 					"data": {"result": "success"},
-					"delay": "0s"
+					"delay": 0
 				}
 			}]`,
 			expectedStatus: http.StatusOK,

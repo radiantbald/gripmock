@@ -31,12 +31,6 @@ import type { ReactElement } from "react";
 
 import { useJsonTheme } from "./utils/jsonTheme";
 import { downloadJsonFile } from "./utils/fileDownload";
-import {
-  readGridDensity as readStoredGridDensity,
-  writeGridDensity,
-  type GridDensity,
-} from "./utils/uiPreferences";
-import { DensityToolbarControl } from "./components/table/DensityToolbarControl";
 import { listContentSx } from "./components/table/listStyles";
 import { ActiveFiltersSummary } from "./components/table/ActiveFiltersSummary";
 import type { StubRecord } from "./types/entities";
@@ -44,12 +38,13 @@ import { StubsDatagrid } from "./features/stubs/components/StubsDatagrid";
 import { getCurrentSession, subscribeSessionChanges } from "./utils/session";
 import type { SessionRow } from "./features/session/model";
 
+const RADIUS_PX = "10px";
+
 // Export function for stubs list
 const exportStubs = (stubs: object[]) => {
   downloadJsonFile(stubs, "stubs-export.json");
 };
 
-const STUB_GRID_DENSITY_KEY = "gripmock.ui.stubs.density";
 const PLAIN_MILLISECONDS_RE = /^\d+(\.\d+)?$/;
 
 const normalizeDelayValue = (value: unknown): unknown => {
@@ -62,7 +57,12 @@ const normalizeDelayValue = (value: unknown): unknown => {
     return "";
   }
 
-  return PLAIN_MILLISECONDS_RE.test(trimmed) ? `${trimmed}ms` : trimmed;
+  if (!PLAIN_MILLISECONDS_RE.test(trimmed)) {
+    return trimmed;
+  }
+
+  const numericMilliseconds = Number.parseFloat(trimmed);
+  return Number.isNaN(numericMilliseconds) ? trimmed : numericMilliseconds;
 };
 
 const normalizeStubDelay = <T extends Record<string, unknown>>(data: T): T => {
@@ -122,21 +122,6 @@ const OUTPUT_PLACEHOLDER_TEMPLATE = `{
     }
   ]
 }`;
-
-const readStubsGridDensity = (): GridDensity => {
-  return readStoredGridDensity(STUB_GRID_DENSITY_KEY);
-};
-
-const useGridDensity = () => {
-  const [density, setDensity] = useState<GridDensity>(() => readStubsGridDensity());
-
-  const setNextDensity = (next: GridDensity) => {
-    setDensity(next);
-    writeGridDensity(STUB_GRID_DENSITY_KEY, next);
-  };
-
-  return { density, setNextDensity };
-};
 
 const useActiveSession = (): string => {
   const [session, setSession] = useState(() => getCurrentSession());
@@ -252,33 +237,19 @@ const stubFilters = [
   <MethodFilter key="method" source="method" label="Method" />,
 ];
 
-const StubListActions = ({
-  density,
-  onDensityChange,
-}: {
-  density: GridDensity;
-  onDensityChange: (next: GridDensity) => void;
-}) => (
+const StubListActions = () => (
   <TopToolbar>
     <FilterButton />
     <ExportButton />
     <CreateButton />
-    <DensityToolbarControl density={density} onChange={onDensityChange} />
   </TopToolbar>
 );
 
 // Custom toolbar for used/unused stubs (without create button)
-const UsedUnusedStubListActions = ({
-  density,
-  onDensityChange,
-}: {
-  density: GridDensity;
-  onDensityChange: (next: GridDensity) => void;
-}) => (
+const UsedUnusedStubListActions = () => (
   <TopToolbar>
     <FilterButton />
     <ExportButton />
-    <DensityToolbarControl density={density} onChange={onDensityChange} />
   </TopToolbar>
 );
 
@@ -328,16 +299,14 @@ const CreateStubToolbar = () => (
 
 const StubsListPage = ({
   actions,
-  density,
   allowDelete,
   allowClone,
 }: {
   actions: ReactElement;
-  density: GridDensity;
   allowDelete?: boolean;
   allowClone?: boolean;
 }) => {
-  const gridSize = density === "compact" ? "small" : "medium";
+  const gridSize = "small";
 
   return (
     <List
@@ -360,7 +329,6 @@ const StubsListPage = ({
 
 // Stub List component
 export const StubList = () => {
-  const { density, setNextDensity } = useGridDensity();
   const session = useActiveSession();
   const sessionExistsInDb = useSessionFromDatabase(session);
 
@@ -376,8 +344,7 @@ export const StubList = () => {
 
   return (
     <StubsListPage
-      actions={<StubListActions density={density} onDensityChange={setNextDensity} />}
-      density={density}
+      actions={<StubListActions />}
       allowDelete
       allowClone
     />
@@ -386,7 +353,6 @@ export const StubList = () => {
 
 // Used Stubs List component
 export const UsedStubList = () => {
-  const { density, setNextDensity } = useGridDensity();
   const session = useActiveSession();
   const sessionExistsInDb = useSessionFromDatabase(session);
 
@@ -402,20 +368,13 @@ export const UsedStubList = () => {
 
   return (
     <StubsListPage
-      actions={
-        <UsedUnusedStubListActions
-          density={density}
-          onDensityChange={setNextDensity}
-        />
-      }
-      density={density}
+      actions={<UsedUnusedStubListActions />}
     />
   );
 };
 
 // Unused Stubs List component
 export const UnusedStubList = () => {
-  const { density, setNextDensity } = useGridDensity();
   const session = useActiveSession();
   const sessionExistsInDb = useSessionFromDatabase(session);
 
@@ -431,13 +390,7 @@ export const UnusedStubList = () => {
 
   return (
     <StubsListPage
-      actions={
-        <UsedUnusedStubListActions
-          density={density}
-          onDensityChange={setNextDensity}
-        />
-      }
-      density={density}
+      actions={<UsedUnusedStubListActions />}
     />
   );
 };
@@ -489,7 +442,7 @@ export const StubCreate = () => {
             width: "100%",
             border: "1px solid",
             borderColor: "divider",
-            borderRadius: 1.5,
+            borderRadius: RADIUS_PX,
             p: 1.5,
             minHeight: 0,
             display: "flex",
@@ -529,7 +482,7 @@ export const StubCreate = () => {
             width: "100%",
             border: "1px solid",
             borderColor: "divider",
-            borderRadius: 1.5,
+            borderRadius: RADIUS_PX,
             p: 1.5,
             minHeight: 0,
             display: "flex",
@@ -577,7 +530,7 @@ export const StubCreate = () => {
               <TextInput
                 source="output.delay"
                 label="Delay"
-                helperText="Optional response delay in ms (e.g. 100) or duration string (e.g. 2s, 1m)."
+                helperText="Optional response delay in milliseconds (e.g. 100)."
                 fullWidth
               />
             </Box>
@@ -659,7 +612,7 @@ export const StubEdit = () => {
             width: "100%",
             border: "1px solid",
             borderColor: "divider",
-            borderRadius: 1.5,
+            borderRadius: RADIUS_PX,
             p: 1.5,
             minHeight: 0,
             display: "flex",
@@ -698,7 +651,7 @@ export const StubEdit = () => {
             width: "100%",
             border: "1px solid",
             borderColor: "divider",
-            borderRadius: 1.5,
+            borderRadius: RADIUS_PX,
             p: 1.5,
             minHeight: 0,
             display: "flex",
@@ -749,7 +702,7 @@ export const StubEdit = () => {
             <TextInput
               source="output.delay"
               label="Delay"
-              helperText="Optional response delay in ms (e.g. 100) or duration string (e.g. 2s, 1m)."
+              helperText="Optional response delay in milliseconds (e.g. 100)."
               fullWidth
             />
           </Box>
