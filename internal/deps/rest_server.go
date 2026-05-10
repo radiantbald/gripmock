@@ -100,6 +100,12 @@ func (b *Builder) RestServe(
 	if sessionsRepository, sessionsErr := b.SessionsRepository(ctx); sessionsErr == nil {
 		apiServer.SetSessionsRepository(sessionsRepository)
 	}
+	if clientsRepository, clientsErr := b.ClientsRepository(ctx); clientsErr == nil {
+		apiServer.SetClientsRepository(clientsRepository)
+	}
+	if protoMetadataRepo, protoMetadataErr := b.ProtoMetadataRepository(ctx); protoMetadataErr == nil {
+		apiServer.SetProtoMetadataWriter(protoMetadataRepo)
+	}
 
 	ui, err := b.ui(ctx)
 	if err != nil {
@@ -148,6 +154,21 @@ func (b *Builder) RestServe(
 	)
 	router.Path("/api/sessions/peers").Methods(http.MethodPost).Handler(
 		withMCPMiddlewares(http.HandlerFunc(apiServer.SessionsAssignPeer)),
+	)
+	router.Path("/api/sessions/peers/status").Methods(http.MethodGet).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.SessionsPeerStatus)),
+	)
+	router.Path("/api/proto-metadata/status").Methods(http.MethodGet).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.ProtoMetadataStatus)),
+	)
+	router.Path("/api/protofiles").Methods(http.MethodGet).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.ProtofilesList)),
+	)
+	router.Path("/api/protofiles/{name:.*}").Methods(http.MethodDelete).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.ProtofilesDelete)),
+	)
+	router.Path("/api/clients").Methods(http.MethodGet).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.ClientsList)),
 	)
 
 	router.Path("/metrics").Handler(telemetry.MetricsHandler(b.promReg))

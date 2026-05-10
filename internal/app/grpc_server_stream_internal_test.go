@@ -568,6 +568,47 @@ func TestSessionFromContextUsesPeerBindingWhenHeaderMissing(t *testing.T) {
 	require.Equal(t, sessionID, result)
 }
 
+func TestClientFromContextIncludesUserAgentFingerprint(t *testing.T) {
+	t.Parallel()
+
+	ctx := peer.NewContext(context.Background(), &peer.Peer{
+		Addr: &net.TCPAddr{
+			IP:   net.ParseIP("172.21.199.199"),
+			Port: 54321,
+		},
+	})
+	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs("user-agent", "grpcurl/1.9.3"))
+
+	// Act
+	result := clientFromContext(ctx)
+
+	// Assert
+	require.Equal(t, "172.21.199.199|grpcurl/1.9.3", result)
+}
+
+func TestSessionFromContextFallsBackToPeerOnlyBinding(t *testing.T) {
+	// Arrange
+	const (
+		peerHost  = "172.21.199.200"
+		sessionID = "peer-only-session"
+	)
+	sessioninfra.AssignClient(peerHost, sessionID)
+
+	ctx := peer.NewContext(context.Background(), &peer.Peer{
+		Addr: &net.TCPAddr{
+			IP:   net.ParseIP(peerHost),
+			Port: 54322,
+		},
+	})
+	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs("user-agent", "PostmanRuntime/grpc"))
+
+	// Act
+	result := sessionFromContext(ctx)
+
+	// Assert
+	require.Equal(t, sessionID, result)
+}
+
 // TestConvertToMap_Proto3DefaultValues verifies that scalar fields with default values (e.g. 0.0)
 // are included in the result. Proto3 omits default values on the wire, so Range skips them;
 // we iterate over the descriptor to include all fields for stub matching.

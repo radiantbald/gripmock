@@ -1,12 +1,15 @@
 package app
 
 import (
+	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/descriptorpb"
 
 	"github.com/bavix/gripmock/v3/internal/domain/descriptors"
 	"github.com/bavix/gripmock/v3/internal/domain/protoset"
@@ -92,4 +95,74 @@ func TestGRPCServerFindMethodDescriptorFromDynamicRegistry(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "helloworld.HelloRequest", string(method.Input().FullName()))
 	require.Equal(t, "helloworld.HelloReply", string(method.Output().FullName()))
+}
+
+//nolint:paralleltest
+func TestGRPCServerBuildRegistersPersistedDescriptors(t *testing.T) {
+	ctx := t.Context()
+	protoPath := filepath.Join(t.TempDir(), "persisted_runtime.proto")
+	err := os.WriteFile(protoPath, []byte(`syntax = "proto3";
+package persisted.runtime;
+
+service RuntimeService {
+  rpc Echo (EchoRequest) returns (EchoReply);
+}
+
+message EchoRequest {
+  string message = 1;
+}
+
+message EchoReply {
+  string message = 1;
+}
+`), 0o644)
+	require.NoError(t, err)
+
+	fdsSlice, err := protoset.Build(ctx, nil, []string{protoPath}, nil)
+	require.NoError(t, err)
+	require.NotEmpty(t, fdsSlice)
+
+	registry := descriptors.NewRegistry()
+	server := NewGRPCServer(
+		"tcp",
+		":0",
+		nil,
+		stuber.NewBudgerigar(),
+		NewInstantExtender(),
+		nil,
+		registry,
+		nil,
+		nil,
+		false,
+		nil,
+	)
+
+	server.SetProtoMetadataWriter(&grpcProtoMetadataLoaderStub{loaded: fdsSlice})
+
+	grpcServer, err := server.Build(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, grpcServer)
+	defer grpcServer.GracefulStop()
+
+	method, err := server.findMethodDescriptor("persisted.runtime.RuntimeService", "Echo")
+	require.NoError(t, err)
+	require.Equal(t, "persisted.runtime.EchoRequest", string(method.Input().FullName()))
+	require.Equal(t, "persisted.runtime.EchoReply", string(method.Output().FullName()))
+	require.Contains(t, registry.ServiceIDs(), "persisted.runtime.RuntimeService")
+}
+
+type grpcProtoMetadataLoaderStub struct {
+	loaded []*descriptorpb.FileDescriptorSet
+}
+
+func (s *grpcProtoMetadataLoaderStub) ReplaceDescriptorFiles(context.Context, string, []protoreflect.FileDescriptor) error {
+	return nil
+}
+
+func (s *grpcProtoMetadataLoaderStub) ReplaceDescriptorSets(context.Context, string, []*descriptorpb.FileDescriptorSet) error {
+	return nil
+}
+
+func (s *grpcProtoMetadataLoaderStub) LoadDescriptorSets(context.Context) ([]*descriptorpb.FileDescriptorSet, error) {
+	return s.loaded, nil
 }

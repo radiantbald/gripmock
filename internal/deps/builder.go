@@ -20,6 +20,8 @@ import (
 	"github.com/bavix/gripmock/v3/internal/infra/lifecycle"
 	internalplugins "github.com/bavix/gripmock/v3/internal/infra/plugins"
 	pgallowlist "github.com/bavix/gripmock/v3/internal/infra/postgres/allowlist"
+	pgclients "github.com/bavix/gripmock/v3/internal/infra/postgres/clients"
+	pgprotometadata "github.com/bavix/gripmock/v3/internal/infra/postgres/protometadata"
 	pgsessions "github.com/bavix/gripmock/v3/internal/infra/postgres/sessions"
 	pgusers "github.com/bavix/gripmock/v3/internal/infra/postgres/users"
 	reflectclient "github.com/bavix/gripmock/v3/internal/infra/reflectclient"
@@ -82,6 +84,14 @@ type Builder struct {
 	sessionsRepository     *pgsessions.Repository
 	sessionsRepositoryOnce sync.Once
 	sessionsRepositoryErr  error
+
+	clientsRepository     *pgclients.Repository
+	clientsRepositoryOnce sync.Once
+	clientsRepositoryErr  error
+
+	protoMetadataRepository     *pgprotometadata.Repository
+	protoMetadataRepositoryOnce sync.Once
+	protoMetadataRepositoryErr  error
 
 	persistenceInitOnce sync.Once
 	persistenceInitErr  error

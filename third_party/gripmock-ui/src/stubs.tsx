@@ -19,12 +19,13 @@ import {
   AutocompleteInput,
   useGetList,
   NumberInput,
+  useRedirect,
 } from "react-admin";
 import { JsonField } from "./components/json/JsonField";
 import { JsonTextAreaInput } from "./components/json/JsonTextAreaInput";
 import { KeyValueTableInput } from "./components/json/KeyValueTableInput";
 import { StubMatcherInput } from "./components/json/StubMatcherInput";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ReactElement } from "react";
 
 import { useJsonTheme } from "./utils/jsonTheme";
@@ -35,6 +36,7 @@ import type { StubRecord } from "./types/entities";
 import { StubsDatagrid } from "./features/stubs/components/StubsDatagrid";
 import { getCurrentSession, subscribeSessionChanges } from "./utils/session";
 import type { SessionRow } from "./features/session/model";
+import { setStubEditedSignal } from "./utils/stubEditSignal";
 
 const RADIUS_PX = "10px";
 const stubsListSx = {
@@ -597,8 +599,20 @@ export const StubCreate = () => {
 
 // Stub Edit component
 export const StubEdit = () => {
+  const redirect = useRedirect();
+  const handleSaveSuccess = useCallback(
+    (data?: { id?: string | number }) => {
+      const savedStubId = String(data?.id || "").trim();
+      if (savedStubId) {
+        setStubEditedSignal(savedStubId);
+      }
+      redirect("list", "stubs");
+    },
+    [redirect],
+  );
+
   return (
-    <Edit>
+    <Edit mutationOptions={{ onSuccess: (data) => handleSaveSuccess(data as { id?: string | number }) }}>
       <SimpleForm
         transform={normalizeStubDelay}
         sx={{

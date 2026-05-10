@@ -179,6 +179,20 @@ func (t *Tracker) SessionByClient(clientID string) string {
 	return sessionID
 }
 
+func (t *Tracker) UnassignClient(clientID string) bool {
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		return false
+	}
+
+	t.mu.Lock()
+	_, existed := t.clientRoutes[clientID]
+	delete(t.clientRoutes, clientID)
+	t.mu.Unlock()
+
+	return existed
+}
+
 //nolint:gochecknoglobals
 var defaultTracker = NewTracker()
 
@@ -216,6 +230,10 @@ func AssignClient(clientID string, sessionID string) bool {
 
 func SessionByClient(clientID string) string {
 	return defaultTracker.SessionByClient(clientID)
+}
+
+func UnassignClient(clientID string) bool {
+	return defaultTracker.UnassignClient(clientID)
 }
 
 func trimOwner(ownerID string) string {

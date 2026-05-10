@@ -17,13 +17,16 @@ import {
   Typography,
 } from "@mui/material";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
+import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import SearchOffRoundedIcon from "@mui/icons-material/SearchOffRounded";
-import { useDataProvider, useNotify } from "react-admin";
+import { useCreatePath, useDataProvider, useNotify } from "react-admin";
+import { Link as RouterLink } from "react-router-dom";
 
 import { API_CONFIG } from "./constants/api";
 import { apiClient } from "./dataProvider/apiClient";
 import { getCurrentSession, subscribeSessionChanges } from "./utils/session";
+import { clearStubEditedSignal, getStubEditedSignalStubId } from "./utils/stubEditSignal";
 import type { HistoryRecord } from "./types/entities";
 
 type StreamHandlers = {
@@ -57,8 +60,21 @@ const jsonTextSx = {
 
 const MAX_ITEMS = 500;
 const codeToChipColor = (code?: number) => (code === undefined || code === 0 ? "success" : "error");
-const protoMissingErrorMarkers = ["unknown service/method", "method not found"];
+const protoMissingErrorMarkers = [
+  "unknown service/method",
+  "method not found",
+  "message descriptor not found",
+  "not a message descriptor",
+];
+const missingStubErrorMarkers = ["no matching stub found", "stub not found", "can't find stub", "no stub found"];
+const responseSchemaErrorMarkers = [
+  "failed to unmarshal json into dynamic message",
+  "failed to convert response to dynamic message",
+  "failed to marshal map to json",
+  "proto:",
+];
 const notFoundCode = 5;
+const internalCode = 13;
 const serverTimestampFormatter = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
   month: "2-digit",
@@ -185,7 +201,35 @@ const hasMissingProtoError = (record?: HistoryRecord): boolean => {
     return true;
   }
 
-  return protoMissingErrorMarkers.some((marker) => normalizedError.includes(marker));
+  // Keep lock screen for any Unimplemented response. This is the most stable
+  // signal for "runtime proto is missing/incomplete" flows in sniffer.
+  return protoMissingErrorMarkers.some((marker) => normalizedError.includes(marker)) || normalizedError.length > 0;
+};
+
+const hasMissingStubError = (record?: HistoryRecord): boolean => {
+  if (!record || record.code !== notFoundCode) {
+    return false;
+  }
+
+  const normalizedError = String(record.error || "").toLowerCase();
+  if (!normalizedError) {
+    return false;
+  }
+
+  return missingStubErrorMarkers.some((marker) => normalizedError.includes(marker));
+};
+
+const hasResponseSchemaError = (record?: HistoryRecord): boolean => {
+  if (!record || record.code !== internalCode) {
+    return false;
+  }
+
+  const normalizedError = String(record.error || "").toLowerCase();
+  if (!normalizedError) {
+    return false;
+  }
+
+  return responseSchemaErrorMarkers.some((marker) => normalizedError.includes(marker));
 };
 
 const subscribeHistoryStream = (session: string, handlers: StreamHandlers): (() => void) => {
@@ -210,13 +254,46 @@ const subscribeHistoryStream = (session: string, handlers: StreamHandlers): (() 
 export const SnifferPage = () => {
   const notify = useNotify();
   const dataProvider = useDataProvider();
+  const createPath = useCreatePath();
   const [records, setRecords] = useState<HistoryRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [activeSession, setActiveSession] = useState(() => getCurrentSession());
   const [isUploadingProto, setIsUploadingProto] = useState(false);
+  const [hasProtoFromApi, setHasProtoFromApi] = useState(false);
+  const [hasMethodFromApi, setHasMethodFromApi] = useState(false);
+  const [peerBoundSession, setPeerBoundSession] = useState("");
+  const [recentlyAttachedPeer, setRecentlyAttachedPeer] = useState("");
   const [streamRevision, setStreamRevision] = useState(0);
   const [expandedResponseKeys, setExpandedResponseKeys] = useState<Set<string>>(new Set());
+  const [editedStubId, setEditedStubId] = useState(() => getStubEditedSignalStubId());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const checkProtoStatus = useCallback(
+    async (service: string, method: string): Promise<{ hasMethod: boolean; hasProto: boolean }> => {
+      const normalizedService = service.trim();
+      const normalizedMethod = method.trim();
+      if (!normalizedService || !normalizedMethod) {
+        return { hasMethod: false, hasProto: false };
+      }
+
+      const query = new URLSearchParams();
+      query.set("service", normalizedService);
+      query.set("method", normalizedMethod);
+
+      const [methodResult, protoStatusResult] = await Promise.allSettled([
+        apiClient.request(
+          `/services/${encodeURIComponent(normalizedService)}/methods/${encodeURIComponent(normalizedMethod)}`,
+        ),
+        apiClient.request<{ exists?: boolean }>(`/proto-metadata/status?${query.toString()}`),
+      ]);
+
+      const hasMethod = methodResult.status === "fulfilled";
+      const hasProto = protoStatusResult.status === "fulfilled" ? Boolean(protoStatusResult.value?.exists) : false;
+
+      return { hasMethod, hasProto };
+    },
+    [],
+  );
 
   useEffect(() => subscribeSessionChanges(() => setActiveSession(getCurrentSession())), []);
 
@@ -269,17 +346,51 @@ export const SnifferPage = () => {
     [records, selectedId],
   );
   const showMissingProtoHint = hasMissingProtoError(selected);
+  const showMissingStubHint = hasMissingStubError(selected);
+  const selectedStubId = String(selected?.stubId || "").trim();
+  const showResponseSchemaHint = !!selectedStubId && hasResponseSchemaError(selected);
   const selectedSession = String(selected?.session || "").trim();
   const suggestedSession = activeSession.trim();
   const selectedPeer = String(selected?.client || "").trim();
   const selectedService = String(selected?.service || "").trim();
   const selectedMethod = String(selected?.method || "").trim();
   const selectedCode = selected?.code;
+  const resolvedPeerSession = (peerBoundSession || selectedSession).trim();
+  const isPeerBoundToAnySession = resolvedPeerSession.length > 0;
   const isGlobalSessionCall = !!selected && selectedSession.length === 0;
   const showMissingSessionHint =
-    isGlobalSessionCall && (selected.code === notFoundCode || showMissingProtoHint);
-  const canAssignPeerSession = isGlobalSessionCall && !!suggestedSession && !!selectedPeer;
-  const shouldHideResponsePayload = showMissingProtoHint || showMissingSessionHint;
+    isGlobalSessionCall && !isPeerBoundToAnySession && (selected.code === notFoundCode || showMissingProtoHint);
+  const canAssignPeerSession = !isPeerBoundToAnySession && !!suggestedSession && !!selectedPeer;
+  const isPeerAttachedToCurrentSession = !!suggestedSession && resolvedPeerSession === suggestedSession;
+  const shouldShowProtoUploadedHint = hasProtoFromApi && showMissingProtoHint;
+  const shouldShowAttachedSessionInfo =
+    isGlobalSessionCall &&
+    isPeerBoundToAnySession &&
+    isPeerAttachedToCurrentSession &&
+    !!selectedPeer &&
+    recentlyAttachedPeer === selectedPeer;
+  const shouldShowCombinedAttachAndProtoHint = shouldShowAttachedSessionInfo && shouldShowProtoUploadedHint;
+  const attachedSessionLabel = resolvedPeerSession;
+  const shouldHideResponsePayload = showMissingProtoHint || showMissingSessionHint || shouldShowAttachedSessionInfo;
+  const shouldShowMissingStubBlock = !shouldHideResponsePayload && showMissingStubHint;
+  const shouldShowInvalidStubBlock = !shouldHideResponsePayload && showResponseSchemaHint;
+  const shouldShowStubEditedRetryHint = shouldShowInvalidStubBlock && !!editedStubId && editedStubId === selectedStubId;
+  const stubsListPath = useMemo(() => {
+    const basePath = createPath({ resource: "stubs", type: "list" });
+    if (!selectedService || !selectedMethod) {
+      return basePath;
+    }
+
+    const filter = encodeURIComponent(JSON.stringify({ service: selectedService, method: selectedMethod }));
+    return `${basePath}?filter=${filter}`;
+  }, [createPath, selectedMethod, selectedService]);
+  const selectedStubEditPath = useMemo(() => {
+    if (!selectedStubId) {
+      return createPath({ resource: "stubs", type: "list" });
+    }
+
+    return createPath({ resource: "stubs", type: "edit", id: selectedStubId });
+  }, [createPath, selectedStubId]);
   const requestPayload = useMemo(() => {
     if (selected?.requests && selected.requests.length > 1) {
       return selected.requests.map((item) => unwrapRootPayload(item));
@@ -316,6 +427,86 @@ export const SnifferPage = () => {
     });
   }, [selected?.callId, selected?.id, orderedResponseEntries]);
 
+  useEffect(() => {
+    const syncEditedStubId = () => setEditedStubId(getStubEditedSignalStubId());
+    const onFocus = () => syncEditedStubId();
+
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (editedStubId && editedStubId !== selectedStubId) {
+      return;
+    }
+    if (showResponseSchemaHint) {
+      return;
+    }
+
+    clearStubEditedSignal();
+    setEditedStubId("");
+  }, [editedStubId, selectedStubId, showResponseSchemaHint]);
+
+  useEffect(() => {
+    const service = selectedService.trim();
+    const method = selectedMethod.trim();
+    if (!service || !method) {
+      setHasMethodFromApi(false);
+      setHasProtoFromApi(false);
+      return;
+    }
+
+    let cancelled = false;
+    checkProtoStatus(service, method)
+      .then(({ hasMethod, hasProto }) => {
+        if (cancelled) {
+          return;
+        }
+        setHasMethodFromApi(hasMethod);
+        setHasProtoFromApi(hasProto);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHasMethodFromApi(false);
+          setHasProtoFromApi(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [checkProtoStatus, selectedMethod, selectedService]);
+
+  useEffect(() => {
+    const peer = selectedPeer.trim();
+    if (!peer) {
+      setPeerBoundSession(selectedSession);
+      return;
+    }
+
+    let cancelled = false;
+    apiClient
+      .request<{ session?: string; bound?: boolean }>(`/sessions/peers/status?peer=${encodeURIComponent(peer)}`)
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        const boundSession = String(payload?.session || "").trim();
+        setPeerBoundSession(boundSession || selectedSession);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPeerBoundSession(selectedSession);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPeer, selectedSession]);
+
   const handleAssignPeerSession = useCallback(async () => {
     if (!selectedPeer) {
       notify("Selected call has no peer identifier.", { type: "warning" });
@@ -332,9 +523,8 @@ export const SnifferPage = () => {
         method: "POST",
         body: JSON.stringify({ peer: selectedPeer, session: suggestedSession }),
       });
-      notify(`Peer ${selectedPeer} is now routed to session ${suggestedSession}. Retry call.`, {
-        type: "success",
-      });
+      setPeerBoundSession(suggestedSession);
+      setRecentlyAttachedPeer(selectedPeer);
     } catch (error) {
       notify((error as Error).message || "Failed to assign peer to session", { type: "warning" });
     }
@@ -349,7 +539,10 @@ export const SnifferPage = () => {
     setIsUploadingProto(true);
     try {
       await dataProvider.create("descriptors", { data: { file } });
-      notify("Descriptor uploaded. Retry the gRPC call.", { type: "success" });
+      const { hasMethod, hasProto } = await checkProtoStatus(selectedService, selectedMethod);
+      setHasMethodFromApi(hasMethod);
+      setHasProtoFromApi(hasProto);
+      notify("Descriptor uploaded.", { type: "success" });
       await loadHistorySnapshot().catch(() => {
         // Keep current snapshot on refresh failure.
       });
@@ -368,18 +561,20 @@ export const SnifferPage = () => {
     <Box
       sx={{
         display: "grid",
-        gridTemplateRows: "minmax(280px, 1fr) minmax(260px, 1fr)",
-        gap: 1.5,
-        p: 1.5,
-        height: "calc(100vh - 120px)",
+        gridTemplateRows: "minmax(0, 1fr) minmax(0, 1fr)",
+        gap: 0,
+        p: 0,
+        height: "100%",
+        minHeight: 0,
       }}
     >
       <Paper
         sx={{
           overflow: "hidden",
-          borderRadius: RADIUS_PX,
+          borderRadius: `${RADIUS_PX} ${RADIUS_PX} 0 0`,
           border: "1px solid",
           borderColor: "divider",
+          borderBottom: 0,
           boxShadow: "0 10px 28px rgba(0,0,0,0.16)",
         }}
       >
@@ -395,7 +590,14 @@ export const SnifferPage = () => {
           </Box>
         </Box>
         <Divider />
-        <TableContainer sx={{ maxHeight: "100%" }}>
+        <TableContainer
+          sx={{
+            maxHeight: "100%",
+            height: "100%",
+            backgroundImage:
+              "repeating-linear-gradient(to bottom, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 32px, transparent 32px, transparent 64px)",
+          }}
+        >
           <Table
             stickyHeader
             size="small"
@@ -440,13 +642,13 @@ export const SnifferPage = () => {
                     sx={{
                       cursor: "pointer",
                       "&:hover": {
-                        bgcolor: "rgba(255,255,255,0.03)",
+                        bgcolor: "rgba(255,255,255,0.028)",
                       },
                       "&.Mui-selected": {
-                        bgcolor: "rgba(255,255,255,0.06)",
+                        bgcolor: "rgba(255,255,255,0.055)",
                       },
                       "&.Mui-selected:hover": {
-                        bgcolor: "rgba(255,255,255,0.08)",
+                        bgcolor: "rgba(255,255,255,0.075)",
                       },
                     }}
                   >
@@ -475,7 +677,7 @@ export const SnifferPage = () => {
       {!selected ? (
         <Paper
           sx={{
-            borderRadius: RADIUS_PX,
+            borderRadius: `0 0 ${RADIUS_PX} ${RADIUS_PX}`,
             border: "1px solid",
             borderColor: "divider",
             boxShadow: "0 10px 28px rgba(0,0,0,0.16)",
@@ -495,13 +697,14 @@ export const SnifferPage = () => {
           </Box>
         </Paper>
       ) : (
-        <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5, minHeight: 0 }}>
+        <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0, minHeight: 0 }}>
           <Paper
             sx={{
               overflow: "hidden",
-              borderRadius: RADIUS_PX,
+              borderRadius: `0 0 0 ${RADIUS_PX}`,
               border: "1px solid",
               borderColor: "divider",
+              borderRight: 0,
               display: "flex",
               flexDirection: "column",
               minHeight: 0,
@@ -531,7 +734,7 @@ export const SnifferPage = () => {
           <Paper
             sx={{
               overflow: "hidden",
-              borderRadius: RADIUS_PX,
+              borderRadius: `0 0 ${RADIUS_PX} 0`,
               border: "1px solid",
               borderColor: "divider",
               display: "flex",
@@ -592,27 +795,150 @@ export const SnifferPage = () => {
                     sx={{
                       mt: 2.25,
                       display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      gap: 0.85,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        gap: 1.25,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {shouldShowCombinedAttachAndProtoHint ? (
+                        <Typography variant="body2" color="success.main" sx={{ fontWeight: 700 }}>
+                          {`Protofile uploaded and Session ${attachedSessionLabel} attached - Retry request`}
+                        </Typography>
+                      ) : shouldShowAttachedSessionInfo ? (
+                        <Typography variant="body2" color="success.main" sx={{ fontWeight: 700 }}>
+                          {`Session ${attachedSessionLabel} attached`}
+                        </Typography>
+                      ) : !isPeerBoundToAnySession ? (
+                        <Button
+                          variant="outlined"
+                          onClick={handleAssignPeerSession}
+                          disabled={!canAssignPeerSession}
+                          sx={{ textTransform: "none", fontWeight: 700, borderRadius: RADIUS_PX, px: 2.25, py: 0.9 }}
+                        >
+                          Assign current session
+                        </Button>
+                      ) : null}
+                      {shouldShowCombinedAttachAndProtoHint ? null : shouldShowProtoUploadedHint ? (
+                        <Typography variant="body2" color="success.main" sx={{ fontWeight: 700 }}>
+                          Protofile uploaded
+                        </Typography>
+                      ) : (
+                        <Button
+                          variant="contained"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={isUploadingProto}
+                          sx={{ textTransform: "none", fontWeight: 700, borderRadius: RADIUS_PX, px: 2.25, py: 0.9 }}
+                        >
+                          {isUploadingProto ? "Uploading..." : "Upload proto"}
+                        </Button>
+                      )}
+                    </Box>
+                  </Box>
+                </Box>
+              </Box>
+            ) : shouldShowInvalidStubBlock ? (
+              <Box
+                sx={{
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                  px: 2,
+                  color: "text.secondary",
+                }}
+              >
+                <Box sx={{ maxWidth: 520 }}>
+                  <ErrorOutlineRoundedIcon sx={{ fontSize: 44, opacity: 0.75, mb: 0.75, color: "error.main" }} />
+                  <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
+                    Invalid stub response
+                  </Typography>
+                  <Typography variant="body1" sx={{ opacity: 0.85 }}>
+                    Selected stub response does not match the proto schema.
+                  </Typography>
+                  <Typography variant="body1" sx={{ opacity: 0.85 }}>
+                    Open the selected stub and fix its output payload.
+                  </Typography>
+                  <Box
+                    sx={{
+                      mt: 2.25,
+                      display: "flex",
                       justifyContent: "center",
                       alignItems: "center",
                       gap: 1.25,
                       flexWrap: "wrap",
                     }}
                   >
+                    {shouldShowStubEditedRetryHint ? (
+                      <Typography variant="body2" color="success.main" sx={{ fontWeight: 700 }}>
+                        Stub edited - retry call
+                      </Typography>
+                    ) : (
+                      <Button
+                        variant="contained"
+                        component={RouterLink}
+                        to={selectedStubEditPath}
+                        sx={{ textTransform: "none", fontWeight: 700, borderRadius: RADIUS_PX, px: 2.25, py: 0.9 }}
+                      >
+                        Edit selected stub
+                      </Button>
+                    )}
                     <Button
                       variant="outlined"
-                      onClick={handleAssignPeerSession}
-                      disabled={!canAssignPeerSession}
+                      component={RouterLink}
+                      to={stubsListPath}
+                      disabled={!hasMethodFromApi}
                       sx={{ textTransform: "none", fontWeight: 700, borderRadius: RADIUS_PX, px: 2.25, py: 0.9 }}
                     >
-                      Assign session
+                      Select another stub
                     </Button>
+                  </Box>
+                </Box>
+              </Box>
+            ) : shouldShowMissingStubBlock ? (
+              <Box
+                sx={{
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                  px: 2,
+                  color: "text.secondary",
+                }}
+              >
+                <Box sx={{ maxWidth: 520 }}>
+                  <SearchOffRoundedIcon sx={{ fontSize: 44, opacity: 0.75, mb: 0.75 }} />
+                  <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
+                    No stub assigned
+                  </Typography>
+                  <Typography variant="body1" sx={{ opacity: 0.85 }}>
+                    No stub is assigned for this call.
+                  </Typography>
+                  <Typography variant="body1" sx={{ opacity: 0.85 }}>
+                    {hasMethodFromApi
+                      ? "Open filtered stubs for this service/method and choose one."
+                      : "Service/method pair is not found in DB yet."}
+                  </Typography>
+                  <Box sx={{ mt: 2.25, display: "flex", justifyContent: "center", alignItems: "center", gap: 1.25 }}>
                     <Button
                       variant="contained"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isUploadingProto}
+                      component={RouterLink}
+                      to={stubsListPath}
+                      disabled={!hasMethodFromApi}
                       sx={{ textTransform: "none", fontWeight: 700, borderRadius: RADIUS_PX, px: 2.25, py: 0.9 }}
                     >
-                      {isUploadingProto ? "Uploading..." : "Upload proto"}
+                      Assign stub
                     </Button>
                   </Box>
                 </Box>

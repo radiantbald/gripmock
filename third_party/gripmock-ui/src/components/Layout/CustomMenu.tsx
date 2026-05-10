@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Menu, useGetList, useSidebarState } from "react-admin";
 import StorageIcon from "@mui/icons-material/Storage";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
+import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
+import DevicesIcon from "@mui/icons-material/Devices";
 
 import { getCurrentSession, subscribeSessionChanges } from "../../utils/session";
 import type { SessionRow } from "../../features/session/model";
@@ -57,6 +59,8 @@ export const CustomMenu = () => {
     >
       <Menu.Item to="/sniffer" primaryText="Sniffer" leftIcon={<TravelExploreIcon />} />
       {sessionExistsInDb ? <Menu.Item to="/stubs" primaryText="Stubs" leftIcon={<StorageIcon />} /> : null}
+      <Menu.Item to="/protofiles" primaryText="Protofiles" leftIcon={<DescriptionOutlinedIcon />} />
+      <Menu.Item to="/clients" primaryText="Clients" leftIcon={<DevicesIcon />} />
     </Menu>
   );
 };

@@ -16,11 +16,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/descriptorpb"
 
 	mcpusecase "github.com/bavix/gripmock/v3/internal/app/usecase/mcp"
 	"github.com/bavix/gripmock/v3/internal/domain/history"
 	"github.com/bavix/gripmock/v3/internal/domain/protoset"
 	"github.com/bavix/gripmock/v3/internal/domain/rest"
+	pgprotometadata "github.com/bavix/gripmock/v3/internal/infra/postgres/protometadata"
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
 )
 
@@ -29,6 +32,23 @@ type mockExtender struct{}
 
 func (m *mockExtender) Update(stubs []*stuber.Stub) error { return nil }
 func (m *mockExtender) Wait(ctx context.Context)          {}
+
+type protoMetadataDeleteMock struct {
+	result pgprotometadata.DeleteProtofileResult
+	err    error
+}
+
+func (m *protoMetadataDeleteMock) ReplaceDescriptorFiles(context.Context, string, []protoreflect.FileDescriptor) error {
+	return nil
+}
+
+func (m *protoMetadataDeleteMock) ReplaceDescriptorSets(context.Context, string, []*descriptorpb.FileDescriptorSet) error {
+	return nil
+}
+
+func (m *protoMetadataDeleteMock) DeleteProtofile(context.Context, string) (pgprotometadata.DeleteProtofileResult, error) {
+	return m.result, m.err
+}
 
 // RestServerTestSuite provides test suite for REST server functionality.
 type RestServerTestSuite struct {
@@ -478,6 +498,46 @@ func (s *RestServerTestSuite) TestDeleteService() {
 	w3 := httptest.NewRecorder()
 	s.server.DeleteService(w3, delReq, "helloworld.Greeter")
 	s.Equal(http.StatusNotFound, w3.Code)
+}
+
+func (s *RestServerTestSuite) TestProtofilesDelete() {
+	w := s.addDescriptorsPayload(s.server, s.greeterDescriptorSetBytes())
+	s.Require().Equal(http.StatusOK, w.Code)
+
+	stubGreeter := &stuber.Stub{
+		Service: "helloworld.Greeter",
+		Method:  "SayHello",
+		Input:   stuber.InputData{Contains: map[string]any{}},
+		Output:  stuber.Output{Data: map[string]any{"ok": true}},
+	}
+	stubOther := &stuber.Stub{
+		Service: "other.Service",
+		Method:  "Ping",
+		Input:   stuber.InputData{Contains: map[string]any{}},
+		Output:  stuber.Output{Data: map[string]any{"ok": true}},
+	}
+	s.budgerigar.PutMany(stubGreeter, stubOther)
+
+	s.server.SetProtoMetadataWriter(&protoMetadataDeleteMock{
+		result: pgprotometadata.DeleteProtofileResult{
+			Removed:    true,
+			ServiceIDs: []string{"helloworld.Greeter"},
+			ServiceMethods: []pgprotometadata.ServiceMethodRef{
+				{ServiceID: "helloworld.Greeter", MethodID: "SayHello"},
+			},
+		},
+	})
+
+	req := httptest.NewRequestWithContext(s.T().Context(), http.MethodDelete, "/api/protofiles/service.proto", nil)
+	req = mux.SetURLVars(req, map[string]string{"name": "service.proto"})
+	resp := httptest.NewRecorder()
+
+	s.server.ProtofilesDelete(resp, req)
+	s.Equal(http.StatusOK, resp.Code)
+
+	remaining := s.budgerigar.All()
+	s.Require().Len(remaining, 1)
+	s.Equal("other.Service", remaining[0].Service)
 }
 
 func (s *RestServerTestSuite) TestMcpInfo() {

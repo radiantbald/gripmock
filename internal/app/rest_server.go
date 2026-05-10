@@ -24,6 +24,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/goccy/go-json"
 	"github.com/google/uuid"
+	"github.com/gorilla/mux"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/rs/zerolog"
@@ -42,6 +43,8 @@ import (
 	"github.com/bavix/gripmock/v3/internal/infra/jsondecoder"
 	"github.com/bavix/gripmock/v3/internal/infra/muxmiddleware"
 	pgallowlist "github.com/bavix/gripmock/v3/internal/infra/postgres/allowlist"
+	pgclients "github.com/bavix/gripmock/v3/internal/infra/postgres/clients"
+	pgprotometadata "github.com/bavix/gripmock/v3/internal/infra/postgres/protometadata"
 	pgsessions "github.com/bavix/gripmock/v3/internal/infra/postgres/sessions"
 	pgusers "github.com/bavix/gripmock/v3/internal/infra/postgres/users"
 	protosetinfra "github.com/bavix/gripmock/v3/internal/infra/protoset"
@@ -53,6 +56,24 @@ import (
 // Extender defines the interface for extending stub functionality.
 type Extender interface {
 	Wait(ctx context.Context)
+}
+
+type ProtoMetadataWriter interface {
+	ReplaceDescriptorFiles(ctx context.Context, source string, files []protoreflect.FileDescriptor) error
+	ReplaceDescriptorSets(ctx context.Context, source string, descriptorSets []*descriptorpb.FileDescriptorSet) error
+}
+
+type protoMetadataReader interface {
+	HasAnyProtofiles(ctx context.Context) (bool, error)
+	HasServiceMethod(ctx context.Context, serviceID, methodID string) (bool, error)
+}
+
+type protoMetadataLister interface {
+	ListProtofiles(ctx context.Context) ([]pgprotometadata.ProtofileMeta, error)
+}
+
+type protoMetadataDeleter interface {
+	DeleteProtofile(ctx context.Context, name string) (pgprotometadata.DeleteProtofileResult, error)
 }
 
 // RestServer handles HTTP REST API requests for stub management.
@@ -73,6 +94,8 @@ type RestServer struct {
 	usersRepository *pgusers.Repository
 	allowedPhones   *pgallowlist.Repository
 	sessionsRepo    *pgsessions.Repository
+	clientsRepo     *pgclients.Repository
+	protoMetadata   ProtoMetadataWriter
 }
 
 var _ rest.ServerInterface = &RestServer{}
@@ -136,12 +159,61 @@ func (h *RestServer) SetSessionsRepository(repository *pgsessions.Repository) {
 	h.sessionsRepo = repository
 }
 
+func (h *RestServer) SetClientsRepository(repository *pgclients.Repository) {
+	h.clientsRepo = repository
+	if h.clientsRepo == nil {
+		return
+	}
+
+	routes, err := h.clientsRepo.List(context.Background())
+	if err != nil {
+		return
+	}
+	for _, route := range routes {
+		sessioninfra.AssignClient(route.ClientID, route.SessionID)
+	}
+}
+
+func (h *RestServer) SetProtoMetadataWriter(writer ProtoMetadataWriter) {
+	h.protoMetadata = writer
+}
+
+func (h *RestServer) ProtoMetadataStatus(w http.ResponseWriter, r *http.Request) {
+	reader, ok := h.protoMetadata.(protoMetadataReader)
+	if !ok {
+		h.writeResponse(r.Context(), w, map[string]any{"exists": false})
+		return
+	}
+
+	serviceID := strings.TrimSpace(r.URL.Query().Get("service"))
+	methodID := strings.TrimSpace(r.URL.Query().Get("method"))
+
+	var (
+		exists bool
+		err    error
+	)
+	if serviceID != "" || methodID != "" {
+		exists, err = reader.HasServiceMethod(r.Context(), serviceID, methodID)
+	} else {
+		exists, err = reader.HasAnyProtofiles(r.Context())
+	}
+	if err != nil {
+		zerolog.Ctx(r.Context()).Warn().Err(err).Str("service", serviceID).Str("method", methodID).
+			Msg("failed to resolve proto metadata status")
+		exists = false
+	}
+
+	h.writeResponse(r.Context(), w, map[string]any{"exists": exists})
+}
+
 const (
 	servicesListCap                = 16
 	serviceMethodsCap              = 32
 	stubSchemaURL                  = "https://bavix.github.io/gripmock/schema/stub.json"
 	historyStreamTick              = 15 * time.Second
 	descriptorUploadFilenameHeader = "X-Gripmock-Descriptor-Filename"
+	descriptorSourceREST           = "rest"
+	descriptorSourceMCP            = "mcp"
 )
 
 var (
@@ -322,8 +394,10 @@ func (h *RestServer) SessionsCreate(w http.ResponseWriter, r *http.Request) {
 // SessionsAssignPeer binds a stable peer identifier to a session for gRPC calls without explicit session header.
 func (h *RestServer) SessionsAssignPeer(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		Peer    string `json:"peer"`
-		Session string `json:"session"`
+		Peer        string `json:"peer"`
+		Session     string `json:"session"`
+		UserAgent   string `json:"userAgent"`
+		Fingerprint string `json:"fingerprint"`
 	}
 
 	byt, err := io.ReadAll(r.Body)
@@ -338,9 +412,29 @@ func (h *RestServer) SessionsAssignPeer(w http.ResponseWriter, r *http.Request) 
 
 	peerID := strings.TrimSpace(payload.Peer)
 	sessionID := strings.TrimSpace(payload.Session)
+	userAgent := strings.TrimSpace(payload.UserAgent)
+	fingerprint := strings.TrimSpace(payload.Fingerprint)
 	if peerID == "" || sessionID == "" {
 		h.validationError(r.Context(), w, errors.New("peer and session are required"))
 		return
+	}
+	if fingerprint == "" {
+		fingerprint = clientFingerprint(peerID, userAgent)
+	}
+
+	if h.clientsRepo != nil {
+		if err := h.clientsRepo.Upsert(
+			r.Context(),
+			peerID,
+			sessionID,
+			muxmiddleware.OwnerFromContext(r.Context()),
+			peerID,
+			userAgent,
+			fingerprint,
+		); err != nil {
+			h.validationError(r.Context(), w, err)
+			return
+		}
 	}
 
 	if !sessioninfra.AssignClient(peerID, sessionID) {
@@ -352,6 +446,214 @@ func (h *RestServer) SessionsAssignPeer(w http.ResponseWriter, r *http.Request) 
 		Message: "peer assigned to session",
 		Time:    time.Now(),
 	})
+}
+
+// SessionsPeerStatus returns session mapping for a peer (if any).
+func (h *RestServer) SessionsPeerStatus(w http.ResponseWriter, r *http.Request) {
+	peerID := strings.TrimSpace(r.URL.Query().Get("peer"))
+	if peerID == "" {
+		h.validationError(r.Context(), w, errors.New("peer is required"))
+		return
+	}
+
+	sessionID := ""
+	if h.clientsRepo != nil {
+		dbSessionID, err := h.clientsRepo.SessionByClient(r.Context(), peerID)
+		if err != nil {
+			h.validationError(r.Context(), w, err)
+			return
+		}
+		sessionID = strings.TrimSpace(dbSessionID)
+		if sessionID == "" {
+			sessioninfra.UnassignClient(peerID)
+		} else {
+			sessioninfra.AssignClient(peerID, sessionID)
+		}
+	} else {
+		sessionID = strings.TrimSpace(sessioninfra.SessionByClient(peerID))
+	}
+	h.writeResponse(r.Context(), w, map[string]any{
+		"peer":    peerID,
+		"session": sessionID,
+		"bound":   sessionID != "",
+	})
+}
+
+// ClientsList returns peer-to-session mappings persisted for routing.
+func (h *RestServer) ClientsList(w http.ResponseWriter, r *http.Request) {
+	if h.clientsRepo == nil {
+		h.writeResponse(r.Context(), w, []map[string]any{})
+		return
+	}
+
+	routes, err := h.clientsRepo.List(r.Context())
+	if err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+
+	items := make([]map[string]any, 0, len(routes))
+	for _, route := range routes {
+		clientID := strings.TrimSpace(route.ClientID)
+		sessionID := strings.TrimSpace(route.SessionID)
+		if clientID == "" || sessionID == "" {
+			continue
+		}
+
+		items = append(items, map[string]any{
+			"id":          clientID,
+			"client":      clientID,
+			"session":     sessionID,
+			"user":        route.UserID,
+			"peerHost":    route.PeerHost,
+			"userAgent":   route.UserAgent,
+			"fingerprint": route.Fingerprint,
+		})
+	}
+
+	h.writeResponse(r.Context(), w, items)
+}
+
+func clientFingerprint(peerID string, userAgent string) string {
+	peerID = strings.TrimSpace(peerID)
+	userAgent = strings.TrimSpace(userAgent)
+	if peerID == "" {
+		return userAgent
+	}
+	if userAgent == "" {
+		return peerID
+	}
+
+	return peerID + "|" + userAgent
+}
+
+// ProtofilesList returns persisted runtime proto files metadata.
+func (h *RestServer) ProtofilesList(w http.ResponseWriter, r *http.Request) {
+	lister, ok := h.protoMetadata.(protoMetadataLister)
+	if !ok {
+		h.writeResponse(r.Context(), w, []map[string]any{})
+		return
+	}
+
+	protofiles, err := lister.ListProtofiles(r.Context())
+	if err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+
+	items := make([]map[string]any, 0, len(protofiles))
+	for _, item := range protofiles {
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			continue
+		}
+
+		items = append(items, map[string]any{
+			"id":        name,
+			"name":      name,
+			"hash":      item.Hash,
+			"version":   item.Version,
+			"source":    item.Source,
+			"createdAt": item.CreatedAt,
+			"updatedAt": item.UpdatedAt,
+		})
+	}
+
+	h.writeResponse(r.Context(), w, items)
+}
+
+// ProtofilesDelete removes persisted protofile metadata and clears matching runtime state.
+func (h *RestServer) ProtofilesDelete(w http.ResponseWriter, r *http.Request) {
+	deleter, ok := h.protoMetadata.(protoMetadataDeleter)
+	if !ok {
+		w.WriteHeader(http.StatusNotImplemented)
+		h.writeResponseError(r.Context(), w, errors.New("proto metadata delete is not configured"))
+
+		return
+	}
+
+	name := strings.TrimSpace(mux.Vars(r)["name"])
+	if name == "" {
+		name = strings.TrimSpace(r.URL.Query().Get("name"))
+	}
+	if name == "" {
+		h.validationError(r.Context(), w, errors.New("protofile name is required"))
+
+		return
+	}
+
+	h.descriptorOpsMu.Lock()
+	defer h.descriptorOpsMu.Unlock()
+
+	deleted, err := deleter.DeleteProtofile(r.Context(), name)
+	if err != nil {
+		h.responseError(r.Context(), w, err)
+
+		return
+	}
+	if !deleted.Removed {
+		w.WriteHeader(http.StatusNotFound)
+		h.writeResponseError(r.Context(), w, fmt.Errorf("protofile not found: %s", name))
+
+		return
+	}
+
+	stubIDs := h.collectStubsForProtofileDelete(deleted)
+	if len(stubIDs) > 0 {
+		h.budgerigar.DeleteByID(stubIDs...)
+	}
+
+	h.restDescriptors.UnregisterByPath(name)
+
+	h.writeResponse(r.Context(), w, map[string]any{
+		"removed":        true,
+		"name":           name,
+		"serviceCount":   len(deleted.ServiceIDs),
+		"methodCount":    len(deleted.ServiceMethods),
+		"stubsRemoved":   len(stubIDs),
+		"descriptorPath": name,
+	})
+}
+
+func (h *RestServer) collectStubsForProtofileDelete(deleted pgprotometadata.DeleteProtofileResult) []uuid.UUID {
+	if len(deleted.ServiceIDs) == 0 && len(deleted.ServiceMethods) == 0 {
+		return nil
+	}
+
+	serviceSet := make(map[string]struct{}, len(deleted.ServiceIDs))
+	for _, serviceID := range deleted.ServiceIDs {
+		serviceSet[serviceID] = struct{}{}
+	}
+
+	methodSet := make(map[string]struct{}, len(deleted.ServiceMethods))
+	for _, item := range deleted.ServiceMethods {
+		if strings.TrimSpace(item.ServiceID) == "" || strings.TrimSpace(item.MethodID) == "" {
+			continue
+		}
+		methodSet[item.ServiceID+"|"+item.MethodID] = struct{}{}
+	}
+
+	ids := make([]uuid.UUID, 0)
+	for _, stub := range h.budgerigar.All() {
+		if stub == nil {
+			continue
+		}
+
+		if _, ok := methodSet[stub.Service+"|"+stub.Method]; ok {
+			ids = append(ids, stub.ID)
+
+			continue
+		}
+
+		// If method-level metadata is unavailable, remove by service as fallback.
+		if len(methodSet) == 0 {
+			if _, ok := serviceSet[stub.Service]; ok {
+				ids = append(ids, stub.ID)
+			}
+		}
+	}
+
+	return ids
 }
 
 // DashboardInfo returns build metadata and runtime process information.
@@ -814,7 +1116,7 @@ func mcpDescriptorsAdd(h *RestServer, args map[string]any) (map[string]any, erro
 		return nil, mcpDescriptorSetBase64ArgError(err)
 	}
 
-	serviceIDs, err := registerDescriptorBytes(h, payload, "")
+	serviceIDs, err := registerDescriptorBytes(context.Background(), h, payload, "", descriptorSourceMCP)
 	if err != nil {
 		return nil, mcpDescriptorRegistrationArgError(err)
 	}
@@ -1135,12 +1437,21 @@ func mcpStubsPurge(h *RestServer, args map[string]any) (map[string]any, error) {
 			}
 			deletedSessionRows = rows
 		}
+		deletedClientRows := 0
+		if h.clientsRepo != nil {
+			rows, deleteErr := h.clientsRepo.DeleteBySession(context.Background(), sessionID)
+			if deleteErr != nil {
+				return nil, errors.Wrap(deleteErr, "failed to delete clients metadata")
+			}
+			deletedClientRows = rows
+		}
 		sessioninfra.Forget(sessionID)
 
 		return map[string]any{
 			"deletedCount":        deletedCount,
 			"deletedHistoryCount": deletedHistoryCount,
 			"deletedSessionRows":  deletedSessionRows,
+			"deletedClientRows":   deletedClientRows,
 			"session":             sessionID,
 		}, nil
 	}
@@ -1961,7 +2272,13 @@ func (h *RestServer) AddDescriptors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	serviceIDs, err := registerDescriptorBytes(h, byt, r.Header.Get(descriptorUploadFilenameHeader))
+	serviceIDs, err := registerDescriptorBytes(
+		r.Context(),
+		h,
+		byt,
+		r.Header.Get(descriptorUploadFilenameHeader),
+		descriptorSourceREST,
+	)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		h.writeResponseError(r.Context(), w, err)
@@ -1996,7 +2313,13 @@ func unregisterService(h *RestServer, serviceID string) int {
 	return h.restDescriptors.UnregisterByService(serviceID)
 }
 
-func registerDescriptorBytes(h *RestServer, byt []byte, sourceName string) ([]string, error) {
+func registerDescriptorBytes(
+	ctx context.Context,
+	h *RestServer,
+	byt []byte,
+	sourceName string,
+	source string,
+) ([]string, error) {
 	h.descriptorOpsMu.Lock()
 	defer h.descriptorOpsMu.Unlock()
 
@@ -2008,6 +2331,12 @@ func registerDescriptorBytes(h *RestServer, byt []byte, sourceName string) ([]st
 	files, err := decodeDescriptorFiles(fds)
 	if err != nil {
 		return nil, err
+	}
+
+	if h.protoMetadata != nil {
+		if err := h.protoMetadata.ReplaceDescriptorFiles(ctx, source, files); err != nil {
+			return nil, errors.Wrap(err, "failed to persist descriptor metadata")
+		}
 	}
 
 	serviceIDs := make([]string, 0)

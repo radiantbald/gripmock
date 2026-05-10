@@ -63,6 +63,9 @@ func (b *Builder) GRPCServe(ctx context.Context, param *proto.Arguments) error {
 		b.config.OtelEnabled,
 		b.StubValidator(),
 	)
+	if protoMetadataRepo, protoMetadataErr := b.ProtoMetadataRepository(ctx); protoMetadataErr == nil {
+		grpcServer.SetProtoMetadataWriter(protoMetadataRepo)
+	}
 
 	server, err := grpcServer.Build(ctx)
 	if err != nil {

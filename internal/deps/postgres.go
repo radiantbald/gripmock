@@ -9,7 +9,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	pgallowlist "github.com/bavix/gripmock/v3/internal/infra/postgres/allowlist"
+	pgclients "github.com/bavix/gripmock/v3/internal/infra/postgres/clients"
 	pgmigrations "github.com/bavix/gripmock/v3/internal/infra/postgres/migrations"
+	pgprotometadata "github.com/bavix/gripmock/v3/internal/infra/postgres/protometadata"
 	pgsessions "github.com/bavix/gripmock/v3/internal/infra/postgres/sessions"
 	pgstubs "github.com/bavix/gripmock/v3/internal/infra/postgres/stubs"
 	pgusers "github.com/bavix/gripmock/v3/internal/infra/postgres/users"
@@ -76,6 +78,36 @@ func (b *Builder) SessionsRepository(ctx context.Context) (*pgsessions.Repositor
 	})
 
 	return b.sessionsRepository, b.sessionsRepositoryErr
+}
+
+func (b *Builder) ClientsRepository(ctx context.Context) (*pgclients.Repository, error) {
+	b.clientsRepositoryOnce.Do(func() {
+		pool, err := b.initPostgresPool(ctx)
+		if err != nil {
+			b.clientsRepositoryErr = err
+
+			return
+		}
+
+		b.clientsRepository = pgclients.NewRepository(pool)
+	})
+
+	return b.clientsRepository, b.clientsRepositoryErr
+}
+
+func (b *Builder) ProtoMetadataRepository(ctx context.Context) (*pgprotometadata.Repository, error) {
+	b.protoMetadataRepositoryOnce.Do(func() {
+		pool, err := b.initPostgresPool(ctx)
+		if err != nil {
+			b.protoMetadataRepositoryErr = err
+
+			return
+		}
+
+		b.protoMetadataRepository = pgprotometadata.NewRepository(pool)
+	})
+
+	return b.protoMetadataRepository, b.protoMetadataRepositoryErr
 }
 
 func (b *Builder) initPostgresPool(ctx context.Context) (*pgxpool.Pool, error) {

@@ -2,11 +2,8 @@ package sessions
 
 import (
 	"context"
-	"fmt"
 	"slices"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -28,10 +25,10 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 func buildCreator(owner string) string {
 	normalizedOwner := strings.TrimSpace(owner)
 	if normalizedOwner == "" {
-		normalizedOwner = "anonymous"
+		return "anonymous"
 	}
 
-	return fmt.Sprintf("manual:%s:%s", normalizedOwner, strconv.FormatInt(time.Now().UnixNano(), 36))
+	return normalizedOwner
 }
 
 func (r *Repository) Touch(ctx context.Context, sessionName string, creator string) error {
@@ -70,6 +67,9 @@ func (r *Repository) Create(ctx context.Context, sessionName string, owner strin
 	err := r.pool.QueryRow(ctx, `
 		INSERT INTO sessions (name, creator, created_at, updated_at)
 		VALUES ($1, $2, NOW(), NOW())
+		ON CONFLICT (creator) DO UPDATE SET
+			name = EXCLUDED.name,
+			updated_at = NOW()
 		RETURNING id, name
 	`, sessionName, creator).Scan(&row.ID, &row.Name)
 	if err != nil {

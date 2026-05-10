@@ -15,27 +15,22 @@ const getSessionHeader = (): Record<string, string> => {
   return { [API_CONFIG.SESSION_HEADER]: session };
 };
 
-const generateClientId = (): string => {
-  const now = Date.now();
-  const random = Math.floor(Math.random() * 1_000_000_000);
-  return String(now * 1_000_000_000 + random);
-};
-
 const getClientHeader = (): Record<string, string> => {
   if (typeof window === "undefined") {
     return {};
   }
 
-  const key = API_CONFIG.CLIENT_STORAGE_KEY;
-  let clientId = localStorage.getItem(key);
-  const hasNumericFormat = typeof clientId === "string" && /^[0-9]+$/.test(clientId);
-
-  if (!hasNumericFormat) {
-    clientId = generateClientId();
-    localStorage.setItem(key, clientId);
+  const userID = localStorage.getItem(API_CONFIG.AUTH_PHONE_STORAGE_KEY)?.trim();
+  if (userID) {
+    return { [API_CONFIG.CLIENT_HEADER]: userID };
   }
 
-  return { [API_CONFIG.CLIENT_HEADER]: clientId };
+  const legacyClientID = localStorage.getItem(API_CONFIG.CLIENT_STORAGE_KEY)?.trim();
+  if (legacyClientID) {
+    return { [API_CONFIG.CLIENT_HEADER]: legacyClientID };
+  }
+
+  return {};
 };
 
 const parseError = async (response: Response): Promise<Error> => {

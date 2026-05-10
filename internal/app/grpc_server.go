@@ -13,6 +13,7 @@ import (
 	"net"
 	"reflect"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -71,8 +72,9 @@ var excludedHeaders = map[string]struct{}{
 }
 
 const (
-	sessionHeaderKey = "x-gripmock-session" // gRPC metadata keys are lowercase
-	unknownValue     = "unknown"
+	sessionHeaderKey        = "x-gripmock-session" // gRPC metadata keys are lowercase
+	unknownValue            = "unknown"
+	descriptorSourceStartup = "startup"
 
 	// High-load gRPC server tuning.
 	keepaliveMaxIdle     = 5 * time.Minute
@@ -133,16 +135,38 @@ func sessionFromContext(ctx context.Context) string {
 		return sessionID
 	}
 
+	// Backward compatibility: legacy peer-only client IDs can still be resolved
+	// even when the new fingerprinted client ID includes user-agent.
+	if peerID := peerAddressFromContext(ctx); peerID != "" && peerID != clientID {
+		if sessionID := session.SessionByClient(peerID); sessionID != "" {
+			session.Touch(sessionID)
+			return sessionID
+		}
+	}
+
 	return ""
 }
 
 func clientFromContext(ctx context.Context) string {
+	peerID := peerAddressFromContext(ctx)
+	userAgent := userAgentFromContext(ctx)
+
+	switch {
+	case peerID != "" && userAgent != "":
+		return peerID + "|" + userAgent
+	case peerID != "":
+		return peerID
+	default:
+		return userAgent
+	}
+}
+
+func peerAddressFromContext(ctx context.Context) string {
 	if grpcPeer, ok := peer.FromContext(ctx); ok && grpcPeer != nil && grpcPeer.Addr != nil {
 		if addr := stablePeerAddress(grpcPeer.Addr.String()); addr != "" {
 			return addr
 		}
 	}
-
 	return ""
 }
 
@@ -162,6 +186,22 @@ func stablePeerAddress(raw string) string {
 	}
 
 	return peerAddr
+}
+
+func userAgentFromContext(ctx context.Context) string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok || len(md) == 0 {
+		return ""
+	}
+
+	for _, v := range md.Get("user-agent") {
+		userAgent := strings.TrimSpace(v)
+		if userAgent != "" {
+			return userAgent
+		}
+	}
+
+	return ""
 }
 
 type bidiRecordingStream struct {
@@ -291,19 +331,24 @@ func receiveStreamMessage(stream grpc.ServerStream, msg *dynamicpb.Message) erro
 const serviceReflection = "grpc.reflection.v1.ServerReflection"
 
 type GRPCServer struct {
-	network      string
-	address      string
-	params       *protoloc.Arguments
-	budgerigar   *stuber.Budgerigar
-	healthState  stuber.Aliveness
-	waiter       Extender
-	recorder     history.Recorder
-	descriptors  *descriptors.Registry
-	remoteClient protosetdom.RemoteClient
-	tlsConfig    *tls.Config
-	proxies      *proxyroutes.Registry
-	otelEnabled  bool
-	validator    *validator.Validate
+	network       string
+	address       string
+	params        *protoloc.Arguments
+	budgerigar    *stuber.Budgerigar
+	healthState   stuber.Aliveness
+	waiter        Extender
+	recorder      history.Recorder
+	descriptors   *descriptors.Registry
+	remoteClient  protosetdom.RemoteClient
+	tlsConfig     *tls.Config
+	proxies       *proxyroutes.Registry
+	otelEnabled   bool
+	validator     *validator.Validate
+	protoMetadata ProtoMetadataWriter
+}
+
+type protoMetadataDescriptorLoader interface {
+	LoadDescriptorSets(ctx context.Context) ([]*descriptorpb.FileDescriptorSet, error)
 }
 
 type grpcMocker struct {
@@ -314,6 +359,7 @@ type grpcMocker struct {
 	descriptorResolver protodesc.Resolver
 	proxies            *proxyroutes.Registry
 	validator          *validator.Validate
+	protoMetadata      protoMetadataReader
 
 	inputDesc  protoreflect.MessageDescriptor
 	outputDesc protoreflect.MessageDescriptor
@@ -401,6 +447,29 @@ func (m *grpcMocker) newQuery(ctx context.Context, msg *dynamicpb.Message) stube
 	query.Session = sessionFromContext(ctx)
 
 	return query
+}
+
+func (m *grpcMocker) ensureServiceMethodAvailable(ctx context.Context) error {
+	if m.protoMetadata == nil {
+		return nil
+	}
+
+	exists, err := m.protoMetadata.HasServiceMethod(ctx, m.fullServiceName, m.methodName)
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().
+			Err(err).
+			Str("service", m.fullServiceName).
+			Str("method", m.methodName).
+			Msg("Failed to verify service/method in proto metadata; continuing with runtime descriptors")
+
+		return nil
+	}
+
+	if exists {
+		return nil
+	}
+
+	return status.Errorf(codes.Unimplemented, "unknown service/method: %s/%s", m.fullServiceName, m.methodName)
 }
 
 func (m *grpcMocker) newQueryBidi(ctx context.Context) stuber.QueryBidi {
@@ -555,6 +624,20 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 	}
 
 	requestTime := time.Now()
+	if err := m.ensureServiceMethodAvailable(stream.Context()); err != nil {
+		m.recordCall(
+			stream.Context(),
+			uuid.Nil,
+			uint32(codes.Unimplemented),
+			requestTime,
+			[]map[string]any{convertToMap(inputMsg)},
+			nil,
+			nil,
+			err.Error(),
+		)
+
+		return err
+	}
 
 	query := m.newQuery(stream.Context(), inputMsg)
 
@@ -1021,6 +1104,20 @@ func (m *grpcMocker) captureShouldProxyUnaryByHeaders(ctx context.Context, req *
 //nolint:cyclop,funlen
 func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*dynamicpb.Message, error) {
 	requestTime := time.Now()
+	if err := m.ensureServiceMethodAvailable(ctx); err != nil {
+		m.recordCall(
+			ctx,
+			uuid.Nil,
+			uint32(codes.Unimplemented),
+			requestTime,
+			[]map[string]any{convertToMap(req)},
+			nil,
+			nil,
+			err.Error(),
+		)
+
+		return nil, err
+	}
 
 	query := m.newQuery(ctx, req)
 
@@ -1393,6 +1490,21 @@ func (m *grpcMocker) handleClientStream(stream grpc.ServerStream) error {
 		return err
 	}
 
+	if err := m.ensureServiceMethodAvailable(stream.Context()); err != nil {
+		m.recordCall(
+			stream.Context(),
+			uuid.Nil,
+			uint32(codes.Unimplemented),
+			requestTime,
+			messages,
+			nil,
+			nil,
+			err.Error(),
+		)
+
+		return err
+	}
+
 	found, err := m.tryFindStub(stream, messages)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -1550,6 +1662,13 @@ func (m *grpcMocker) sendClientStreamResponse(
 }
 
 func (m *grpcMocker) handleBidiStream(stream grpc.ServerStream) error {
+	requestTime := time.Now()
+	if err := m.ensureServiceMethodAvailable(stream.Context()); err != nil {
+		m.recordCall(stream.Context(), uuid.Nil, uint32(codes.Unimplemented), requestTime, nil, nil, nil, err.Error())
+
+		return err
+	}
+
 	queryBidi := m.newQueryBidi(stream.Context())
 
 	bidiResult, err := m.budgerigar.FindByQueryBidi(queryBidi)
@@ -1578,8 +1697,6 @@ func (m *grpcMocker) handleBidiStream(stream grpc.ServerStream) error {
 		responseTimestamps: make([]time.Time, 0, bidiRecordingStreamResponsesCap),
 		maxItems:           maxHistoryStreamMsgs,
 	}
-
-	requestTime := time.Now()
 
 	for {
 		inputMsg := dynamicpb.NewMessage(m.inputDesc)
@@ -1819,6 +1936,10 @@ func NewGRPCServer(
 	}
 }
 
+func (s *GRPCServer) SetProtoMetadataWriter(writer ProtoMetadataWriter) {
+	s.protoMetadata = writer
+}
+
 func (s *GRPCServer) Build(ctx context.Context) (*grpc.Server, error) {
 	var err error
 
@@ -1847,6 +1968,23 @@ func (s *GRPCServer) Build(ctx context.Context) (*grpc.Server, error) {
 		return nil, errors.Wrap(err, "failed to build descriptors")
 	}
 
+	if loader, ok := s.protoMetadata.(protoMetadataDescriptorLoader); ok {
+		persisted, loadErr := loader.LoadDescriptorSets(ctx)
+		if loadErr != nil {
+			return nil, errors.Wrap(loadErr, "failed to load persisted descriptors")
+		}
+		descriptors = mergeDescriptorSets(descriptors, persisted)
+		if err := s.registerPersistedDescriptors(persisted); err != nil {
+			return nil, errors.Wrap(err, "failed to register persisted descriptors")
+		}
+	}
+
+	if s.protoMetadata != nil {
+		if err := s.protoMetadata.ReplaceDescriptorSets(ctx, descriptorSourceStartup, descriptors); err != nil {
+			return nil, errors.Wrap(err, "failed to persist startup descriptor metadata")
+		}
+	}
+
 	// Wait for stubs to load before registering services
 	// This ensures stubs are available when gRPC server starts accepting requests
 	if s.waiter != nil {
@@ -1862,6 +2000,76 @@ func (s *GRPCServer) Build(ctx context.Context) (*grpc.Server, error) {
 	s.markServerReady(ctx)
 
 	return server, nil
+}
+
+func (s *GRPCServer) registerPersistedDescriptors(sets []*descriptorpb.FileDescriptorSet) error {
+	if s.descriptors == nil || len(sets) == 0 {
+		return nil
+	}
+
+	for _, descriptorSet := range sets {
+		if descriptorSet == nil || len(descriptorSet.GetFile()) == 0 {
+			continue
+		}
+
+		files, err := protodesc.NewFiles(descriptorSet)
+		if err != nil {
+			return errors.Wrap(err, "failed to decode persisted descriptor set")
+		}
+
+		files.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+			s.descriptors.Register(fd)
+
+			return true
+		})
+	}
+
+	return nil
+}
+
+func mergeDescriptorSets(base []*descriptorpb.FileDescriptorSet, extra []*descriptorpb.FileDescriptorSet) []*descriptorpb.FileDescriptorSet {
+	if len(extra) == 0 {
+		return base
+	}
+
+	byName := make(map[string]*descriptorpb.FileDescriptorProto)
+	for _, set := range base {
+		if set == nil {
+			continue
+		}
+		for _, file := range set.GetFile() {
+			if file == nil {
+				continue
+			}
+			byName[file.GetName()] = file
+		}
+	}
+	for _, set := range extra {
+		if set == nil {
+			continue
+		}
+		for _, file := range set.GetFile() {
+			if file == nil {
+				continue
+			}
+			if _, exists := byName[file.GetName()]; !exists {
+				byName[file.GetName()] = file
+			}
+		}
+	}
+
+	names := make([]string, 0, len(byName))
+	for name := range byName {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+
+	merged := &descriptorpb.FileDescriptorSet{File: make([]*descriptorpb.FileDescriptorProto, 0, len(names))}
+	for _, name := range names {
+		merged.File = append(merged.File, byName[name])
+	}
+
+	return []*descriptorpb.FileDescriptorSet{merged}
 }
 
 // BuildFromDescriptorSet creates a gRPC server from a pre-built FileDescriptorSet.
@@ -1975,6 +2183,7 @@ func (s *GRPCServer) handleUnknownService(_ any, stream grpc.ServerStream) error
 		descriptorResolver: &dynamicDescriptorResolver{static: protoregistry.GlobalFiles, dynamic: s.descriptors},
 		proxies:            s.proxies,
 		validator:          s.validator,
+		protoMetadata:      protoMetadataReaderOrNil(s.protoMetadata),
 		inputDesc:          methodDesc.Input(),
 		outputDesc:         methodDesc.Output(),
 		fullServiceName:    serviceName,
@@ -2312,6 +2521,7 @@ func (s *GRPCServer) createGrpcMocker(
 		descriptorResolver: resolver,
 		proxies:            s.proxies,
 		validator:          s.validator,
+		protoMetadata:      protoMetadataReaderOrNil(s.protoMetadata),
 
 		inputDesc:  inputDesc,
 		outputDesc: outputDesc,
@@ -2326,6 +2536,15 @@ func (s *GRPCServer) createGrpcMocker(
 
 		strictServiceMatch: s.proxies != nil && s.proxies.RouteByMethod(fmt.Sprintf("/%s/%s", serviceDesc.ServiceName, method.GetName())) != nil,
 	}
+}
+
+func protoMetadataReaderOrNil(writer ProtoMetadataWriter) protoMetadataReader {
+	reader, ok := writer.(protoMetadataReader)
+	if !ok {
+		return nil
+	}
+
+	return reader
 }
 
 func (s *GRPCServer) markServerReady(ctx context.Context) {

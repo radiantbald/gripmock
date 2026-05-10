@@ -1,11 +1,13 @@
 package app
 
 import (
+	"context"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/dynamicpb"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -16,6 +18,18 @@ import (
 )
 
 const testRecorderShouldBeMemoryStore = "recorder should be *MemoryStore"
+
+type protoMetadataReaderMock struct {
+	exists bool
+}
+
+func (m *protoMetadataReaderMock) HasAnyProtofiles(context.Context) (bool, error) {
+	return m.exists, nil
+}
+
+func (m *protoMetadataReaderMock) HasServiceMethod(context.Context, string, string) (bool, error) {
+	return m.exists, nil
+}
 
 func createTestMockerWithRecorder(t *testing.T) *grpcMocker {
 	t.Helper()
@@ -324,6 +338,41 @@ func TestHistoryUnaryStubMissRecorded(t *testing.T) {
 	require.Equal(t, uint32(codes.NotFound), calls[0].Code)
 	require.NotEmpty(t, calls[0].Error)
 	require.Len(t, calls[0].Requests, 1)
+}
+
+func TestHistoryUnaryMethodRemovedInMetadataReturnsUnimplemented(t *testing.T) {
+	t.Parallel()
+
+	mocker := createTestMockerWithRecorder(t)
+	mocker.fullMethod = testServiceName + "/" + testMethodName
+	mocker.fullServiceName = testServiceName
+	mocker.serviceName = testServiceName
+	mocker.methodName = testMethodName
+	mocker.protoMetadata = &protoMetadataReaderMock{exists: false}
+
+	stub := &stuber.Stub{
+		ID:      uuid.New(),
+		Service: testServiceName,
+		Method:  testMethodName,
+		Input:   stuber.InputData{Contains: map[string]any{}},
+		Output:  stuber.Output{Data: map[string]any{"result": 100}},
+	}
+	mocker.budgerigar.PutMany(stub)
+
+	req := dynamicpb.NewMessage(mocker.inputDesc)
+	_, err := mocker.handleUnary(t.Context(), req)
+	require.Error(t, err)
+	require.Equal(t, codes.Unimplemented, status.Code(err))
+
+	recorder, ok := mocker.recorder.(*history.MemoryStore)
+	require.True(t, ok, testRecorderShouldBeMemoryStore)
+	require.Equal(t, 1, recorder.Count())
+
+	calls := recorder.Filter(history.FilterOpts{})
+	require.Len(t, calls, 1)
+	require.Equal(t, uint32(codes.Unimplemented), calls[0].Code)
+	require.Equal(t, uuid.Nil, calls[0].StubID)
+	require.NotEmpty(t, calls[0].Error)
 }
 
 func TestHistoryClientStreamStubMissRecorded(t *testing.T) {

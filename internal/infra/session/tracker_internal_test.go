@@ -101,3 +101,19 @@ func TestTrackerForgetSessionRemovesClientRoutes(t *testing.T) {
 	// Assert
 	require.Empty(t, mapped)
 }
+
+func TestTrackerUnassignClient(t *testing.T) {
+	t.Parallel()
+
+	// Arrange
+	tracker := session.NewTracker()
+	tracker.AssignClient("172.21.0.4", "A")
+
+	// Act
+	removed := tracker.UnassignClient("172.21.0.4")
+	mapped := tracker.SessionByClient("172.21.0.4")
+
+	// Assert
+	require.True(t, removed)
+	require.Empty(t, mapped)
+}

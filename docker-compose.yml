@@ -26,12 +26,6 @@ services:
     environment:
       POSTGRES_DSN: postgres://${POSTGRES_USER:-gripmock}:${POSTGRES_PASSWORD:-gripmock}@postgres:5432/${POSTGRES_DB:-gripmock}?sslmode=disable
       LOG_LEVEL: ${LOG_LEVEL:-info}
-    command:
-      - --stub=/stubs
-      - /proto/${GRIPMOCK_PROTO_FILE:-service.proto}
-    volumes:
-      - ${GRIPMOCK_STUBS_DIR:-./examples/projects/greeter/stubs}:/stubs:ro
-      - ${GRIPMOCK_PROTO_DIR:-./examples/projects/greeter}:/proto:ro
     labels:
       traefik.enable: "true"
       traefik.http.routers.gripmock-http.rule: PathPrefix(`/`)

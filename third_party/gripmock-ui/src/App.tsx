@@ -11,6 +11,8 @@ import FactCheckIcon from "@mui/icons-material/FactCheck";
 import BugReportIcon from "@mui/icons-material/BugReport";
 import HubIcon from "@mui/icons-material/Hub";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
+import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
+import DevicesIcon from "@mui/icons-material/Devices";
 
 import dataProvider from "./gripmock";
 import { CustomLayout } from "./components/Layout/CustomLayout";
@@ -113,6 +115,18 @@ const InspectPage = wrapLazy(
     return { default: module.InspectPage };
   }),
 );
+const ProtofilesList = wrapLazy(
+  lazy(async () => {
+    const module = await import("./protofiles");
+    return { default: module.ProtofilesList };
+  }),
+);
+const ClientsList = wrapLazy(
+  lazy(async () => {
+    const module = await import("./clients");
+    return { default: module.ClientsList };
+  }),
+);
 
 export const App = () => {
   const [authorizedPhone, setAuthorizedPhoneState] = useState(() => getAuthorizedPhone());
@@ -168,6 +182,18 @@ export const App = () => {
         show={StubShow}
         create={StubCreate}
         options={{ label: "Stubs" }}
+      />
+      <Resource
+        icon={DescriptionOutlinedIcon}
+        name="protofiles"
+        list={ProtofilesList}
+        options={{ label: "Protofiles" }}
+      />
+      <Resource
+        icon={DevicesIcon}
+        name="clients"
+        list={ClientsList}
+        options={{ label: "Clients" }}
       />
       <Resource
         icon={CheckCircleIcon}
