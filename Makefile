@@ -6,6 +6,7 @@ version=latest
 GOLANGCI_LINT=go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
 UI_DIR=third_party/gripmock-ui
 UI_DEPS_STAMP=$(UI_DIR)/node_modules/.deps-stamp
+UI_VITE_BIN=$(UI_DIR)/node_modules/.bin/vite
 
 env:
 	@if [ ! -f .env ]; then \
@@ -17,7 +18,7 @@ build:
 	docker buildx build --load -t bavix/gripmock:${version} .
 
 ui-install:
-	@if [ ! -d "$(UI_DIR)/node_modules" ] || [ ! -f "$(UI_DEPS_STAMP)" ] || [ "$(UI_DIR)/package-lock.json" -nt "$(UI_DEPS_STAMP)" ]; then \
+	@if [ ! -d "$(UI_DIR)/node_modules" ] || [ ! -f "$(UI_DEPS_STAMP)" ] || [ ! -x "$(UI_VITE_BIN)" ] || [ "$(UI_DIR)/package-lock.json" -nt "$(UI_DEPS_STAMP)" ]; then \
 		npm --prefix $(UI_DIR) ci; \
 		touch "$(UI_DEPS_STAMP)"; \
 	fi
