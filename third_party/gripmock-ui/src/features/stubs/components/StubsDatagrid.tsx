@@ -18,10 +18,11 @@ import {
   useListContext,
   useNotify,
   useRefresh,
-  useUpdate,
 } from "react-admin";
 
 import type { StubRecord } from "../../../types/entities";
+import { apiClient } from "../../../dataProvider/apiClient";
+import { getCurrentSession } from "../../../utils/session";
 import { RowActionsField } from "./RowActionsField";
 import { OutputKindChip, StubDetails } from "./StubVisuals";
 
@@ -133,8 +134,14 @@ const sameServiceAlias = (leftRaw: unknown, rightRaw: unknown): boolean => {
 const sameRoute = (left: StubRecord, right: StubRecord): boolean =>
   sameServiceAlias(left.service, right.service) &&
   normalizeValue(left.method) === normalizeValue(right.method) &&
-  normalizeValue((left as StubRecord & { session?: unknown }).session) ===
-    normalizeValue((right as StubRecord & { session?: unknown }).session);
+  (() => {
+    const leftSession = normalizeValue((left as StubRecord & { session?: unknown }).session);
+    const rightSession = normalizeValue((right as StubRecord & { session?: unknown }).session);
+
+    // Keep parity with backend enabled-route normalization:
+    // a global stub (empty session) conflicts with any route-specific stub.
+    return !(leftSession && rightSession && leftSession !== rightSession);
+  })();
 
 const buildGroupedTree = (records: StubRecord[]): ServiceGroup[] => {
   const serviceMap = new Map<string, Map<string, StubRecord[]>>();
@@ -248,7 +255,7 @@ const StubNode = ({
 
   const handleToggleEnabled = async (event: React.MouseEvent<HTMLDivElement>) => {
     event.stopPropagation();
-    if (!isStatusHovered || isUpdating) {
+    if (isUpdating) {
       return;
     }
 
@@ -467,85 +474,37 @@ export const StubsDatagrid = ({
   const { data, isPending } = useListContext<StubRecord>();
   const notify = useNotify();
   const refresh = useRefresh();
-  const [updateOne] = useUpdate();
   const d = densitySx(gridSize);
   const [selectedServiceName, setSelectedServiceName] = useState<string>("");
   const [selectedMethodName, setSelectedMethodName] = useState<string>("");
   const [isStubsExpanded, setIsStubsExpanded] = useState(false);
-  const [optimisticEnabledByID, setOptimisticEnabledByID] = useState<Record<string, boolean>>({});
   const [updatingByID, setUpdatingByID] = useState<Record<string, boolean>>({});
 
   const records = data || [];
-  const optimisticRecords = records.map((record) => {
-    const optimisticEnabled = optimisticEnabledByID[record.id];
-    if (typeof optimisticEnabled !== "boolean") {
-      return record;
-    }
-
-    return { ...record, enabled: optimisticEnabled };
-  });
-  const grouped = buildGroupedTree(optimisticRecords);
-
-  useEffect(() => {
-    setOptimisticEnabledByID((current) => {
-      const byID = new Map(records.map((item) => [item.id, item.enabled !== false]));
-      let changed = false;
-      const next: Record<string, boolean> = {};
-
-      Object.entries(current).forEach(([id, enabled]) => {
-        const actualEnabled = byID.get(id);
-        const isUpdating = Boolean(updatingByID[id]);
-        if (typeof actualEnabled !== "boolean") {
-          changed = true;
-          return;
-        }
-
-        if (actualEnabled === enabled) {
-          changed = true;
-          return;
-        }
-
-        // Keep optimistic value only while this exact row request is in flight.
-        // This prevents stale "enabled" badges from lingering after server state changed.
-        if (!isUpdating) {
-          changed = true;
-          return;
-        }
-        next[id] = enabled;
-      });
-
-      return changed ? next : current;
-    });
-  }, [records, updatingByID]);
+  const grouped = buildGroupedTree(records);
 
   const handleToggleEnabled = async (stub: StubRecord, nextEnabled: boolean) => {
-    let rollbackState: Record<string, boolean> = {};
-    setOptimisticEnabledByID((current) => {
-      rollbackState = current;
-      const nextState = { ...current, [stub.id]: nextEnabled };
-      if (nextEnabled) {
-        records.forEach((candidate) => {
-          if (candidate.id !== stub.id && sameRoute(candidate, stub)) {
-            nextState[candidate.id] = false;
-          }
-        });
-      }
-
-      return nextState;
-    });
     setUpdatingByID((current) => ({ ...current, [stub.id]: true }));
 
     try {
-      await updateOne("stubs", {
-        id: stub.id,
-        data: { ...stub, enabled: nextEnabled },
-        previousData: stub,
-      });
-      notify(nextEnabled ? "Stub enabled" : "Stub disabled", { type: "success" });
-      refresh();
+      const activeSession = getCurrentSession().trim();
+      if (!activeSession) {
+        throw new Error("Session is required to toggle stub status");
+      }
+
+      const result = await apiClient.request<{ enabled?: boolean }>(
+        `/stubs/${encodeURIComponent(String(stub.id))}?session=${encodeURIComponent(activeSession)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: nextEnabled }),
+        },
+      );
+      const actuallyEnabled = typeof result?.enabled === "boolean" ? result.enabled : nextEnabled;
+      notify(actuallyEnabled ? "Stub enabled" : "Stub disabled", { type: "success" });
+      await refresh();
     } catch (error) {
-      setOptimisticEnabledByID(rollbackState);
       notify((error as Error).message, { type: "error" });
+      await refresh();
     } finally {
       setUpdatingByID((current) => {
         const nextState = { ...current };

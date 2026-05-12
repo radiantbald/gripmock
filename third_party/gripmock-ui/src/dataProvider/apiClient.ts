@@ -67,6 +67,7 @@ export const apiClient = {
 
     const response = await fetch(`${API_CONFIG.BASE_URL}${path}`, {
       method: options.method || "GET",
+      cache: "no-store",
       headers,
       body: options.body ?? null,
     });

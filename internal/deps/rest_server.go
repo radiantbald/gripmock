@@ -170,6 +170,12 @@ func (b *Builder) RestServe(
 	router.Path("/api/clients").Methods(http.MethodGet).Handler(
 		withMCPMiddlewares(http.HandlerFunc(apiServer.ClientsList)),
 	)
+	router.Path("/api/stubs/{uuid}").Methods(http.MethodPut).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.PatchStubByID)),
+	)
+	router.Path("/api/stubs/{uuid}").Methods(http.MethodPatch).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.PatchStubByID)),
+	)
 
 	router.Path("/metrics").Handler(telemetry.MetricsHandler(b.promReg))
 
@@ -190,7 +196,7 @@ func (b *Builder) RestServe(
 			"X-GripMock-RequestInternal",
 			"X-Gripmock-Session",
 		}),
-		handlers.AllowedMethods([]string{http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodPatch}),
+		handlers.AllowedMethods([]string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch}),
 	)(router)
 	if b.config.OtelEnabled {
 		handler = otelhttp.NewHandler(handler, "gripmock-rest")

@@ -83,6 +83,7 @@ const toNumericId = (value: unknown): number => {
 const dataProvider: DataProvider = {
   getList: async (resource, params) => {
     const canonical = canonicalResource(resource);
+    const activeSession = getCurrentSession().trim();
 
     if (canonical === "sessions") {
       const json = await apiClient.request<unknown>(`/${canonical}`);
@@ -116,7 +117,10 @@ const dataProvider: DataProvider = {
 
     if (backendListResources.has(canonical)) {
       const query = buildBackendListQuery(params);
-      const response = await apiClient.request<unknown>(`/${canonical}${query}`);
+      const forceSessionScoped =
+        (canonical === "stubs" || canonical === "stubs/used" || canonical === "stubs/unused") && activeSession;
+      const sessionQuery = forceSessionScoped ? `${query ? "&" : "?"}session=${encodeURIComponent(activeSession)}` : "";
+      const response = await apiClient.request<unknown>(`/${canonical}${query}${sessionQuery}`);
       const json = ensureArray<Row>(response);
       const normalized = canonical === "history" ? normalizeHistoryRows(json) : json;
 
@@ -277,14 +281,31 @@ const dataProvider: DataProvider = {
 
   update: async (resource, params) => {
     const canonical = canonicalResource(resource);
-    const requestBody = Array.isArray(params.data) ? params.data : [params.data];
+    if (canonical === "stubs") {
+      const activeSession = getCurrentSession().trim();
+      const sessionQuery = activeSession ? `?session=${encodeURIComponent(activeSession)}` : "";
+      const payload = (params.data || {}) as Record<string, unknown>;
+      const { id: _ignoredID, ...patchPayload } = payload;
 
-    await apiClient.request(`/${canonical}`, {
-      method: "POST",
-      body: JSON.stringify(requestBody),
-    });
+      await apiClient.request(`/${canonical}/${encodeURIComponent(String(params.id))}${sessionQuery}`, {
+        method: "PATCH",
+        body: JSON.stringify(patchPayload),
+      });
+    } else {
+      const requestBody = Array.isArray(params.data) ? params.data : [params.data];
 
-    return { data: { id: params.id, ...params.data } as any };
+      await apiClient.request(`/${canonical}`, {
+        method: "POST",
+        body: JSON.stringify(requestBody),
+      });
+    }
+
+    return {
+      data: {
+        id: params.id,
+        ...params.data,
+      } as any,
+    };
   },
 
   updateMany: async (resource, params) => {

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -631,6 +632,209 @@ func (s *RestServerTestSuite) TestAddStub_SessionFromQueryWhenHeaderMissing() {
 	stubs := s.budgerigar.All()
 	s.Require().Len(stubs, 1)
 	s.Equal("query-session", stubs[0].Session)
+}
+
+func (s *RestServerTestSuite) TestAddStub_UpdateByIDPreservesSessionScope() {
+	initial := `[
+		{
+			"service": "svc",
+			"method": "M",
+			"enabled": false,
+			"input": {"equals": {"x": "1"}},
+			"output": {"data": {"ok": true}}
+		}
+	]`
+
+	w := s.addStubJSONWithRequest(s.server, initial, func(req *http.Request) {
+		req.Header.Set("X-Gripmock-Session", "scope-A")
+	})
+	s.Equal(http.StatusOK, w.Code)
+
+	stubs := s.budgerigar.All()
+	s.Require().Len(stubs, 1)
+	publicID := s.server.ensurePublicID(stubs[0].ID)
+
+	updatePayload := `[{
+		"id": ` + strconv.FormatUint(uint64(publicID), 10) + `,
+		"service": "svc",
+		"method": "M",
+		"enabled": true,
+		"input": {"equals": {"x": "1"}},
+		"output": {"data": {"ok": true}}
+	}]`
+
+	w = s.addStubJSONWithRequest(s.server, updatePayload, nil)
+	s.Equal(http.StatusOK, w.Code)
+
+	stubs = s.budgerigar.All()
+	s.Require().Len(stubs, 1)
+	s.Equal("scope-A", stubs[0].Session, "updating by id must not drop session scope")
+	s.True(stubs[0].IsEnabled(), "updated stub must keep enabled flag")
+}
+
+func (s *RestServerTestSuite) TestUpdateStubEnabledByID_SessionScopedRoute() {
+	base := `[
+		{
+			"service": "svc",
+			"method": "M",
+			"enabled": true,
+			"input": {"equals": {"x": "1"}},
+			"output": {"data": {"v": "a-1"}}
+		},
+		{
+			"service": "svc",
+			"method": "M",
+			"enabled": false,
+			"input": {"equals": {"x": "2"}},
+			"output": {"data": {"v": "a-2"}}
+		}
+	]`
+
+	w := s.addStubJSONWithRequest(s.server, base, func(req *http.Request) {
+		req.Header.Set("X-Gripmock-Session", "A")
+	})
+	s.Equal(http.StatusOK, w.Code)
+
+	stubs := s.budgerigar.All()
+	s.Require().Len(stubs, 2)
+
+	var toEnable *stuber.Stub
+	for _, stub := range stubs {
+		if stub.Input.Equals["x"] == "2" {
+			toEnable = stub
+			break
+		}
+	}
+	s.Require().NotNil(toEnable)
+
+	publicID := s.server.ensurePublicID(toEnable.ID)
+	req := httptest.NewRequestWithContext(
+		s.T().Context(),
+		http.MethodPut,
+		"/api/stubs/"+strconv.FormatUint(uint64(publicID), 10),
+		bytes.NewBufferString(`{"enabled":true}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Gripmock-Session", "A")
+	req = mux.SetURLVars(req, map[string]string{
+		"uuid": strconv.FormatUint(uint64(publicID), 10),
+	})
+
+	rec := httptest.NewRecorder()
+	s.server.UpdateStubEnabledByID(rec, req)
+	s.Equal(http.StatusOK, rec.Code)
+
+	stubs = s.budgerigar.All()
+	s.Require().Len(stubs, 2)
+	enabledCount := 0
+	for _, stub := range stubs {
+		if stub.IsEnabled() {
+			enabledCount++
+			s.Equal("2", stub.Input.Equals["x"])
+		}
+	}
+	s.Equal(1, enabledCount, "only one stub must be enabled for session/service/method route")
+}
+
+func (s *RestServerTestSuite) TestUpdateStubEnabledByID_RejectsWrongSession() {
+	payload := `[
+		{
+			"service": "svc",
+			"method": "M",
+			"enabled": false,
+			"input": {"equals": {"x": "1"}},
+			"output": {"data": {"ok": true}}
+		}
+	]`
+
+	w := s.addStubJSONWithRequest(s.server, payload, func(req *http.Request) {
+		req.Header.Set("X-Gripmock-Session", "A")
+	})
+	s.Equal(http.StatusOK, w.Code)
+
+	stubs := s.budgerigar.All()
+	s.Require().Len(stubs, 1)
+	publicID := s.server.ensurePublicID(stubs[0].ID)
+
+	req := httptest.NewRequestWithContext(
+		s.T().Context(),
+		http.MethodPut,
+		"/api/stubs/"+strconv.FormatUint(uint64(publicID), 10),
+		bytes.NewBufferString(`{"enabled":true}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Gripmock-Session", "B")
+	req = mux.SetURLVars(req, map[string]string{
+		"uuid": strconv.FormatUint(uint64(publicID), 10),
+	})
+
+	rec := httptest.NewRecorder()
+	s.server.UpdateStubEnabledByID(rec, req)
+	s.Equal(http.StatusNotFound, rec.Code)
+}
+
+func (s *RestServerTestSuite) TestUpdateStubEnabledByID_EnableFromAllDisabled() {
+	base := `[
+		{
+			"service": "svc",
+			"method": "M",
+			"enabled": false,
+			"input": {"equals": {"x": "1"}},
+			"output": {"data": {"v": "a-1"}}
+		},
+		{
+			"service": "svc",
+			"method": "M",
+			"enabled": false,
+			"input": {"equals": {"x": "2"}},
+			"output": {"data": {"v": "a-2"}}
+		}
+	]`
+
+	w := s.addStubJSONWithRequest(s.server, base, func(req *http.Request) {
+		req.Header.Set("X-Gripmock-Session", "A")
+	})
+	s.Equal(http.StatusOK, w.Code)
+
+	stubs := s.budgerigar.All()
+	s.Require().Len(stubs, 2)
+
+	var toEnable *stuber.Stub
+	for _, stub := range stubs {
+		if stub.Input.Equals["x"] == "2" {
+			toEnable = stub
+			break
+		}
+	}
+	s.Require().NotNil(toEnable)
+
+	publicID := s.server.ensurePublicID(toEnable.ID)
+	req := httptest.NewRequestWithContext(
+		s.T().Context(),
+		http.MethodPut,
+		"/api/stubs/"+strconv.FormatUint(uint64(publicID), 10),
+		bytes.NewBufferString(`{"enabled":true}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Gripmock-Session", "A")
+	req = mux.SetURLVars(req, map[string]string{
+		"uuid": strconv.FormatUint(uint64(publicID), 10),
+	})
+
+	rec := httptest.NewRecorder()
+	s.server.UpdateStubEnabledByID(rec, req)
+	s.Equal(http.StatusOK, rec.Code)
+
+	stubs = s.budgerigar.All()
+	s.Require().Len(stubs, 2)
+	enabledCount := 0
+	for _, stub := range stubs {
+		if stub.IsEnabled() {
+			enabledCount++
+			s.Equal("2", stub.Input.Equals["x"])
+		}
+	}
+	s.Equal(1, enabledCount, "one selected stub must become enabled")
 }
 
 func (s *RestServerTestSuite) TestMcpMessageHistoryTools() {

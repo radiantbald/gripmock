@@ -1,4 +1,4 @@
-import { Alert, Box } from "@mui/material";
+import { Alert, Box, Button } from "@mui/material";
 import {
   List,
   TextField,
@@ -20,13 +20,17 @@ import {
   useGetList,
   NumberInput,
   useRedirect,
+  useDataProvider,
+  useNotify,
+  useRecordContext,
 } from "react-admin";
 import { JsonField } from "./components/json/JsonField";
 import { JsonTextAreaInput } from "./components/json/JsonTextAreaInput";
 import { KeyValueTableInput } from "./components/json/KeyValueTableInput";
 import { StubMatcherInput } from "./components/json/StubMatcherInput";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
+import { useFormContext } from "react-hook-form";
 
 import { useJsonTheme } from "./utils/jsonTheme";
 import { downloadJsonFile } from "./utils/fileDownload";
@@ -330,6 +334,71 @@ const CreateStubToolbar = () => (
   </Toolbar>
 );
 
+const EditStubToolbar = () => (
+  <EditStubToolbarImpl />
+);
+
+const EditStubToolbarImpl = () => {
+  const { getValues } = useFormContext();
+  const dataProvider = useDataProvider();
+  const notify = useNotify();
+  const redirect = useRedirect();
+  const record = useRecordContext<StubRecord>();
+  const [saving, setSaving] = useState(false);
+
+  return (
+    <Toolbar
+      sx={{
+        width: "100%",
+        display: "flex",
+        justifyContent: "flex-end",
+        alignItems: "center",
+        minHeight: 56,
+        py: 0,
+        "& .ra-input": {
+          my: 0,
+        },
+      }}
+    >
+      <Button
+        type="button"
+        variant="contained"
+        disabled={saving}
+        sx={{ textTransform: "none", px: 3 }}
+        onClick={async () => {
+          const id = record?.id;
+          if (id === undefined || id === null) {
+            notify("Stub id is missing, cannot save", { type: "error" });
+            return;
+          }
+
+          setSaving(true);
+          try {
+            const values = normalizeStubDelay(getValues() as Record<string, unknown>);
+            const response = await dataProvider.update("stubs", {
+              id,
+              data: values,
+              previousData: record as Record<string, unknown>,
+            });
+
+            const savedStubId = String((response?.data as { id?: string | number } | undefined)?.id ?? id).trim();
+            if (savedStubId) {
+              setStubEditedSignal(savedStubId);
+            }
+            redirect("list", "stubs");
+          } catch (error) {
+            notify((error as Error).message || "Failed to save stub", { type: "error" });
+          } finally {
+            setSaving(false);
+          }
+        }}
+      >
+        Save changes
+      </Button>
+    </Toolbar>
+  );
+};
+
 const StubsListPage = ({
   actions,
   allowClone,
@@ -431,6 +500,7 @@ export const StubCreate = () => {
       <SimpleForm
         toolbar={<CreateStubToolbar />}
         transform={normalizeStubDelay}
+        warnWhenUnsavedChanges
         defaultValues={{
           output: DEFAULT_OUTPUT_TEMPLATE,
         }}
@@ -599,22 +669,12 @@ export const StubCreate = () => {
 
 // Stub Edit component
 export const StubEdit = () => {
-  const redirect = useRedirect();
-  const handleSaveSuccess = useCallback(
-    (data?: { id?: string | number }) => {
-      const savedStubId = String(data?.id || "").trim();
-      if (savedStubId) {
-        setStubEditedSignal(savedStubId);
-      }
-      redirect("list", "stubs");
-    },
-    [redirect],
-  );
-
   return (
-    <Edit mutationOptions={{ onSuccess: (data) => handleSaveSuccess(data as { id?: string | number }) }}>
+    <Edit>
       <SimpleForm
+        toolbar={<EditStubToolbar />}
         transform={normalizeStubDelay}
+        warnWhenUnsavedChanges
         sx={{
           height: "100%",
           minHeight: 0,

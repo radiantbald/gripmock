@@ -196,7 +196,9 @@ func sameEnabledRoute(left, right *Stub) bool {
 		return false
 	}
 
-	if strings.TrimSpace(left.Session) != strings.TrimSpace(right.Session) {
+	leftSession := strings.TrimSpace(left.Session)
+	rightSession := strings.TrimSpace(right.Session)
+	if leftSession != "" && rightSession != "" && leftSession != rightSession {
 		return false
 	}
 

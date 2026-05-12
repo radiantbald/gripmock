@@ -139,6 +139,32 @@ func TestPutManySingleEnabledPerRoutePerSessionV2(t *testing.T) {
 	require.True(t, s.FindByID(oneB.ID).IsEnabled(), "session B stub must remain enabled")
 }
 
+func TestPutManySingleEnabledPerRouteGlobalConflictsWithSessionV2(t *testing.T) {
+	t.Parallel()
+
+	s := stuber.NewBudgerigar()
+	enabled := true
+
+	global := &stuber.Stub{
+		ID:      uuid.New(),
+		Service: "Calculator",
+		Method:  "MultiplyByFive",
+		Enabled: &enabled,
+	}
+	session := &stuber.Stub{
+		ID:      uuid.New(),
+		Service: "Calculator",
+		Method:  "MultiplyByFive",
+		Session: "A",
+		Enabled: &enabled,
+	}
+
+	s.PutMany(global, session)
+
+	require.False(t, s.FindByID(global.ID).IsEnabled(), "global stub must be disabled by route-specific enabled stub")
+	require.True(t, s.FindByID(session.ID).IsEnabled(), "session stub must remain enabled")
+}
+
 func TestPutManySingleEnabledPerRouteServiceAliasV2(t *testing.T) {
 	t.Parallel()
 
@@ -1478,22 +1504,21 @@ func TestBudgerigarFindByQuerySessionIsolation(t *testing.T) {
 
 	s.PutMany(globalStub, stubA, stubB)
 
-	// Query without session: only global stub matches
+	// Query without session: global stub is disabled by route-specific enabled stubs.
 	result, err := s.FindByQuery(stuber.Query{
 		Service: "svc", Method: "M", Session: "",
 		Input: []map[string]any{{"x": "1"}},
 	})
-	require.NoError(t, err)
-	require.NotNil(t, result.Found())
-	require.Equal(t, "global", result.Found().Output.Data["v"])
+	require.ErrorIs(t, err, stuber.ErrStubNotFound)
+	require.Nil(t, result)
 
 	// Query without session, matching session-A input: no exact match (session stubs hidden)
 	result, err = s.FindByQuery(stuber.Query{
 		Service: "svc", Method: "M", Session: "",
 		Input: []map[string]any{{"x": "2"}},
 	})
-	require.NoError(t, err)
-	require.Nil(t, result.Found(), "session-A stub must be invisible when query has no session")
+	require.ErrorIs(t, err, stuber.ErrStubNotFound)
+	require.Nil(t, result)
 
 	// Query with Session A: matches session-A stub
 	result, err = s.FindByQuery(stuber.Query{
@@ -1504,14 +1529,14 @@ func TestBudgerigarFindByQuerySessionIsolation(t *testing.T) {
 	require.NotNil(t, result.Found())
 	require.Equal(t, "session-a", result.Found().Output.Data["v"])
 
-	// Query with Session A can also match global
+	// Query with Session A no longer matches global because session-specific enabled stub disables it.
 	result, err = s.FindByQuery(stuber.Query{
 		Service: "svc", Method: "M", Session: "A",
 		Input: []map[string]any{{"x": "1"}},
 	})
 	require.NoError(t, err)
-	require.NotNil(t, result.Found())
-	require.Equal(t, "global", result.Found().Output.Data["v"])
+	require.Nil(t, result.Found())
+	require.NotNil(t, result.Similar())
 
 	// Query with Session B: matches session-B stub, not A
 	result, err = s.FindByQuery(stuber.Query{

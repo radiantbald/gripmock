@@ -2229,7 +2229,9 @@ func (h *RestServer) AddStub(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		stub.Session = sess
+		if sess != "" {
+			stub.Session = sess
+		}
 		stub.Source = stuber.SourceRest
 
 		if err := h.validateStub(stub); err != nil {
@@ -2477,6 +2479,23 @@ func decodeDescriptorFiles(fds *descriptorpb.FileDescriptorSet) ([]protoreflect.
 	return files, nil
 }
 
+func mergeJSONPatchMap(base map[string]any, patch map[string]any) map[string]any {
+	for key, patchValue := range patch {
+		baseValue, baseExists := base[key]
+		patchMap, patchIsMap := patchValue.(map[string]any)
+		baseMap, baseIsMap := baseValue.(map[string]any)
+
+		if patchIsMap && baseExists && baseIsMap {
+			base[key] = mergeJSONPatchMap(baseMap, patchMap)
+			continue
+		}
+
+		base[key] = patchValue
+	}
+
+	return base
+}
+
 // DeleteStubByID removes a stub by ID.
 func (h *RestServer) DeleteStubByID(w http.ResponseWriter, _ *http.Request, id rest.ID) {
 	privateID, ok := h.resolvePrivateID(id)
@@ -2485,6 +2504,124 @@ func (h *RestServer) DeleteStubByID(w http.ResponseWriter, _ *http.Request, id r
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// PatchStubByID partially updates a stub by public ID.
+// Supports any partial payload, including enabled toggle and output fields.
+func (h *RestServer) PatchStubByID(w http.ResponseWriter, r *http.Request) {
+	rawID := strings.TrimSpace(mux.Vars(r)["uuid"])
+	if rawID == "" {
+		h.validationError(r.Context(), w, errors.New("stub id is required"))
+		return
+	}
+
+	parsedID, parseErr := strconv.ParseUint(rawID, 10, 64)
+	if parseErr != nil {
+		h.validationError(r.Context(), w, errors.Wrap(parseErr, "invalid stub id"))
+		return
+	}
+
+	publicID := rest.ID(parsedID)
+	privateID, ok := h.resolvePrivateID(publicID)
+	if !ok {
+		w.WriteHeader(http.StatusNotFound)
+		h.writeResponse(r.Context(), w, map[string]string{
+			"error": fmt.Sprintf("Stub with ID '%d' not found", publicID),
+		})
+		return
+	}
+
+	target := h.budgerigar.FindByID(privateID)
+	if target == nil {
+		w.WriteHeader(http.StatusNotFound)
+		h.writeResponse(r.Context(), w, map[string]string{
+			"error": fmt.Sprintf("Stub with ID '%d' not found", publicID),
+		})
+		return
+	}
+
+	selectedSession := strings.TrimSpace(muxmiddleware.FromRequest(r))
+	if selectedSession == "" {
+		selectedSession = strings.TrimSpace(r.URL.Query().Get("session"))
+	}
+	targetSession := strings.TrimSpace(target.Session)
+	if targetSession != "" && targetSession != selectedSession {
+		w.WriteHeader(http.StatusNotFound)
+		h.writeResponse(r.Context(), w, map[string]string{
+			"error": fmt.Sprintf("Stub with ID '%d' not found in selected session", publicID),
+		})
+		return
+	}
+
+	body, readErr := httputil.RequestBody(r)
+	if readErr != nil {
+		h.responseError(r.Context(), w, readErr)
+		return
+	}
+	if len(body) == 0 {
+		h.validationError(r.Context(), w, errors.New("patch payload is required"))
+		return
+	}
+
+	var patch map[string]any
+	if err := json.Unmarshal(body, &patch); err != nil {
+		h.validationError(r.Context(), w, errors.Wrap(err, "invalid patch payload"))
+		return
+	}
+
+	currentPayload, err := json.Marshal(target)
+	if err != nil {
+		h.responseError(r.Context(), w, errors.Wrap(err, "failed to serialize current stub"))
+		return
+	}
+
+	var current map[string]any
+	if err := json.Unmarshal(currentPayload, &current); err != nil {
+		h.responseError(r.Context(), w, errors.Wrap(err, "failed to decode current stub"))
+		return
+	}
+
+	mergedMap := mergeJSONPatchMap(current, patch)
+	mergedPayload, err := json.Marshal(mergedMap)
+	if err != nil {
+		h.responseError(r.Context(), w, errors.Wrap(err, "failed to encode merged stub payload"))
+		return
+	}
+
+	var updated stuber.Stub
+	if err := json.Unmarshal(mergedPayload, &updated); err != nil {
+		h.validationError(r.Context(), w, errors.Wrap(err, "invalid merged stub payload"))
+		return
+	}
+
+	updated.ID = target.ID
+	if strings.TrimSpace(updated.Session) == "" {
+		updated.Session = target.Session
+	}
+
+	if err := h.validateStub(&updated); err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+
+	if len(h.budgerigar.UpdateMany(&updated)) == 0 {
+		h.responseError(r.Context(), w, errors.New("failed to update stub"))
+		return
+	}
+
+	currentStub := h.budgerigar.FindByID(target.ID)
+	if currentStub == nil {
+		h.responseError(r.Context(), w, errors.New("failed to read updated stub"))
+		return
+	}
+
+	h.writeResponse(r.Context(), w, h.toRestStub(currentStub))
+}
+
+// UpdateStubEnabledByID is kept for backward compatibility in tests/callers.
+// The unified PATCH handler now supports partial updates, including enabled.
+func (h *RestServer) UpdateStubEnabledByID(w http.ResponseWriter, r *http.Request) {
+	h.PatchStubByID(w, r)
 }
 
 // BatchStubsDelete removes multiple stubs by ID.
@@ -2813,6 +2950,15 @@ func (h *RestServer) toDomainStub(input rest.Stub) (*stuber.Stub, error) {
 		}
 
 		out.ID = privateID
+
+		// REST update payloads do not carry session field.
+		// Keep existing session scope when updating by ID to avoid moving scoped stubs to global.
+		if out.Session == "" {
+			existing := h.budgerigar.FindByID(privateID)
+			if existing != nil {
+				out.Session = existing.Session
+			}
+		}
 	}
 
 	return &out, nil
@@ -3130,6 +3276,9 @@ func (h *RestServer) writeResponseError(ctx context.Context, w http.ResponseWrit
 
 // writeResponse writes a successful response to the HTTP writer.
 func (h *RestServer) writeResponse(ctx context.Context, w http.ResponseWriter, data any) {
+	// Prevent stale API reads in browser/network layer after mutating requests.
+	w.Header().Set("Cache-Control", "no-store, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("failed to encode JSON response")
 	}
