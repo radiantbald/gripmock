@@ -103,8 +103,35 @@ const getGrpcStatusChipColor = (code: number): "success" | "error" | "warning" |
 const normalizeValue = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
+const shortServiceName = (service: string): { short: string; hasDot: boolean } => {
+  const index = service.lastIndexOf(".");
+  if (index === -1) {
+    return { short: service, hasDot: false };
+  }
+
+  return { short: service.slice(index + 1), hasDot: true };
+};
+
+const sameServiceAlias = (leftRaw: unknown, rightRaw: unknown): boolean => {
+  const left = normalizeValue(leftRaw);
+  const right = normalizeValue(rightRaw);
+  if (left === right) {
+    return true;
+  }
+
+  const leftMeta = shortServiceName(left);
+  const rightMeta = shortServiceName(right);
+  if (leftMeta.short !== rightMeta.short) {
+    return false;
+  }
+
+  // Keep parity with backend route matching:
+  // two distinct fully-qualified names are not aliases for each other.
+  return !leftMeta.hasDot || !rightMeta.hasDot;
+};
+
 const sameRoute = (left: StubRecord, right: StubRecord): boolean =>
-  normalizeValue(left.service) === normalizeValue(right.service) &&
+  sameServiceAlias(left.service, right.service) &&
   normalizeValue(left.method) === normalizeValue(right.method) &&
   normalizeValue((left as StubRecord & { session?: unknown }).session) ===
     normalizeValue((right as StubRecord & { session?: unknown }).session);
@@ -467,7 +494,20 @@ export const StubsDatagrid = ({
 
       Object.entries(current).forEach(([id, enabled]) => {
         const actualEnabled = byID.get(id);
-        if (typeof actualEnabled !== "boolean" || actualEnabled === enabled) {
+        const isUpdating = Boolean(updatingByID[id]);
+        if (typeof actualEnabled !== "boolean") {
+          changed = true;
+          return;
+        }
+
+        if (actualEnabled === enabled) {
+          changed = true;
+          return;
+        }
+
+        // Keep optimistic value only while this exact row request is in flight.
+        // This prevents stale "enabled" badges from lingering after server state changed.
+        if (!isUpdating) {
           changed = true;
           return;
         }
@@ -476,7 +516,7 @@ export const StubsDatagrid = ({
 
       return changed ? next : current;
     });
-  }, [records]);
+  }, [records, updatingByID]);
 
   const handleToggleEnabled = async (stub: StubRecord, nextEnabled: boolean) => {
     let rollbackState: Record<string, boolean> = {};

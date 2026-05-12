@@ -48,9 +48,18 @@ func (b *Budgerigar) HydrateFromPersistent(ctx context.Context) error {
 		return err
 	}
 
+	related := b.ensureSingleEnabledByRoute(all...)
+	candidates := dedupeStubsByID(append(all, related...))
+
+	if len(related) > 0 {
+		if _, err := b.persistent.UpsertMany(ctx, candidates...); err != nil {
+			return err
+		}
+	}
+
 	b.searcher.clear()
-	if len(all) > 0 {
-		b.searcher.upsert(all...)
+	if len(candidates) > 0 {
+		b.searcher.upsert(candidates...)
 	}
 
 	return nil

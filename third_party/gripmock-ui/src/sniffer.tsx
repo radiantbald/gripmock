@@ -74,7 +74,6 @@ const responseSchemaErrorMarkers = [
   "proto:",
 ];
 const notFoundCode = 5;
-const internalCode = 13;
 const serverTimestampFormatter = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
   month: "2-digit",
@@ -220,16 +219,27 @@ const hasMissingStubError = (record?: HistoryRecord): boolean => {
 };
 
 const hasResponseSchemaError = (record?: HistoryRecord): boolean => {
-  if (!record || record.code !== internalCode) {
+  if (!record) {
+    return false;
+  }
+
+  if (record.code === notFoundCode || record.code === 12) {
     return false;
   }
 
   const normalizedError = String(record.error || "").toLowerCase();
-  if (!normalizedError) {
-    return false;
+  if (normalizedError) {
+    return responseSchemaErrorMarkers.some((marker) => normalizedError.includes(marker));
   }
 
-  return responseSchemaErrorMarkers.some((marker) => normalizedError.includes(marker));
+  const response = unwrapRootPayload(record.response);
+  const isEmptyResponseObject = isPlainObject(response) && Object.keys(response).length === 0;
+  const hasNoResponsePayload = response === undefined || response === null;
+
+  // Some invalid stub payload cases come back with stub-defined non-zero
+  // gRPC code, no explicit error text and no response payload.
+  // The code value itself is not a validator here.
+  return (record.code ?? 0) !== 0 && !normalizedError && (isEmptyResponseObject || hasNoResponsePayload);
 };
 
 const subscribeHistoryStream = (session: string, handlers: StreamHandlers): (() => void) => {
@@ -348,7 +358,7 @@ export const SnifferPage = () => {
   const showMissingProtoHint = hasMissingProtoError(selected);
   const showMissingStubHint = hasMissingStubError(selected);
   const selectedStubId = String(selected?.stubId || "").trim();
-  const showResponseSchemaHint = !!selectedStubId && hasResponseSchemaError(selected);
+  const showResponseSchemaHint = hasResponseSchemaError(selected);
   const selectedSession = String(selected?.session || "").trim();
   const suggestedSession = activeSession.trim();
   const selectedPeer = String(selected?.client || "").trim();
@@ -883,7 +893,7 @@ export const SnifferPage = () => {
                       <Typography variant="body2" color="success.main" sx={{ fontWeight: 700 }}>
                         Stub edited - retry call
                       </Typography>
-                    ) : (
+                    ) : selectedStubId ? (
                       <Button
                         variant="contained"
                         component={RouterLink}
@@ -892,7 +902,7 @@ export const SnifferPage = () => {
                       >
                         Edit selected stub
                       </Button>
-                    )}
+                    ) : null}
                     <Button
                       variant="outlined"
                       component={RouterLink}
