@@ -4,15 +4,31 @@ OPENAPI=api/api.yaml
 
 version=latest
 GOLANGCI_LINT=go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
+UI_DIR=third_party/gripmock-ui
+UI_DEPS_STAMP=$(UI_DIR)/node_modules/.deps-stamp
+
+env:
+	@if [ ! -f .env ]; then \
+		cp .env.example .env; \
+		echo "Created .env from .env.example"; \
+	fi
 
 build:
 	docker buildx build --load -t bavix/gripmock:${version} .
 
-ui-build:
-	npm --prefix third_party/gripmock-ui run build
+ui-install:
+	@if [ ! -d "$(UI_DIR)/node_modules" ] || [ ! -f "$(UI_DEPS_STAMP)" ] || [ "$(UI_DIR)/package-lock.json" -nt "$(UI_DEPS_STAMP)" ]; then \
+		npm --prefix $(UI_DIR) ci; \
+		touch "$(UI_DEPS_STAMP)"; \
+	fi
 
-up:
-	$(MAKE) ui-build
+ui-build: ui-install
+	npm --prefix $(UI_DIR) run build
+
+up: env ui-build
+	docker compose up -d --build --scale gripmock=1 postgres gripmock
+
+up-proxy: env ui-build
 	docker compose up -d --build --scale gripmock=1
 
 test:

@@ -26,6 +26,9 @@ services:
     environment:
       POSTGRES_DSN: postgres://${POSTGRES_USER:-gripmock}:${POSTGRES_PASSWORD:-gripmock}@postgres:5432/${POSTGRES_DB:-gripmock}?sslmode=disable
       LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${GRIPMOCK_GRPC_PORT:-4770}:4770"
+      - "${GRIPMOCK_HTTP_PORT:-4771}:4771"
     labels:
       traefik.enable: "true"
       traefik.http.routers.gripmock-http.rule: PathPrefix(`/`)
@@ -49,8 +52,8 @@ services:
       - --accesslog=true
       - --log.level=INFO
     ports:
-      - "4770:4770"
-      - "4771:4771"
+      - "${TRAEFIK_GRPC_PORT:-5770}:4770"
+      - "${TRAEFIK_HTTP_PORT:-5771}:4771"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:

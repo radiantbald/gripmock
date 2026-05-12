@@ -169,7 +169,20 @@ docker run -p 4770:4770 -p 4771:4771 \
   bavix/gripmock --stub=/stubs /proto/service.proto
 ```
 
-**Using Docker Compose (persistent + scalable):**
+**Using Docker Compose (single file + one-command startup):**
+```bash
+# Installs UI dependencies, builds UI, creates .env from .env.example if missing,
+# and starts PostgreSQL + GripMock.
+make up
+```
+
+For local development this is the fastest path:
+
+- `make up` maps `4770` and `4771` directly from `gripmock`
+- no reverse-proxy dependency in the default startup flow
+- works from a fresh clone with a single command
+
+**Using Docker Compose (persistent + scalable with Traefik):**
 ```bash
 # Tune credentials/runtime image/source
 cp .env.example .env
@@ -182,7 +195,14 @@ Scale up/down on demand:
 ```bash
 docker compose up -d --scale gripmock=6
 docker compose up -d --scale gripmock=1
+# or one replica with prebuilt UI/deps through Makefile:
+make up-proxy
 ```
+
+Port mappings are configured via `.env`:
+
+- `GRIPMOCK_GRPC_PORT` / `GRIPMOCK_HTTP_PORT` for direct GripMock access
+- `TRAEFIK_GRPC_PORT` / `TRAEFIK_HTTP_PORT` for proxy access
 
 This compose stack is production-oriented:
 
