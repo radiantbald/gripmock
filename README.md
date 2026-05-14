@@ -213,6 +213,28 @@ This compose stack is production-oriented:
 - **Port 4770**: gRPC server
 - **Port 4771**: Web UI and REST API
 
+### Reset Persistent Metadata
+
+If startup fails because of old persisted descriptors in PostgreSQL, reset the local database volume and start again:
+
+```bash
+make reset-db
+make up
+```
+
+or use the combined one-shot target:
+
+```bash
+make reup-clean
+```
+
+If you previously started this repository under different folder names, old Docker Compose projects may keep extra PostgreSQL volumes. List and remove them before restart:
+
+```bash
+docker volume ls | grep -E "postgres_data|gripmock"
+docker volume rm <volume_name>
+```
+
 ### Observability (v3.10.0)
 
 ```bash

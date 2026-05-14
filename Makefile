@@ -29,6 +29,11 @@ ui-build: ui-install
 up: env ui-build
 	docker compose up -d --build --scale gripmock=1 postgres gripmock
 
+reset-db:
+	docker compose down --volumes --remove-orphans
+
+reup-clean: reset-db up
+
 up-proxy: env ui-build
 	docker compose up -d --build --scale gripmock=1
 
