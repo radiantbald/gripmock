@@ -21,6 +21,8 @@ type Config struct {
 	GRPCHost    string `env:"GRPC_HOST"    envDefault:"0.0.0.0"`
 	GRPCPort    string `env:"GRPC_PORT"    envDefault:"4770"`
 	GRPCAddr    string `env:",expand"      envDefault:"$GRPC_HOST:$GRPC_PORT"`
+	// When enabled, startup fails if persisted descriptors cannot be decoded.
+	GRPCStrictPersistedDescriptors bool `env:"GRPC_STRICT_PERSISTED_DESCRIPTORS" envDefault:"false"`
 
 	// HTTP server configuration.
 	HTTPHost string `env:"HTTP_HOST" envDefault:"0.0.0.0"`

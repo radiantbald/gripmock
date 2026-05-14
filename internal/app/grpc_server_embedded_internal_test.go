@@ -2,11 +2,13 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
@@ -210,39 +212,8 @@ message EchoReply {
 //nolint:paralleltest
 func TestGRPCServerBuildContinuesWhenPersistedDescriptorsInvalid(t *testing.T) {
 	ctx := t.Context()
-	protoPath := filepath.Join(t.TempDir(), "persisted_invalid.proto")
-	err := os.WriteFile(protoPath, []byte(`syntax = "proto3";
-package persisted.invalid;
-
-import "google/protobuf/timestamp.proto";
-
-service InvalidService {
-  rpc Echo (EchoRequest) returns (EchoReply);
-}
-
-message EchoRequest {
-  google.protobuf.Timestamp at = 1;
-}
-
-message EchoReply {
-  google.protobuf.Timestamp at = 1;
-}
-`), 0o644)
+	stripped, err := buildCorruptedPersistedDescriptorSet(ctx, t.TempDir(), "persisted_invalid.proto", "persisted.invalid")
 	require.NoError(t, err)
-
-	fdsSlice, err := protoset.Build(ctx, nil, []string{protoPath}, nil)
-	require.NoError(t, err)
-	require.NotEmpty(t, fdsSlice)
-
-	// Simulate persisted data that misses transitive imports.
-	stripped := &descriptorpb.FileDescriptorSet{}
-	for _, file := range fdsSlice[0].GetFile() {
-		if file.GetName() == "google/protobuf/timestamp.proto" {
-			continue
-		}
-		stripped.File = append(stripped.File, file)
-	}
-	require.NotEmpty(t, stripped.GetFile())
 
 	registry := descriptors.NewRegistry()
 	server := NewGRPCServer(
@@ -266,6 +237,76 @@ message EchoReply {
 	require.NoError(t, err)
 	require.NotNil(t, grpcServer)
 	defer grpcServer.GracefulStop()
+}
+
+//nolint:paralleltest
+func TestGRPCServerBuildFailsWhenPersistedDescriptorsInvalidInStrictMode(t *testing.T) {
+	ctx := t.Context()
+	stripped, err := buildCorruptedPersistedDescriptorSet(ctx, t.TempDir(), "persisted_invalid_strict.proto", "persisted.invalid.strict")
+	require.NoError(t, err)
+
+	registry := descriptors.NewRegistry()
+	server := NewGRPCServer(
+		"tcp",
+		":0",
+		nil,
+		stuber.NewBudgerigar(),
+		NewInstantExtender(),
+		nil,
+		registry,
+		nil,
+		nil,
+		false,
+		nil,
+	)
+	server.SetStrictPersistedDescriptorStartup(true)
+	server.SetProtoMetadataWriter(&grpcProtoMetadataLoaderStub{
+		loaded: []*descriptorpb.FileDescriptorSet{stripped},
+	})
+
+	_, err = server.Build(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to register persisted descriptors")
+}
+
+func buildCorruptedPersistedDescriptorSet(
+	ctx context.Context,
+	dir string,
+	fileName string,
+	pkg string,
+) (*descriptorpb.FileDescriptorSet, error) {
+	protoPath := filepath.Join(dir, fileName)
+	err := os.WriteFile(protoPath, []byte(`syntax = "proto3";
+package `+pkg+`;
+
+service InvalidService {
+  rpc Echo (EchoRequest) returns (EchoReply);
+}
+
+message EchoRequest {
+  string value = 1;
+}
+
+message EchoReply {
+  string value = 1;
+}
+`), 0o644)
+	if err != nil {
+		return nil, err
+	}
+
+	fdsSlice, err := protoset.Build(ctx, nil, []string{protoPath}, nil)
+	if err != nil {
+		return nil, err
+	}
+	if len(fdsSlice) == 0 || len(fdsSlice[0].GetFile()) == 0 {
+		return nil, fmt.Errorf("empty descriptor set")
+	}
+
+	cloned, _ := proto.Clone(fdsSlice[0].GetFile()[0]).(*descriptorpb.FileDescriptorProto)
+	cloned.Dependency = append(cloned.Dependency, "acme/missing.proto")
+
+	return &descriptorpb.FileDescriptorSet{File: []*descriptorpb.FileDescriptorProto{cloned}}, nil
 }
 
 type grpcProtoMetadataLoaderStub struct {

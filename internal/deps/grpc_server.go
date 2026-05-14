@@ -63,6 +63,8 @@ func (b *Builder) GRPCServe(ctx context.Context, param *proto.Arguments) error {
 		b.config.OtelEnabled,
 		b.StubValidator(),
 	)
+	grpcServer.SetStrictPersistedDescriptorStartup(b.config.GRPCStrictPersistedDescriptors)
+
 	if protoMetadataRepo, protoMetadataErr := b.ProtoMetadataRepository(ctx); protoMetadataErr == nil {
 		grpcServer.SetProtoMetadataWriter(protoMetadataRepo)
 	}

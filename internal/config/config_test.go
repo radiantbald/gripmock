@@ -15,6 +15,7 @@ func TestConfigOldEnvVarNames(t *testing.T) {
 	t.Setenv("GRPC_NETWORK", "tcp")
 	t.Setenv("GRPC_HOST", "127.0.0.1")
 	t.Setenv("GRPC_PORT", "8080")
+	t.Setenv("GRPC_STRICT_PERSISTED_DESCRIPTORS", "true")
 	t.Setenv("HTTP_HOST", "localhost")
 	t.Setenv("HTTP_PORT", "8081")
 	t.Setenv("STUB_WATCHER_ENABLED", "false")
@@ -31,6 +32,7 @@ func TestConfigOldEnvVarNames(t *testing.T) {
 		GRPCHost:                "127.0.0.1",
 		GRPCPort:                "8080",
 		GRPCAddr:                "127.0.0.1:8080",
+		GRPCStrictPersistedDescriptors: true,
 		HTTPHost:                "localhost",
 		HTTPPort:                "8081",
 		HTTPAddr:                "localhost:8081",
@@ -57,6 +59,7 @@ func TestConfigOldEnvVarNames(t *testing.T) {
 	require.Equal(t, expected.GRPCHost, cfg.GRPCHost)
 	require.Equal(t, expected.GRPCPort, cfg.GRPCPort)
 	require.Equal(t, expected.GRPCAddr, cfg.GRPCAddr)
+	require.Equal(t, expected.GRPCStrictPersistedDescriptors, cfg.GRPCStrictPersistedDescriptors)
 	require.Equal(t, expected.HTTPHost, cfg.HTTPHost)
 	require.Equal(t, expected.HTTPPort, cfg.HTTPPort)
 	require.Equal(t, expected.HTTPAddr, cfg.HTTPAddr)
@@ -82,6 +85,7 @@ func TestConfigDefaultValues(t *testing.T) {
 		GRPCHost:                "0.0.0.0",
 		GRPCPort:                "4770",
 		GRPCAddr:                "0.0.0.0:4770",
+		GRPCStrictPersistedDescriptors: false,
 		HTTPHost:                "0.0.0.0",
 		HTTPPort:                "4771",
 		HTTPAddr:                "0.0.0.0:4771",
@@ -108,6 +112,7 @@ func TestConfigDefaultValues(t *testing.T) {
 	require.Equal(t, expected.GRPCHost, cfg.GRPCHost)
 	require.Equal(t, expected.GRPCPort, cfg.GRPCPort)
 	require.Equal(t, expected.GRPCAddr, cfg.GRPCAddr)
+	require.Equal(t, expected.GRPCStrictPersistedDescriptors, cfg.GRPCStrictPersistedDescriptors)
 	require.Equal(t, expected.HTTPHost, cfg.HTTPHost)
 	require.Equal(t, expected.HTTPPort, cfg.HTTPPort)
 	require.Equal(t, expected.HTTPAddr, cfg.HTTPAddr)

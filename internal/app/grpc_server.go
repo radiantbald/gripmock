@@ -345,6 +345,7 @@ type GRPCServer struct {
 	otelEnabled   bool
 	validator     *validator.Validate
 	protoMetadata ProtoMetadataWriter
+	strictPersistedDescriptorStartup bool
 }
 
 type protoMetadataDescriptorLoader interface {
@@ -1940,6 +1941,10 @@ func (s *GRPCServer) SetProtoMetadataWriter(writer ProtoMetadataWriter) {
 	s.protoMetadata = writer
 }
 
+func (s *GRPCServer) SetStrictPersistedDescriptorStartup(strict bool) {
+	s.strictPersistedDescriptorStartup = strict
+}
+
 func (s *GRPCServer) Build(ctx context.Context) (*grpc.Server, error) {
 	var err error
 
@@ -1975,9 +1980,13 @@ func (s *GRPCServer) Build(ctx context.Context) (*grpc.Server, error) {
 		}
 		descriptors = mergeDescriptorSets(descriptors, persisted)
 		if err := s.registerPersistedDescriptors(persisted); err != nil {
+			if s.strictPersistedDescriptorStartup {
+				return nil, errors.Wrap(err, "failed to register persisted descriptors")
+			}
+
 			zerolog.Ctx(ctx).Warn().
 				Err(err).
-				Msg("Failed to register persisted descriptors; continuing startup without dynamic registry preload")
+				Msg("Failed to register persisted descriptors; continuing startup without dynamic registry preload (set GRPC_STRICT_PERSISTED_DESCRIPTORS=true to fail startup)")
 		}
 	}
 
@@ -2026,7 +2035,14 @@ func (s *GRPCServer) registerPersistedDescriptors(sets []*descriptorpb.FileDescr
 	}
 
 	pending := make([]*descriptorpb.FileDescriptorProto, 0, len(unique))
-	for _, file := range unique {
+	paths := make([]string, 0, len(unique))
+	for path := range unique {
+		paths = append(paths, path)
+	}
+	slices.Sort(paths)
+
+	for _, path := range paths {
+		file := unique[path]
 		pending = append(pending, file)
 	}
 
@@ -2064,7 +2080,17 @@ func (s *GRPCServer) registerPersistedDescriptors(sets []*descriptorpb.FileDescr
 		}
 
 		if !progress {
-			return errors.Wrap(lastErr, "failed to decode persisted descriptor set")
+			unresolved := make([]string, 0, len(next))
+			for _, file := range next {
+				unresolved = append(unresolved, file.GetName())
+			}
+			slices.Sort(unresolved)
+
+			return errors.Wrapf(
+				lastErr,
+				"failed to decode persisted descriptor set (unresolved files: %s)",
+				strings.Join(unresolved, ", "),
+			)
 		}
 
 		pending = next
