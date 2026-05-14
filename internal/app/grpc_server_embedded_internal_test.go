@@ -207,6 +207,67 @@ message EchoReply {
 	require.Contains(t, registry.ServiceIDs(), "persisted.wkt.WKTService")
 }
 
+//nolint:paralleltest
+func TestGRPCServerBuildContinuesWhenPersistedDescriptorsInvalid(t *testing.T) {
+	ctx := t.Context()
+	protoPath := filepath.Join(t.TempDir(), "persisted_invalid.proto")
+	err := os.WriteFile(protoPath, []byte(`syntax = "proto3";
+package persisted.invalid;
+
+import "google/protobuf/timestamp.proto";
+
+service InvalidService {
+  rpc Echo (EchoRequest) returns (EchoReply);
+}
+
+message EchoRequest {
+  google.protobuf.Timestamp at = 1;
+}
+
+message EchoReply {
+  google.protobuf.Timestamp at = 1;
+}
+`), 0o644)
+	require.NoError(t, err)
+
+	fdsSlice, err := protoset.Build(ctx, nil, []string{protoPath}, nil)
+	require.NoError(t, err)
+	require.NotEmpty(t, fdsSlice)
+
+	// Simulate persisted data that misses transitive imports.
+	stripped := &descriptorpb.FileDescriptorSet{}
+	for _, file := range fdsSlice[0].GetFile() {
+		if file.GetName() == "google/protobuf/timestamp.proto" {
+			continue
+		}
+		stripped.File = append(stripped.File, file)
+	}
+	require.NotEmpty(t, stripped.GetFile())
+
+	registry := descriptors.NewRegistry()
+	server := NewGRPCServer(
+		"tcp",
+		":0",
+		nil,
+		stuber.NewBudgerigar(),
+		NewInstantExtender(),
+		nil,
+		registry,
+		nil,
+		nil,
+		false,
+		nil,
+	)
+	server.SetProtoMetadataWriter(&grpcProtoMetadataLoaderStub{
+		loaded: []*descriptorpb.FileDescriptorSet{stripped},
+	})
+
+	grpcServer, err := server.Build(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, grpcServer)
+	defer grpcServer.GracefulStop()
+}
+
 type grpcProtoMetadataLoaderStub struct {
 	loaded []*descriptorpb.FileDescriptorSet
 }

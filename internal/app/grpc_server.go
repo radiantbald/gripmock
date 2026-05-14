@@ -1975,7 +1975,9 @@ func (s *GRPCServer) Build(ctx context.Context) (*grpc.Server, error) {
 		}
 		descriptors = mergeDescriptorSets(descriptors, persisted)
 		if err := s.registerPersistedDescriptors(persisted); err != nil {
-			return nil, errors.Wrap(err, "failed to register persisted descriptors")
+			zerolog.Ctx(ctx).Warn().
+				Err(err).
+				Msg("Failed to register persisted descriptors; continuing startup without dynamic registry preload")
 		}
 	}
 
