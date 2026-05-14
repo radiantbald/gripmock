@@ -2007,24 +2007,91 @@ func (s *GRPCServer) registerPersistedDescriptors(sets []*descriptorpb.FileDescr
 		return nil
 	}
 
+	unique := make(map[string]*descriptorpb.FileDescriptorProto)
 	for _, descriptorSet := range sets {
-		if descriptorSet == nil || len(descriptorSet.GetFile()) == 0 {
+		if descriptorSet == nil {
 			continue
 		}
+		for _, file := range descriptorSet.GetFile() {
+			if file == nil {
+				continue
+			}
+			if _, exists := unique[file.GetName()]; exists {
+				continue
+			}
+			unique[file.GetName()] = file
+		}
+	}
 
-		files, err := protodesc.NewFiles(descriptorSet)
-		if err != nil {
-			return errors.Wrap(err, "failed to decode persisted descriptor set")
+	pending := make([]*descriptorpb.FileDescriptorProto, 0, len(unique))
+	for _, file := range unique {
+		pending = append(pending, file)
+	}
+
+	loaded := new(protoregistry.Files)
+	resolver := descriptorResolver{
+		primary:  loaded,
+		fallback: protoregistry.GlobalFiles,
+	}
+
+	for len(pending) > 0 {
+		next := make([]*descriptorpb.FileDescriptorProto, 0, len(pending))
+		progress := false
+		var lastErr error
+
+		for _, file := range pending {
+			fd, err := protodesc.NewFile(file, resolver)
+			if err != nil {
+				lastErr = err
+				next = append(next, file)
+				continue
+			}
+
+			if err := loaded.RegisterFile(fd); err != nil {
+				lastErr = err
+				next = append(next, file)
+				continue
+			}
+
+			s.descriptors.Register(fd)
+			progress = true
 		}
 
-		files.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
-			s.descriptors.Register(fd)
+		if len(next) == 0 {
+			return nil
+		}
 
-			return true
-		})
+		if !progress {
+			return errors.Wrap(lastErr, "failed to decode persisted descriptor set")
+		}
+
+		pending = next
 	}
 
 	return nil
+}
+
+type descriptorResolver struct {
+	primary  protodesc.Resolver
+	fallback protodesc.Resolver
+}
+
+func (r descriptorResolver) FindFileByPath(path string) (protoreflect.FileDescriptor, error) {
+	file, err := r.primary.FindFileByPath(path)
+	if err == nil {
+		return file, nil
+	}
+
+	return r.fallback.FindFileByPath(path)
+}
+
+func (r descriptorResolver) FindDescriptorByName(name protoreflect.FullName) (protoreflect.Descriptor, error) {
+	descriptor, err := r.primary.FindDescriptorByName(name)
+	if err == nil {
+		return descriptor, nil
+	}
+
+	return r.fallback.FindDescriptorByName(name)
 }
 
 func mergeDescriptorSets(base []*descriptorpb.FileDescriptorSet, extra []*descriptorpb.FileDescriptorSet) []*descriptorpb.FileDescriptorSet {

@@ -151,6 +151,62 @@ message EchoReply {
 	require.Contains(t, registry.ServiceIDs(), "persisted.runtime.RuntimeService")
 }
 
+//nolint:paralleltest
+func TestGRPCServerBuildRegistersPersistedDescriptorsWithWKTImport(t *testing.T) {
+	ctx := t.Context()
+	protoPath := filepath.Join(t.TempDir(), "persisted_wkt.proto")
+	err := os.WriteFile(protoPath, []byte(`syntax = "proto3";
+package persisted.wkt;
+
+import "google/protobuf/timestamp.proto";
+
+service WKTService {
+  rpc Echo (EchoRequest) returns (EchoReply);
+}
+
+message EchoRequest {
+  google.protobuf.Timestamp at = 1;
+}
+
+message EchoReply {
+  google.protobuf.Timestamp at = 1;
+}
+`), 0o644)
+	require.NoError(t, err)
+
+	fdsSlice, err := protoset.Build(ctx, nil, []string{protoPath}, nil)
+	require.NoError(t, err)
+	require.NotEmpty(t, fdsSlice)
+
+	registry := descriptors.NewRegistry()
+	server := NewGRPCServer(
+		"tcp",
+		":0",
+		nil,
+		stuber.NewBudgerigar(),
+		NewInstantExtender(),
+		nil,
+		registry,
+		nil,
+		nil,
+		false,
+		nil,
+	)
+
+	server.SetProtoMetadataWriter(&grpcProtoMetadataLoaderStub{loaded: fdsSlice})
+
+	grpcServer, err := server.Build(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, grpcServer)
+	defer grpcServer.GracefulStop()
+
+	method, err := server.findMethodDescriptor("persisted.wkt.WKTService", "Echo")
+	require.NoError(t, err)
+	require.Equal(t, "persisted.wkt.EchoRequest", string(method.Input().FullName()))
+	require.Equal(t, "persisted.wkt.EchoReply", string(method.Output().FullName()))
+	require.Contains(t, registry.ServiceIDs(), "persisted.wkt.WKTService")
+}
+
 type grpcProtoMetadataLoaderStub struct {
 	loaded []*descriptorpb.FileDescriptorSet
 }
