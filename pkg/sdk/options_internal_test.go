@@ -52,23 +52,23 @@ func TestWithHTTPClientAssignsClient(t *testing.T) {
 	require.Same(t, client, o.httpClient)
 }
 
-func TestWithSessionTTLAssignsTTL(t *testing.T) {
+func TestWithRoomTTLAssignsTTL(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
 	o := &options{}
 
 	// Act
-	WithSessionTTL(2 * time.Minute)(o)
+	WithRoomTTL(2 * time.Minute)(o)
 
 	// Assert
-	require.Equal(t, 2*time.Minute, o.sessionTTL)
+	require.Equal(t, 2*time.Minute, o.roomTTL)
 }
 
-func TestDefaultSessionTTL(t *testing.T) {
+func TestDefaultRoomTTL(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, 60*time.Second, defaultSessionTTL)
+	require.Equal(t, 60*time.Second, defaultRoomTTL)
 }
 
 func TestWithGRPCTimeoutAssignsTimeout(t *testing.T) {
@@ -84,17 +84,17 @@ func TestWithGRPCTimeoutAssignsTimeout(t *testing.T) {
 	require.Equal(t, 3*time.Second, o.grpcTimeout)
 }
 
-func TestWithSessionTrimsSessionID(t *testing.T) {
+func TestWithRoomTrimsRoomID(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
 	o := &options{}
 
 	// Act
-	WithSession("  my-session  ")(o)
+	WithRoom("  my-room  ")(o)
 
 	// Assert
-	require.Equal(t, "my-session", o.session)
+	require.Equal(t, "my-room", o.room)
 }
 
 func TestWithRemoteKeepsEmptyRestURLWhenNotProvided(t *testing.T) {

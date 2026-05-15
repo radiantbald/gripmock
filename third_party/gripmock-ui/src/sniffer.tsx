@@ -25,7 +25,7 @@ import { Link as RouterLink } from "react-router-dom";
 
 import { API_CONFIG } from "./constants/api";
 import { apiClient } from "./dataProvider/apiClient";
-import { getCurrentSession, subscribeSessionChanges } from "./utils/session";
+import { getCurrentRoom, subscribeRoomChanges } from "./utils/room";
 import { clearStubEditedSignal, getStubEditedSignalStubId } from "./utils/stubEditSignal";
 import type { HistoryRecord } from "./types/entities";
 
@@ -125,10 +125,10 @@ const pushRecord = (records: HistoryRecord[], nextRecord: HistoryRecord): Histor
   return [normalized, ...filtered].slice(0, MAX_ITEMS);
 };
 
-const buildStreamUrl = (session: string): string => {
+const buildStreamUrl = (room: string): string => {
   const query = new URLSearchParams();
-  if (session) {
-    query.set("session", session);
+  if (room) {
+    query.set("room", room);
   }
 
   const qs = query.toString();
@@ -242,8 +242,8 @@ const hasResponseSchemaError = (record?: HistoryRecord): boolean => {
   return (record.code ?? 0) !== 0 && !normalizedError && (isEmptyResponseObject || hasNoResponsePayload);
 };
 
-const subscribeHistoryStream = (session: string, handlers: StreamHandlers): (() => void) => {
-  const eventSource = new EventSource(buildStreamUrl(session));
+const subscribeHistoryStream = (room: string, handlers: StreamHandlers): (() => void) => {
+  const eventSource = new EventSource(buildStreamUrl(room));
 
   const onMessage = (event: MessageEvent<string>) => {
     const parsed = parseEvent(event);
@@ -267,11 +267,11 @@ export const SnifferPage = () => {
   const createPath = useCreatePath();
   const [records, setRecords] = useState<HistoryRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
-  const [activeSession, setActiveSession] = useState(() => getCurrentSession());
+  const [activeRoom, setActiveRoom] = useState(() => getCurrentRoom());
   const [isUploadingProto, setIsUploadingProto] = useState(false);
   const [hasProtoFromApi, setHasProtoFromApi] = useState(false);
   const [hasMethodFromApi, setHasMethodFromApi] = useState(false);
-  const [peerBoundSession, setPeerBoundSession] = useState("");
+  const [peerBoundRoom, setPeerBoundRoom] = useState("");
   const [recentlyAttachedPeer, setRecentlyAttachedPeer] = useState("");
   const [streamRevision, setStreamRevision] = useState(0);
   const [expandedResponseKeys, setExpandedResponseKeys] = useState<Set<string>>(new Set());
@@ -305,12 +305,12 @@ export const SnifferPage = () => {
     [],
   );
 
-  useEffect(() => subscribeSessionChanges(() => setActiveSession(getCurrentSession())), []);
+  useEffect(() => subscribeRoomChanges(() => setActiveRoom(getCurrentRoom())), []);
 
   const loadHistorySnapshot = useCallback(async () => {
     const params = new URLSearchParams();
-    if (activeSession) {
-      params.set("session", activeSession);
+    if (activeRoom) {
+      params.set("room", activeRoom);
     }
 
     const query = params.toString();
@@ -318,7 +318,7 @@ export const SnifferPage = () => {
     const normalized = payload.map(toSnifferRecord).reverse().slice(0, MAX_ITEMS);
     setRecords(normalized);
     setSelectedId((current) => current || normalized[0]?.callId || normalized[0]?.id || "");
-  }, [activeSession]);
+  }, [activeRoom]);
 
   useEffect(() => {
     let cancelled = false;
@@ -335,7 +335,7 @@ export const SnifferPage = () => {
   }, [loadHistorySnapshot]);
 
   useEffect(() => {
-    const unsubscribe = subscribeHistoryStream(activeSession, {
+    const unsubscribe = subscribeHistoryStream(activeRoom, {
       onCall: (record) => {
         setRecords((current) => pushRecord(current, record));
         const nextId = String(record.callId || record.id || "").trim();
@@ -349,7 +349,7 @@ export const SnifferPage = () => {
     });
 
     return unsubscribe;
-  }, [activeSession, streamRevision]);
+  }, [activeRoom, streamRevision]);
 
   const selected = useMemo(
     () => records.find((item) => (item.callId || item.id) === selectedId) || records[0],
@@ -359,29 +359,29 @@ export const SnifferPage = () => {
   const showMissingStubHint = hasMissingStubError(selected);
   const selectedStubId = String(selected?.stubId || "").trim();
   const showResponseSchemaHint = hasResponseSchemaError(selected);
-  const selectedSession = String(selected?.session || "").trim();
-  const suggestedSession = activeSession.trim();
+  const selectedRoom = String(selected?.room || "").trim();
+  const suggestedRoom = activeRoom.trim();
   const selectedPeer = String(selected?.client || "").trim();
   const selectedService = String(selected?.service || "").trim();
   const selectedMethod = String(selected?.method || "").trim();
   const selectedCode = selected?.code;
-  const resolvedPeerSession = (peerBoundSession || selectedSession).trim();
-  const isPeerBoundToAnySession = resolvedPeerSession.length > 0;
-  const isGlobalSessionCall = !!selected && selectedSession.length === 0;
-  const showMissingSessionHint =
-    isGlobalSessionCall && !isPeerBoundToAnySession && (selected.code === notFoundCode || showMissingProtoHint);
-  const canAssignPeerSession = !isPeerBoundToAnySession && !!suggestedSession && !!selectedPeer;
-  const isPeerAttachedToCurrentSession = !!suggestedSession && resolvedPeerSession === suggestedSession;
+  const resolvedPeerRoom = (peerBoundRoom || selectedRoom).trim();
+  const isPeerBoundToAnyRoom = resolvedPeerRoom.length > 0;
+  const isGlobalRoomCall = !!selected && selectedRoom.length === 0;
+  const showMissingRoomHint =
+    isGlobalRoomCall && !isPeerBoundToAnyRoom && (selected.code === notFoundCode || showMissingProtoHint);
+  const canAssignPeerRoom = !isPeerBoundToAnyRoom && !!suggestedRoom && !!selectedPeer;
+  const isPeerAttachedToCurrentRoom = !!suggestedRoom && resolvedPeerRoom === suggestedRoom;
   const shouldShowProtoUploadedHint = hasProtoFromApi && showMissingProtoHint;
-  const shouldShowAttachedSessionInfo =
-    isGlobalSessionCall &&
-    isPeerBoundToAnySession &&
-    isPeerAttachedToCurrentSession &&
+  const shouldShowAttachedRoomInfo =
+    isGlobalRoomCall &&
+    isPeerBoundToAnyRoom &&
+    isPeerAttachedToCurrentRoom &&
     !!selectedPeer &&
     recentlyAttachedPeer === selectedPeer;
-  const shouldShowCombinedAttachAndProtoHint = shouldShowAttachedSessionInfo && shouldShowProtoUploadedHint;
-  const attachedSessionLabel = resolvedPeerSession;
-  const shouldHideResponsePayload = showMissingProtoHint || showMissingSessionHint || shouldShowAttachedSessionInfo;
+  const shouldShowCombinedAttachAndProtoHint = shouldShowAttachedRoomInfo && shouldShowProtoUploadedHint;
+  const attachedRoomLabel = resolvedPeerRoom;
+  const shouldHideResponsePayload = showMissingProtoHint || showMissingRoomHint || shouldShowAttachedRoomInfo;
   const shouldShowMissingStubBlock = !shouldHideResponsePayload && showMissingStubHint;
   const shouldShowInvalidStubBlock = !shouldHideResponsePayload && showResponseSchemaHint;
   const shouldShowStubEditedRetryHint = shouldShowInvalidStubBlock && !!editedStubId && editedStubId === selectedStubId;
@@ -492,53 +492,53 @@ export const SnifferPage = () => {
   useEffect(() => {
     const peer = selectedPeer.trim();
     if (!peer) {
-      setPeerBoundSession(selectedSession);
+      setPeerBoundRoom(selectedRoom);
       return;
     }
 
     let cancelled = false;
     apiClient
-      .request<{ session?: string; bound?: boolean }>(`/sessions/peers/status?peer=${encodeURIComponent(peer)}`)
+      .request<{ room?: string; bound?: boolean }>(`/rooms/peers/status?peer=${encodeURIComponent(peer)}`)
       .then((payload) => {
         if (cancelled) {
           return;
         }
-        const boundSession = String(payload?.session || "").trim();
-        setPeerBoundSession(boundSession || selectedSession);
+        const boundRoom = String(payload?.room || "").trim();
+        setPeerBoundRoom(boundRoom || selectedRoom);
       })
       .catch(() => {
         if (!cancelled) {
-          setPeerBoundSession(selectedSession);
+          setPeerBoundRoom(selectedRoom);
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [selectedPeer, selectedSession]);
+  }, [selectedPeer, selectedRoom]);
 
-  const handleAssignPeerSession = useCallback(async () => {
+  const handleAssignPeerRoom = useCallback(async () => {
     if (!selectedPeer) {
       notify("Selected call has no peer identifier.", { type: "warning" });
       return;
     }
 
-    if (!suggestedSession) {
-      notify("Select a non-global session first.", { type: "warning" });
+    if (!suggestedRoom) {
+      notify("Select a non-global room first.", { type: "warning" });
       return;
     }
 
     try {
-      await apiClient.request<{ message?: string }>("/sessions/peers", {
+      await apiClient.request<{ message?: string }>("/rooms/peers", {
         method: "POST",
-        body: JSON.stringify({ peer: selectedPeer, session: suggestedSession }),
+        body: JSON.stringify({ peer: selectedPeer, room: suggestedRoom }),
       });
-      setPeerBoundSession(suggestedSession);
+      setPeerBoundRoom(suggestedRoom);
       setRecentlyAttachedPeer(selectedPeer);
     } catch (error) {
-      notify((error as Error).message || "Failed to assign peer to session", { type: "warning" });
+      notify((error as Error).message || "Failed to assign peer to room", { type: "warning" });
     }
-  }, [notify, selectedPeer, suggestedSession]);
+  }, [notify, selectedPeer, suggestedRoom]);
 
   const handleProtoSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -595,7 +595,7 @@ export const SnifferPage = () => {
             Requests
           </Typography>
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-            <Chip size="small" variant="outlined" label={`Session: ${activeSession || "global"}`} />
+            <Chip size="small" variant="outlined" label={`Room: ${activeRoom || "global"}`} />
             <Chip size="small" variant="outlined" label={`${records.length} calls`} />
           </Box>
         </Box>
@@ -632,7 +632,7 @@ export const SnifferPage = () => {
                 <TableCell width="14%">Service</TableCell>
                 <TableCell width="14%">Method</TableCell>
                 <TableCell width="8%">Code</TableCell>
-                <TableCell width="22%">Session</TableCell>
+                <TableCell width="22%">Room</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -675,7 +675,7 @@ export const SnifferPage = () => {
                     <TableCell>
                       <Chip size="small" color={codeToChipColor(record.code)} label={record.code ?? 0} />
                     </TableCell>
-                    <TableCell>{record.session || "global"}</TableCell>
+                    <TableCell>{record.room || "global"}</TableCell>
                   </TableRow>
                 );
               })}
@@ -799,7 +799,7 @@ export const SnifferPage = () => {
                     This response cannot be decoded yet.
                   </Typography>
                   <Typography variant="body1" sx={{ opacity: 0.85 }}>
-                    Upload runtime proto and route the peer to a session to view the content.
+                    Upload runtime proto and route the peer to a room to view the content.
                   </Typography>
                   <Box
                     sx={{
@@ -822,20 +822,20 @@ export const SnifferPage = () => {
                     >
                       {shouldShowCombinedAttachAndProtoHint ? (
                         <Typography variant="body2" color="success.main" sx={{ fontWeight: 700 }}>
-                          {`Protofile uploaded and Session ${attachedSessionLabel} attached - Retry request`}
+                          {`Protofile uploaded and Room ${attachedRoomLabel} attached - Retry request`}
                         </Typography>
-                      ) : shouldShowAttachedSessionInfo ? (
+                      ) : shouldShowAttachedRoomInfo ? (
                         <Typography variant="body2" color="success.main" sx={{ fontWeight: 700 }}>
-                          {`Session ${attachedSessionLabel} attached`}
+                          {`Room ${attachedRoomLabel} attached`}
                         </Typography>
-                      ) : !isPeerBoundToAnySession ? (
+                      ) : !isPeerBoundToAnyRoom ? (
                         <Button
                           variant="outlined"
-                          onClick={handleAssignPeerSession}
-                          disabled={!canAssignPeerSession}
+                          onClick={handleAssignPeerRoom}
+                          disabled={!canAssignPeerRoom}
                           sx={{ textTransform: "none", fontWeight: 700, borderRadius: RADIUS_PX, px: 2.25, py: 0.9 }}
                         >
-                          Assign current session
+                          Assign current room
                         </Button>
                       ) : null}
                       {shouldShowCombinedAttachAndProtoHint ? null : shouldShowProtoUploadedHint ? (

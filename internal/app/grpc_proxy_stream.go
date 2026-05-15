@@ -75,7 +75,7 @@ func (m *grpcMocker) proxyServerStreamWithRequest(
 				m.recordCapturedStub(
 					func() *stuber.Stub {
 						return proxycapture.BuildServerStreamStub(
-							m.fullServiceName, m.methodName, captureCtx.sessionID,
+							m.fullServiceName, m.methodName, captureCtx.roomID,
 							requestData, captureCtx.headers, responses,
 							responseHeadersFromClientStream(clientStream), err,
 						)
@@ -105,7 +105,7 @@ func (m *grpcMocker) proxyServerStreamWithRequest(
 		m.recordCapturedStub(
 			func() *stuber.Stub {
 				return proxycapture.BuildServerStreamStub(
-					m.fullServiceName, m.methodName, captureCtx.sessionID,
+					m.fullServiceName, m.methodName, captureCtx.roomID,
 					requestData, captureCtx.headers, responses,
 					responseHeadersFromClientStream(clientStream), nil,
 				)
@@ -189,7 +189,7 @@ func (m *grpcMocker) proxyClientStreamWithRequests(
 			m.recordCapturedStub(
 				func() *stuber.Stub {
 					return proxycapture.BuildClientStreamStub(
-						m.fullServiceName, m.methodName, captureCtx.sessionID,
+						m.fullServiceName, m.methodName, captureCtx.roomID,
 						requests, captureCtx.headers, nil,
 						responseHeadersFromClientStream(clientStream), err,
 					)
@@ -216,7 +216,7 @@ func (m *grpcMocker) proxyClientStreamWithRequests(
 		m.recordCapturedStub(
 			func() *stuber.Stub {
 				return proxycapture.BuildClientStreamStub(
-					m.fullServiceName, m.methodName, captureCtx.sessionID,
+					m.fullServiceName, m.methodName, captureCtx.roomID,
 					requests, captureCtx.headers, messageToMap(resp),
 					responseHeadersFromClientStream(clientStream), nil,
 				)
@@ -386,7 +386,7 @@ func (m *grpcMocker) captureBidiResult(
 	m.recordCapturedStub(
 		func() *stuber.Stub {
 			return proxycapture.BuildBidiStub(
-				m.fullServiceName, m.methodName, captureCtx.sessionID,
+				m.fullServiceName, m.methodName, captureCtx.roomID,
 				requests, captureCtx.headers, responses,
 				responseHeadersFromClientStream(clientStream), captureErr,
 			)

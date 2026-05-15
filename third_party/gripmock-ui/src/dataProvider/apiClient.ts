@@ -1,18 +1,18 @@
 import { API_CONFIG } from "../constants/api";
-import { clearCurrentSession, getCurrentSession } from "../utils/session";
+import { clearCurrentRoom, getCurrentRoom } from "../utils/room";
 import type { RequestOptions } from "./types";
 
-const getSessionHeader = (): Record<string, string> => {
+const getRoomHeader = (): Record<string, string> => {
   if (typeof window === "undefined") {
     return {};
   }
 
-  const session = localStorage.getItem(API_CONFIG.SESSION_STORAGE_KEY);
-  if (!session) {
+  const room = localStorage.getItem(API_CONFIG.ROOM_STORAGE_KEY);
+  if (!room) {
     return {};
   }
 
-  return { [API_CONFIG.SESSION_HEADER]: session };
+  return { [API_CONFIG.ROOM_HEADER]: room };
 };
 
 const getClientHeader = (): Record<string, string> => {
@@ -56,7 +56,7 @@ export const apiClient = {
       Accept: "application/json",
       "Content-Type": "application/json",
       [API_CONFIG.INTERNAL_HEADER]: API_CONFIG.INTERNAL_VALUE,
-      ...(options.skipSessionHeader ? {} : getSessionHeader()),
+      ...(options.skipRoomHeader ? {} : getRoomHeader()),
       ...getClientHeader(),
       ...(options.headers || {}),
     };
@@ -76,9 +76,9 @@ export const apiClient = {
       throw await parseError(response);
     }
 
-    const resetSession = response.headers.get(API_CONFIG.SESSION_RESET_HEADER);
-    if (resetSession === "1" && getCurrentSession()) {
-      clearCurrentSession();
+    const resetRoom = response.headers.get(API_CONFIG.ROOM_RESET_HEADER);
+    if (resetRoom === "1" && getCurrentRoom()) {
+      clearCurrentRoom();
     }
 
     if (response.status === 204) {
@@ -101,12 +101,12 @@ export const apiClient = {
   async requestBinary<T>(
     path: string,
     file: File,
-    options: { headers?: Record<string, string>; skipSessionHeader?: boolean } = {},
+    options: { headers?: Record<string, string>; skipRoomHeader?: boolean } = {},
   ): Promise<T> {
     return this.request<T>(path, {
       method: "POST",
       body: file,
-      skipSessionHeader: options.skipSessionHeader,
+      skipRoomHeader: options.skipRoomHeader,
       headers: {
         "Content-Type": "application/octet-stream",
         ...(options.headers || {}),

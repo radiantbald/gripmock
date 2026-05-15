@@ -32,20 +32,20 @@ func TestBudgerigarListFilterSortPaginate(t *testing.T) {
 	require.Equal(t, "Ping", stubs[0].Method)
 }
 
-func TestBudgerigarListFilterByEmptySession(t *testing.T) {
+func TestBudgerigarListFilterByEmptyRoom(t *testing.T) {
 	t.Parallel()
 
 	b := NewBudgerigar()
 	b.PutMany(
-		&Stub{Service: "svc.A", Method: "Ping", Session: "", Input: InputData{}, Output: Output{}},
-		&Stub{Service: "svc.A", Method: "Ping", Session: "s1", Input: InputData{}, Output: Output{}},
+		&Stub{Service: "svc.A", Method: "Ping", Room: "", Input: InputData{}, Output: Output{}},
+		&Stub{Service: "svc.A", Method: "Ping", Room: "s1", Input: InputData{}, Output: Output{}},
 	)
 
-	stubs, total := b.List(ListOptions{SessionSet: true, Session: ""})
+	stubs, total := b.List(ListOptions{RoomSet: true, Room: ""})
 
 	require.Equal(t, 1, total)
 	require.Len(t, stubs, 1)
-	require.Empty(t, stubs[0].Session)
+	require.Empty(t, stubs[0].Room)
 }
 
 func TestBudgerigarListFilters(t *testing.T) {
@@ -53,10 +53,10 @@ func TestBudgerigarListFilters(t *testing.T) {
 
 	b := NewBudgerigar()
 	b.PutMany(
-		&Stub{Service: "svc.A", Method: "Ping", Source: "proxy", Session: "", Priority: 30, Input: InputData{}, Output: Output{}},
-		&Stub{Service: "svc.A", Method: "Ping", Source: "rest", Session: "s1", Priority: 20, Input: InputData{}, Output: Output{}},
-		&Stub{Service: "svc.A", Method: "Pong", Source: "rest", Session: "", Priority: 10, Input: InputData{}, Output: Output{}},
-		&Stub{Service: "svc.B", Method: "Ping", Source: "file", Session: "s2", Priority: 5, Input: InputData{}, Output: Output{}},
+		&Stub{Service: "svc.A", Method: "Ping", Source: "proxy", Room: "", Priority: 30, Input: InputData{}, Output: Output{}},
+		&Stub{Service: "svc.A", Method: "Ping", Source: "rest", Room: "s1", Priority: 20, Input: InputData{}, Output: Output{}},
+		&Stub{Service: "svc.A", Method: "Pong", Source: "rest", Room: "", Priority: 10, Input: InputData{}, Output: Output{}},
+		&Stub{Service: "svc.B", Method: "Ping", Source: "file", Room: "s2", Priority: 5, Input: InputData{}, Output: Output{}},
 	)
 
 	t.Run("no filters", func(t *testing.T) {
@@ -92,19 +92,19 @@ func TestBudgerigarListFilters(t *testing.T) {
 		}
 	})
 
-	t.Run("session filter enabled", func(t *testing.T) {
+	t.Run("room filter enabled", func(t *testing.T) {
 		t.Parallel()
 
-		stubs, total := b.List(ListOptions{SessionSet: true, Session: "s1"})
+		stubs, total := b.List(ListOptions{RoomSet: true, Room: "s1"})
 		require.Equal(t, 1, total)
 		require.Len(t, stubs, 1)
-		require.Equal(t, "s1", stubs[0].Session)
+		require.Equal(t, "s1", stubs[0].Room)
 	})
 
-	t.Run("session ignored when not set", func(t *testing.T) {
+	t.Run("room ignored when not set", func(t *testing.T) {
 		t.Parallel()
 
-		stubs, total := b.List(ListOptions{Session: "s1", SessionSet: false})
+		stubs, total := b.List(ListOptions{Room: "s1", RoomSet: false})
 		require.Equal(t, 4, total)
 		require.Len(t, stubs, 4)
 	})

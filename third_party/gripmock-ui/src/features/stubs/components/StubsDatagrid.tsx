@@ -22,7 +22,7 @@ import {
 
 import type { StubRecord } from "../../../types/entities";
 import { apiClient } from "../../../dataProvider/apiClient";
-import { getCurrentSession } from "../../../utils/session";
+import { getCurrentRoom } from "../../../utils/room";
 import { RowActionsField } from "./RowActionsField";
 import { OutputKindChip, StubDetails } from "./StubVisuals";
 
@@ -135,12 +135,12 @@ const sameRoute = (left: StubRecord, right: StubRecord): boolean =>
   sameServiceAlias(left.service, right.service) &&
   normalizeValue(left.method) === normalizeValue(right.method) &&
   (() => {
-    const leftSession = normalizeValue((left as StubRecord & { session?: unknown }).session);
-    const rightSession = normalizeValue((right as StubRecord & { session?: unknown }).session);
+    const leftRoom = normalizeValue((left as StubRecord & { room?: unknown }).room);
+    const rightRoom = normalizeValue((right as StubRecord & { room?: unknown }).room);
 
     // Keep parity with backend enabled-route normalization:
-    // a global stub (empty session) conflicts with any route-specific stub.
-    return !(leftSession && rightSession && leftSession !== rightSession);
+    // a global stub (empty room) conflicts with any route-specific stub.
+    return !(leftRoom && rightRoom && leftRoom !== rightRoom);
   })();
 
 const buildGroupedTree = (records: StubRecord[]): ServiceGroup[] => {
@@ -487,13 +487,13 @@ export const StubsDatagrid = ({
     setUpdatingByID((current) => ({ ...current, [stub.id]: true }));
 
     try {
-      const activeSession = getCurrentSession().trim();
-      if (!activeSession) {
-        throw new Error("Session is required to toggle stub status");
+      const activeRoom = getCurrentRoom().trim();
+      if (!activeRoom) {
+        throw new Error("Room is required to toggle stub status");
       }
 
       const result = await apiClient.request<{ enabled?: boolean }>(
-        `/stubs/${encodeURIComponent(String(stub.id))}?session=${encodeURIComponent(activeSession)}`,
+        `/stubs/${encodeURIComponent(String(stub.id))}?room=${encodeURIComponent(activeRoom)}`,
         {
           method: "PATCH",
           body: JSON.stringify({ enabled: nextEnabled }),

@@ -38,7 +38,7 @@ type Stub struct {
 	Name     string      `json:"name,omitempty"`                                   // Optional user-defined stub name.
 	Service  string      `json:"service"           validate:"required"`            // The name of the service.
 	Method   string      `json:"method"            validate:"required"`            // The name of the method.
-	Session  string      `json:"session,omitempty"`                                // Session ID for isolation (empty = global).
+	Room  string      `json:"room,omitempty"`                                // Room ID for isolation (empty = global).
 	Priority int         `json:"priority"`                                         // Deprecated: kept for backward compatibility.
 	Enabled  *bool       `json:"enabled,omitempty"`                                // Enabled state (nil means enabled for compatibility).
 	Options  StubOptions `json:"options,omitempty"`                                //nolint:modernize

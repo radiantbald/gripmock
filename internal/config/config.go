@@ -40,9 +40,9 @@ type Config struct {
 	HistoryMessageMaxBytes int64    `env:"HISTORY_MESSAGE_MAX_BYTES" envDefault:"262144"`
 	HistoryRedactKeys      []string `env:"HISTORY_REDACT_KEYS"`
 
-	// Session GC configuration.
-	SessionGCInterval time.Duration `env:"SESSION_GC_INTERVAL" envDefault:"30s"`
-	SessionGCTTL      time.Duration `env:"SESSION_GC_TTL"      envDefault:"60s"`
+	// Room GC configuration.
+	RoomGCInterval time.Duration `env:"ROOM_GC_INTERVAL" envDefault:"30s"`
+	RoomGCTTL      time.Duration `env:"ROOM_GC_TTL"      envDefault:"60s"`
 
 	// Plugins configuration.
 	TemplatePluginPaths []string `env:"TEMPLATE_PLUGIN_PATHS"`

@@ -61,32 +61,32 @@ func (r *Repository) UpsertMany(ctx context.Context, stubs ...*stuber.Stub) ([]u
 			return nil, errors.Wrap(err, "failed to marshal stub effects")
 		}
 
-		var sessionRef any
-		rawSession := strings.TrimSpace(item.Session)
-		if rawSession != "" {
-			if parsedID, parseErr := strconv.ParseInt(rawSession, 10, 64); parseErr == nil {
-				sessionRef = parsedID
+		var roomRef any
+		rawRoom := strings.TrimSpace(item.Room)
+		if rawRoom != "" {
+			if parsedID, parseErr := strconv.ParseInt(rawRoom, 10, 64); parseErr == nil {
+				roomRef = parsedID
 			} else {
-				creator := fmt.Sprintf("stub-bind:%x", md5.Sum([]byte(rawSession)))
+				creator := fmt.Sprintf("stub-bind:%x", md5.Sum([]byte(rawRoom)))
 				var createdID int64
 				if scanErr := r.pool.QueryRow(ctx, `
-					INSERT INTO sessions (name, creator, created_at, updated_at)
+					INSERT INTO rooms (name, creator, created_at, updated_at)
 					VALUES ($1, $2, NOW(), NOW())
 					ON CONFLICT (creator) DO UPDATE SET
 						name = EXCLUDED.name,
 						updated_at = NOW()
 					RETURNING id
-				`, rawSession, creator).Scan(&createdID); scanErr != nil {
-					return nil, errors.Wrap(scanErr, "failed to resolve session by name")
+				`, rawRoom, creator).Scan(&createdID); scanErr != nil {
+					return nil, errors.Wrap(scanErr, "failed to resolve room by name")
 				}
-				sessionRef = createdID
-				item.Session = strconv.FormatInt(createdID, 10)
+				roomRef = createdID
+				item.Room = strconv.FormatInt(createdID, 10)
 			}
 		}
 
 		batch.Queue(`
 			INSERT INTO stubs (
-				id, name, service, method, session, priority, enabled, options, headers, input, inputs, output, effects, source
+				id, name, service, method, room, priority, enabled, options, headers, input, inputs, output, effects, source
 			) VALUES (
 				$1, $2, $3, $4, $5,
 				$6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14
@@ -95,7 +95,7 @@ func (r *Repository) UpsertMany(ctx context.Context, stubs ...*stuber.Stub) ([]u
 				name = EXCLUDED.name,
 				service = EXCLUDED.service,
 				method = EXCLUDED.method,
-				session = EXCLUDED.session,
+				room = EXCLUDED.room,
 				priority = EXCLUDED.priority,
 				enabled = EXCLUDED.enabled,
 				options = EXCLUDED.options,
@@ -111,7 +111,7 @@ func (r *Repository) UpsertMany(ctx context.Context, stubs ...*stuber.Stub) ([]u
 			item.Name,
 			item.Service,
 			item.Method,
-			sessionRef,
+			roomRef,
 			item.Priority,
 			item.IsEnabled(),
 			optionsJSON,
@@ -154,11 +154,11 @@ func (r *Repository) DeleteByID(ctx context.Context, ids ...uuid.UUID) (int, err
 	return int(commandTag.RowsAffected()), nil
 }
 
-func (r *Repository) DeleteSession(ctx context.Context, session string) (int, error) {
-	if parsedID, err := strconv.ParseInt(strings.TrimSpace(session), 10, 64); err == nil {
-		commandTag, execErr := r.pool.Exec(ctx, `DELETE FROM stubs WHERE session = $1`, parsedID)
+func (r *Repository) DeleteRoom(ctx context.Context, room string) (int, error) {
+	if parsedID, err := strconv.ParseInt(strings.TrimSpace(room), 10, 64); err == nil {
+		commandTag, execErr := r.pool.Exec(ctx, `DELETE FROM stubs WHERE room = $1`, parsedID)
 		if execErr != nil {
-			return 0, errors.Wrap(execErr, "failed to delete stubs by session id")
+			return 0, errors.Wrap(execErr, "failed to delete stubs by room id")
 		}
 
 		return int(commandTag.RowsAffected()), nil
@@ -166,14 +166,14 @@ func (r *Repository) DeleteSession(ctx context.Context, session string) (int, er
 
 	commandTag, err := r.pool.Exec(ctx, `
 		DELETE FROM stubs
-		WHERE session IN (
+		WHERE room IN (
 			SELECT id
-			FROM sessions
+			FROM rooms
 			WHERE name = $1
 		)
-	`, session)
+	`, room)
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to delete stubs by session")
+		return 0, errors.Wrap(err, "failed to delete stubs by room")
 	}
 
 	return int(commandTag.RowsAffected()), nil
@@ -187,9 +187,9 @@ func (r *Repository) Clear(ctx context.Context) error {
 
 func (r *Repository) LoadAll(ctx context.Context) ([]*stuber.Stub, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT stubs.id, stubs.name, stubs.service, stubs.method, COALESCE(stubs.session::text, ''), stubs.priority, stubs.enabled, stubs.options, stubs.headers, stubs.input, stubs.inputs, stubs.output, stubs.effects, stubs.source
+		SELECT stubs.id, stubs.name, stubs.service, stubs.method, COALESCE(stubs.room::text, ''), stubs.priority, stubs.enabled, stubs.options, stubs.headers, stubs.input, stubs.inputs, stubs.output, stubs.effects, stubs.source
 		FROM stubs
-		LEFT JOIN sessions ON sessions.id = stubs.session
+		LEFT JOIN rooms ON rooms.id = stubs.room
 	`)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query stubs")
@@ -242,30 +242,30 @@ func (r *Repository) List(ctx context.Context, options stuber.ListOptions) ([]*s
 		nextArg++
 	}
 
-	if options.SessionSet {
-		session := strings.TrimSpace(options.Session)
-		if session == "" {
-			clauses = append(clauses, "stubs.session IS NULL")
+	if options.RoomSet {
+		room := strings.TrimSpace(options.Room)
+		if room == "" {
+			clauses = append(clauses, "stubs.room IS NULL")
 		} else {
-			if parsedID, parseErr := strconv.ParseInt(session, 10, 64); parseErr == nil {
-				clauses = append(clauses, fmt.Sprintf("stubs.session = $%d", nextArg))
+			if parsedID, parseErr := strconv.ParseInt(room, 10, 64); parseErr == nil {
+				clauses = append(clauses, fmt.Sprintf("stubs.room = $%d", nextArg))
 				args = append(args, parsedID)
 				nextArg++
 			} else {
 				clauses = append(clauses, fmt.Sprintf(
-					`stubs.session IN (SELECT id FROM sessions WHERE name = $%d)`,
+					`stubs.room IN (SELECT id FROM rooms WHERE name = $%d)`,
 					nextArg,
 				))
-				args = append(args, session)
+				args = append(args, room)
 				nextArg++
 			}
 		}
 	}
 
 	query := `
-		SELECT stubs.id, stubs.name, stubs.service, stubs.method, COALESCE(stubs.session::text, ''), stubs.priority, stubs.enabled, stubs.options, stubs.headers, stubs.input, stubs.inputs, stubs.output, stubs.effects, stubs.source
+		SELECT stubs.id, stubs.name, stubs.service, stubs.method, COALESCE(stubs.room::text, ''), stubs.priority, stubs.enabled, stubs.options, stubs.headers, stubs.input, stubs.inputs, stubs.output, stubs.effects, stubs.source
 		FROM stubs
-		LEFT JOIN sessions ON sessions.id = stubs.session
+		LEFT JOIN rooms ON rooms.id = stubs.room
 	`
 	if len(clauses) > 0 {
 		query += " WHERE " + strings.Join(clauses, " AND ")
@@ -311,7 +311,7 @@ func scanStub(rows pgx.Rows) (*stuber.Stub, error) {
 		&item.Name,
 		&item.Service,
 		&item.Method,
-		&item.Session,
+		&item.Room,
 		&item.Priority,
 		&enabled,
 		&options,

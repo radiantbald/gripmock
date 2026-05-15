@@ -16,12 +16,12 @@ type stubStorage interface {
 	findByID(id uuid.UUID) *Stub
 	findByIDs(ids iter.Seq[uuid.UUID]) iter.Seq[*Stub]
 	findAll(service, method string) (iter.Seq[*Stub], error)
-	findByMethodAvailable(method, session string) iter.Seq[*Stub]
-	hasMethodAvailable(method, session string) bool
-	findAllAvailable(service, method, session string) (iter.Seq[*Stub], error)
+	findByMethodAvailable(method, room string) iter.Seq[*Stub]
+	hasMethodAvailable(method, room string) bool
+	findAllAvailable(service, method, room string) (iter.Seq[*Stub], error)
 	posByPN(left, right string) ([]uint64, error)
 	values() iter.Seq[*Stub]
-	sessionsList() []string
+	roomsList() []string
 	clear()
 }
 
@@ -37,13 +37,13 @@ type InternalStubStorage interface {
 	FindByIDInternal(id uuid.UUID) *Stub
 
 	// FindAllAvailable finds stubs by service/method in internal storage.
-	FindAllAvailable(service, method, session string) (iter.Seq[*Stub], error)
+	FindAllAvailable(service, method, room string) (iter.Seq[*Stub], error)
 
 	// FindByMethodAvailable finds stubs by method in internal storage.
-	FindByMethodAvailable(method, session string) iter.Seq[*Stub]
+	FindByMethodAvailable(method, room string) iter.Seq[*Stub]
 
 	// HasMethodAvailable checks if method exists in internal storage.
-	HasMethodAvailable(method, session string) bool
+	HasMethodAvailable(method, room string) bool
 }
 
 // internalStorageAdapter wraps *storage to implement InternalStubStorage.
@@ -64,14 +64,14 @@ func (a *internalStorageAdapter) FindByIDInternal(id uuid.UUID) *Stub {
 	return a.storage.findByID(id)
 }
 
-func (a *internalStorageAdapter) FindAllAvailable(service, method, session string) (iter.Seq[*Stub], error) {
-	return a.storage.findAllAvailable(service, method, session)
+func (a *internalStorageAdapter) FindAllAvailable(service, method, room string) (iter.Seq[*Stub], error) {
+	return a.storage.findAllAvailable(service, method, room)
 }
 
-func (a *internalStorageAdapter) FindByMethodAvailable(method, session string) iter.Seq[*Stub] {
-	return a.storage.findByMethodAvailable(method, session)
+func (a *internalStorageAdapter) FindByMethodAvailable(method, room string) iter.Seq[*Stub] {
+	return a.storage.findByMethodAvailable(method, room)
 }
 
-func (a *internalStorageAdapter) HasMethodAvailable(method, session string) bool {
-	return a.storage.hasMethodAvailable(method, session)
+func (a *internalStorageAdapter) HasMethodAvailable(method, room string) bool {
+	return a.storage.hasMethodAvailable(method, room)
 }

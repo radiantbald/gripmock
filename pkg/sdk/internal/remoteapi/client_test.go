@@ -33,8 +33,8 @@ func newTestServer(t *testing.T, handler func(http.ResponseWriter, *http.Request
 	return ts
 }
 
-func newTestClient(ts *httptest.Server, session string) Client {
-	return Client{BaseURL: ts.URL, HTTPClient: ts.Client(), Session: session}
+func newTestClient(ts *httptest.Server, room string) Client {
+	return Client{BaseURL: ts.URL, HTTPClient: ts.Client(), Room: room}
 }
 
 func TestClientAddStub(t *testing.T) {
@@ -45,7 +45,7 @@ func TestClientAddStub(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/api/stubs", r.URL.Path)
 		require.Equal(t, http.MethodPost, r.Method)
-		require.Equal(t, "A", r.Header.Get("X-Gripmock-Session"))
+		require.Equal(t, "A", r.Header.Get("X-Gripmock-Room"))
 
 		var payload []map[string]any
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
@@ -136,7 +136,7 @@ func TestClientFetchHistory(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/api/history", r.URL.Path)
 		require.Equal(t, http.MethodGet, r.Method)
-		require.Equal(t, "A", r.Header.Get("X-Gripmock-Session"))
+		require.Equal(t, "A", r.Header.Get("X-Gripmock-Room"))
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte("[{\"service\":\"svc\",\"method\":\"M\",\"request\":{\"x\":1},\"response\":{\"ok\":true},\"stubId\":\"550e8400-e29b-41d4-a716-446655440000\",\"timestamp\":\"" + now + "\"}]"))
 	})

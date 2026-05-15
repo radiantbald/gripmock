@@ -99,15 +99,15 @@ func (s *RestServerTestSuite) TestMCPStubsBatchDeleteAndPurge() {
 	s.Require().Empty(stubsAfter)
 }
 
-func (s *RestServerTestSuite) TestMCPStubsPurgeSessionOnlyByOwner() {
+func (s *RestServerTestSuite) TestMCPStubsPurgeRoomOnlyByOwner() {
 	// Arrange
 	const (
-		sessionID = "owned-session"
+		roomID = "owned-room"
 		ownerID   = "owner-1"
 	)
 
 	prepareOwner := func(r *http.Request) {
-		r.Header.Set("X-Gripmock-Session", sessionID)
+		r.Header.Set("X-Gripmock-Room", roomID)
 		r.Header.Set("X-Gripmock-Client", ownerID)
 	}
 
@@ -122,15 +122,15 @@ func (s *RestServerTestSuite) TestMCPStubsPurgeSessionOnlyByOwner() {
 
 	// Act
 	forbidden := s.mcpToolCallWithRequest(s.server, 2, "stubs.purge", map[string]any{
-		"session": sessionID,
+		"room": roomID,
 	}, func(r *http.Request) {
-		r.Header.Set("X-Gripmock-Session", sessionID)
+		r.Header.Set("X-Gripmock-Room", roomID)
 		r.Header.Set("X-Gripmock-Client", "owner-2")
 	})
 	forbiddenCode := s.mcpErrorCode(forbidden)
 
 	allowed := s.mcpToolCallWithRequest(s.server, 3, "stubs.purge", map[string]any{
-		"session": sessionID,
+		"room": roomID,
 	}, prepareOwner)
 	allowedJSON := s.mcpStructuredContent(allowed)
 

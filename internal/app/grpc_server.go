@@ -53,7 +53,7 @@ import (
 	"github.com/bavix/gripmock/v3/internal/infra/grpccontext"
 	protosetinfra "github.com/bavix/gripmock/v3/internal/infra/protoset"
 	"github.com/bavix/gripmock/v3/internal/infra/proxyroutes"
-	"github.com/bavix/gripmock/v3/internal/infra/session"
+	"github.com/bavix/gripmock/v3/internal/infra/room"
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
 	"github.com/bavix/gripmock/v3/internal/infra/template"
 	"github.com/bavix/gripmock/v3/internal/infra/types"
@@ -72,7 +72,7 @@ var excludedHeaders = map[string]struct{}{
 }
 
 const (
-	sessionHeaderKey        = "x-gripmock-session" // gRPC metadata keys are lowercase
+	roomHeaderKey        = "x-gripmock-room" // gRPC metadata keys are lowercase
 	unknownValue            = "unknown"
 	descriptorSourceStartup = "startup"
 
@@ -106,22 +106,22 @@ var (
 	}
 )
 
-func sessionFromMetadata(md metadata.MD) string {
-	for _, v := range md.Get(sessionHeaderKey) {
-		if sessionID := strings.TrimSpace(v); sessionID != "" {
-			session.Touch(sessionID)
+func roomFromMetadata(md metadata.MD) string {
+	for _, v := range md.Get(roomHeaderKey) {
+		if roomID := strings.TrimSpace(v); roomID != "" {
+			room.Touch(roomID)
 
-			return sessionID
+			return roomID
 		}
 	}
 
 	return ""
 }
 
-func sessionFromContext(ctx context.Context) string {
+func roomFromContext(ctx context.Context) string {
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
-		if sessionID := sessionFromMetadata(md); sessionID != "" {
-			return sessionID
+		if roomID := roomFromMetadata(md); roomID != "" {
+			return roomID
 		}
 	}
 
@@ -130,17 +130,17 @@ func sessionFromContext(ctx context.Context) string {
 		return ""
 	}
 
-	if sessionID := session.SessionByClient(clientID); sessionID != "" {
-		session.Touch(sessionID)
-		return sessionID
+	if roomID := room.RoomByClient(clientID); roomID != "" {
+		room.Touch(roomID)
+		return roomID
 	}
 
 	// Backward compatibility: legacy peer-only client IDs can still be resolved
 	// even when the new fingerprinted client ID includes user-agent.
 	if peerID := peerAddressFromContext(ctx); peerID != "" && peerID != clientID {
-		if sessionID := session.SessionByClient(peerID); sessionID != "" {
-			session.Touch(sessionID)
-			return sessionID
+		if roomID := room.RoomByClient(peerID); roomID != "" {
+			room.Touch(roomID)
+			return roomID
 		}
 	}
 
@@ -272,7 +272,7 @@ func (m *grpcMocker) recordCall(
 	rec := history.CallRecord{
 		Service:            m.fullServiceName,
 		Method:             m.methodName,
-		Session:            sessionFromContext(ctx),
+		Room:            roomFromContext(ctx),
 		Client:             clientFromContext(ctx),
 		Requests:           requests,
 		Responses:          responses,
@@ -445,7 +445,7 @@ func (m *grpcMocker) newQuery(ctx context.Context, msg *dynamicpb.Message) stube
 	if ok {
 		query.Headers = processHeaders(md)
 	}
-	query.Session = sessionFromContext(ctx)
+	query.Room = roomFromContext(ctx)
 
 	return query
 }
@@ -484,7 +484,7 @@ func (m *grpcMocker) newQueryBidi(ctx context.Context) stuber.QueryBidi {
 	if ok {
 		query.Headers = processHeaders(md)
 	}
-	query.Session = sessionFromContext(ctx)
+	query.Room = roomFromContext(ctx)
 
 	return query
 }
@@ -1305,7 +1305,7 @@ func (m *grpcMocker) applyEffects(
 	prepared := make([]effectOperation, 0, len(matched.Effects))
 
 	for i, effect := range matched.Effects {
-		op, err := m.prepareEffect(effect, templateData, matched.Session)
+		op, err := m.prepareEffect(effect, templateData, matched.Room)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).
 				Str("stub_id", matched.ID.String()).
@@ -1334,29 +1334,29 @@ type effectOperation struct {
 	action        string
 	upsertStub    *stuber.Stub
 	deleteID      uuid.UUID
-	parentSession string
+	parentRoom string
 }
 
 func (m *grpcMocker) prepareEffect(
 	effect stuber.Effect,
 	templateData template.Data,
-	parentSession string,
+	parentRoom string,
 ) (effectOperation, error) {
 	switch effect.Action {
 	case stuber.EffectActionUpsert:
-		upsert, err := m.prepareUpsertEffect(effect, templateData, parentSession)
+		upsert, err := m.prepareUpsertEffect(effect, templateData, parentRoom)
 		if err != nil {
 			return effectOperation{}, err
 		}
 
-		return effectOperation{action: effect.Action, upsertStub: upsert, parentSession: parentSession}, nil
+		return effectOperation{action: effect.Action, upsertStub: upsert, parentRoom: parentRoom}, nil
 	case stuber.EffectActionDelete:
 		deleteID, err := m.prepareDeleteEffect(effect, templateData)
 		if err != nil {
 			return effectOperation{}, err
 		}
 
-		return effectOperation{action: effect.Action, deleteID: deleteID, parentSession: parentSession}, nil
+		return effectOperation{action: effect.Action, deleteID: deleteID, parentRoom: parentRoom}, nil
 	default:
 		return effectOperation{}, errors.New("unknown effect action")
 	}
@@ -1365,7 +1365,7 @@ func (m *grpcMocker) prepareEffect(
 func (m *grpcMocker) prepareUpsertEffect(
 	effect stuber.Effect,
 	templateData template.Data,
-	parentSession string,
+	parentRoom string,
 ) (*stuber.Stub, error) {
 	if len(effect.Stub) == 0 {
 		return nil, errors.New("upsert effect requires stub payload")
@@ -1385,7 +1385,7 @@ func (m *grpcMocker) prepareUpsertEffect(
 		stub.ID = uuid.New()
 	}
 
-	stub.Session = parentSession
+	stub.Room = parentRoom
 	stub.Source = stuber.SourceRest
 
 	if err := m.validator.Struct(stub); err != nil {
@@ -1433,7 +1433,7 @@ func (m *grpcMocker) applyEffectOperation(op effectOperation) error {
 		return nil
 	case stuber.EffectActionDelete:
 		existing := m.budgerigar.FindByID(op.deleteID)
-		if existing == nil || !effectCanDeleteStub(existing, op.parentSession) {
+		if existing == nil || !effectCanDeleteStub(existing, op.parentRoom) {
 			return nil
 		}
 
@@ -1445,12 +1445,12 @@ func (m *grpcMocker) applyEffectOperation(op effectOperation) error {
 	}
 }
 
-func effectCanDeleteStub(stub *stuber.Stub, targetSession string) bool {
-	if targetSession == "" {
-		return stub.Session == ""
+func effectCanDeleteStub(stub *stuber.Stub, targetRoom string) bool {
+	if targetRoom == "" {
+		return stub.Room == ""
 	}
 
-	return stub.Session == targetSession
+	return stub.Room == targetRoom
 }
 
 func decodeEffectStub(payload map[string]any) (*stuber.Stub, error) {
@@ -1477,7 +1477,7 @@ func (m *grpcMocker) tryV2API(messages []map[string]any, md metadata.MD) (*stube
 
 	if len(md) > 0 {
 		query.Headers = processHeaders(md)
-		query.Session = sessionFromMetadata(md)
+		query.Room = roomFromMetadata(md)
 	}
 
 	return m.budgerigar.FindByQuery(query)
@@ -1572,7 +1572,7 @@ func (m *grpcMocker) tryFindStub(stream grpc.ServerStream, messages []map[string
 		}
 		if len(md) > 0 {
 			query.Headers = processHeaders(md)
-			query.Session = sessionFromMetadata(md)
+			query.Room = roomFromMetadata(md)
 		}
 
 		// Create empty result if we don't have one
@@ -1683,7 +1683,7 @@ func (m *grpcMocker) handleBidiStream(stream grpc.ServerStream) error {
 		}
 		if md, ok := metadata.FromIncomingContext(stream.Context()); ok {
 			query.Headers = processHeaders(md)
-			query.Session = sessionFromMetadata(md)
+			query.Room = roomFromMetadata(md)
 		}
 
 		result := &stuber.Result{}
@@ -1823,7 +1823,7 @@ func (m *grpcMocker) recordBidiStream(
 	rec := history.CallRecord{
 		Service:            m.fullServiceName,
 		Method:             m.methodName,
-		Session:            sessionFromContext(stream.Context()),
+		Room:            roomFromContext(stream.Context()),
 		Client:             clientFromContext(stream.Context()),
 		Requests:           requests,
 		Responses:          responses,
@@ -2330,7 +2330,7 @@ func (s *GRPCServer) recordUnknownCall(ctx context.Context, serviceName string, 
 		Transport: "mock",
 		Service:   serviceName,
 		Method:    methodName,
-		Session:   sessionFromContext(ctx),
+		Room:   roomFromContext(ctx),
 		Client:    clientFromContext(ctx),
 		Code:      code,
 		Error:     errorMessage,

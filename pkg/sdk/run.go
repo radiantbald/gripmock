@@ -13,7 +13,7 @@ func Run(t TestingT, opts ...Option) (Mock, error) {
 		panic("gripmock: t must not be nil")
 	}
 
-	o := &options{healthyTimeout: defaultHealthyTimeout, sessionTTL: defaultSessionTTL}
+	o := &options{healthyTimeout: defaultHealthyTimeout, roomTTL: defaultRoomTTL}
 	for _, opt := range opts {
 		if opt == nil {
 			continue

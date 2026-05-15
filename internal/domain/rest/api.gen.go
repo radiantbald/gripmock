@@ -120,8 +120,8 @@ type CallRecord struct {
 	ResponseTimestamps *[]time.Time `json:"responseTimestamps,omitempty"`
 	Service            *string      `json:"service,omitempty"`
 
-	// Session Session ID (empty = global)
-	Session   *string    `json:"session,omitempty"`
+	// Room Room ID (empty = global)
+	Room   *string    `json:"room,omitempty"`
 	StubId    *ID        `json:"stubId,omitempty"`
 	Timestamp *time.Time `json:"timestamp,omitempty"`
 
@@ -144,7 +144,7 @@ type Dashboard struct {
 	StartedAt          time.Time `json:"startedAt"`
 	TotalHistory       int       `json:"totalHistory"`
 	TotalServices      int       `json:"totalServices"`
-	TotalSessions      int       `json:"totalSessions"`
+	TotalRooms      int       `json:"totalRooms"`
 	TotalStubs         int       `json:"totalStubs"`
 	UnusedStubs        int       `json:"unusedStubs"`
 	UptimeSeconds      int       `json:"uptimeSeconds"`
@@ -165,7 +165,7 @@ type DashboardInfo struct {
 	RuntimeDescriptors int       `json:"runtimeDescriptors"`
 	StartedAt          time.Time `json:"startedAt"`
 	TotalServices      int       `json:"totalServices"`
-	TotalSessions      int       `json:"totalSessions"`
+	TotalRooms      int       `json:"totalRooms"`
 	TotalStubs         int       `json:"totalStubs"`
 	UptimeSeconds      int       `json:"uptimeSeconds"`
 	Version            string    `json:"version"`
@@ -177,7 +177,7 @@ type DashboardOverview struct {
 	RuntimeDescriptors int `json:"runtimeDescriptors"`
 	TotalHistory       int `json:"totalHistory"`
 	TotalServices      int `json:"totalServices"`
-	TotalSessions      int `json:"totalSessions"`
+	TotalRooms      int `json:"totalRooms"`
 	TotalStubs         int `json:"totalStubs"`
 	UnusedStubs        int `json:"unusedStubs"`
 	UsedStubs          int `json:"usedStubs"`
@@ -209,11 +209,11 @@ type InspectCandidate struct {
 	Priority         int                     `json:"priority"`
 	Score            float64                 `json:"score"`
 	Service          string                  `json:"service"`
-	Session          string                  `json:"session"`
+	Room          string                  `json:"room"`
 	Specificity      int                     `json:"specificity"`
 	Times            int                     `json:"times"`
 	Used             int                     `json:"used"`
-	VisibleBySession bool                    `json:"visibleBySession"`
+	VisibleByRoom bool                    `json:"visibleByRoom"`
 	WithinTimes      bool                    `json:"withinTimes"`
 }
 
@@ -232,7 +232,7 @@ type InspectReport struct {
 	MatchedStubId    string             `json:"matchedStubId"`
 	Method           string             `json:"method"`
 	Service          string             `json:"service"`
-	Session          string             `json:"session"`
+	Room          string             `json:"room"`
 	SimilarStubId    string             `json:"similarStubId"`
 	Stages           []InspectStage     `json:"stages"`
 }
@@ -245,7 +245,7 @@ type InspectRequest struct {
 	Method  string           `json:"method"`
 	Name    *string          `json:"name,omitempty"`
 	Service string           `json:"service"`
-	Session *string          `json:"session,omitempty"`
+	Room *string          `json:"room,omitempty"`
 }
 
 // InspectStage defines model for InspectStage.
@@ -351,15 +351,15 @@ type Service struct {
 	Package string   `json:"package"`
 }
 
-// Session defines model for Session.
-type Session struct {
+// Room defines model for Room.
+type Room struct {
 	Id   string  `json:"id"`
 	Name *string `json:"name,omitempty"`
 }
 
-// Sessions defines model for Sessions.
-type Sessions struct {
-	Sessions []Session `json:"sessions"`
+// Rooms defines model for Rooms.
+type Rooms struct {
+	Rooms []Room `json:"rooms"`
 }
 
 // Stub defines model for Stub.
@@ -489,7 +489,7 @@ type VerifyRequest struct {
 type StreamHistoryParams struct {
 	Service *string `form:"service,omitempty" json:"service,omitempty"`
 	Method  *string `form:"method,omitempty" json:"method,omitempty"`
-	Session *string `form:"session,omitempty" json:"session,omitempty"`
+	Room *string `form:"room,omitempty" json:"room,omitempty"`
 }
 
 // ListStubsParams defines parameters for ListStubs.
@@ -506,8 +506,8 @@ type ListStubsParams struct {
 	// Method Filter by method name (exact match)
 	Method *string `form:"method,omitempty" json:"method,omitempty"`
 
-	// Session Filter by session ID (empty means global stubs)
-	Session *string `form:"session,omitempty" json:"session,omitempty"`
+	// Room Filter by room ID (empty means global stubs)
+	Room *string `form:"room,omitempty" json:"room,omitempty"`
 
 	// Limit Maximum number of returned stubs
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
@@ -752,9 +752,9 @@ type ServerInterface interface {
 	// Service method details
 	// (GET /services/{serviceID}/methods/{methodID})
 	ServiceMethodGet(w http.ResponseWriter, r *http.Request, serviceID string, methodID string)
-	// Session options
-	// (GET /sessions)
-	SessionsList(w http.ResponseWriter, r *http.Request)
+	// Room options
+	// (GET /rooms)
+	RoomsList(w http.ResponseWriter, r *http.Request)
 	// Remove all stubs
 	// (DELETE /stubs)
 	PurgeStubs(w http.ResponseWriter, r *http.Request)
@@ -946,15 +946,15 @@ func (siw *ServerInterfaceWrapper) StreamHistory(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// ------------- Optional query parameter "session" -------------
+	// ------------- Optional query parameter "room" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "session", r.URL.Query(), &params.Session, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "room", r.URL.Query(), &params.Room, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "session"})
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "room"})
 		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "session", Err: err})
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "room", Err: err})
 		}
 		return
 	}
@@ -1097,11 +1097,11 @@ func (siw *ServerInterfaceWrapper) ServiceMethodGet(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
-// SessionsList operation middleware
-func (siw *ServerInterfaceWrapper) SessionsList(w http.ResponseWriter, r *http.Request) {
+// RoomsList operation middleware
+func (siw *ServerInterfaceWrapper) RoomsList(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SessionsList(w, r)
+		siw.Handler.RoomsList(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1186,15 +1186,15 @@ func (siw *ServerInterfaceWrapper) ListStubs(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// ------------- Optional query parameter "session" -------------
+	// ------------- Optional query parameter "room" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "session", r.URL.Query(), &params.Session, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "room", r.URL.Query(), &params.Room, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "session"})
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "room"})
 		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "session", Err: err})
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "room", Err: err})
 		}
 		return
 	}
@@ -1540,7 +1540,7 @@ func HandlerWithOptions(si ServerInterface, options GorillaServerOptions) http.H
 
 	r.HandleFunc(options.BaseURL+"/services/{serviceID}/methods/{methodID}", wrapper.ServiceMethodGet).Methods(http.MethodGet)
 
-	r.HandleFunc(options.BaseURL+"/sessions", wrapper.SessionsList).Methods(http.MethodGet)
+	r.HandleFunc(options.BaseURL+"/rooms", wrapper.RoomsList).Methods(http.MethodGet)
 
 	r.HandleFunc(options.BaseURL+"/stubs", wrapper.PurgeStubs).Methods(http.MethodDelete)
 

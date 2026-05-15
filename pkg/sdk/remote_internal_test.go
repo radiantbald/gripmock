@@ -110,8 +110,8 @@ func newRemoteServer(t *testing.T, handler func(http.ResponseWriter, *http.Reque
 	return server
 }
 
-func newRemoteMockForServer(server *httptest.Server, session string) *remoteMock {
-	return &remoteMock{restBaseURL: server.URL, httpClient: server.Client(), session: session}
+func newRemoteMockForServer(server *httptest.Server, room string) *remoteMock {
+	return &remoteMock{restBaseURL: server.URL, httpClient: server.Client(), room: room}
 }
 
 func newManualCleanupT(ctx context.Context) *manualCleanupT {
@@ -131,7 +131,7 @@ func TestRemoteHistoryAndVerifier(t *testing.T) {
 	rest := newRemoteServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/history":
-			require.Equal(t, "A", r.Header.Get("X-Gripmock-Session"))
+			require.Equal(t, "A", r.Header.Get("X-Gripmock-Room"))
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte("[{\"service\":\"svc\",\"method\":\"M\",\"request\":{\"x\":1},\"response\":{\"y\":2},\"error\":\"\",\"stubId\":\"550e8400-e29b-41d4-a716-446655440000\",\"timestamp\":\"" + now + "\"}]"))
 		case "/api/verify":
@@ -198,7 +198,7 @@ func TestRemoteAddStubAndCleanupOwnedIDs(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/stubs":
 			if r.Method == http.MethodPost {
-				require.Equal(t, "A", r.Header.Get("X-Gripmock-Session"))
+				require.Equal(t, "A", r.Header.Get("X-Gripmock-Room"))
 				added.Add(1)
 				w.WriteHeader(http.StatusOK)
 				return
@@ -207,7 +207,7 @@ func TestRemoteAddStubAndCleanupOwnedIDs(t *testing.T) {
 			require.Equal(t, http.MethodGet, r.Method)
 			listed.Add(1)
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`[{"id":"11111111-1111-1111-1111-111111111111","session":"A"}]`))
+			_, _ = w.Write([]byte(`[{"id":"11111111-1111-1111-1111-111111111111","room":"A"}]`))
 		case "/api/stubs/batchDelete":
 			require.Equal(t, http.MethodPost, r.Method)
 			deleted.Add(1)
@@ -236,7 +236,7 @@ func TestRemoteMockBatchDeleteErrors(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
-	m := &remoteMock{restBaseURL: "://bad-url", httpClient: http.DefaultClient, session: "A"}
+	m := &remoteMock{restBaseURL: "://bad-url", httpClient: http.DefaultClient, room: "A"}
 
 	// Act
 	errBatch := m.batchDelete([]uuid.UUID{uuid.New()})
@@ -359,7 +359,7 @@ func TestRemoteMockCloseCleanupError(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
-	m := &remoteMock{restBaseURL: "://bad-url", session: "A", httpClient: http.DefaultClient, stubIDs: []uuid.UUID{uuid.New()}}
+	m := &remoteMock{restBaseURL: "://bad-url", room: "A", httpClient: http.DefaultClient, stubIDs: []uuid.UUID{uuid.New()}}
 
 	// Act
 	err := m.Close()
@@ -378,7 +378,7 @@ func TestRemoteMockCloseAlwaysClosesConnOnCleanupError(t *testing.T) {
 	m := &remoteMock{
 		conn:        conn,
 		restBaseURL: "://bad-url",
-		session:     "A",
+		room:     "A",
 		httpClient:  http.DefaultClient,
 		stubIDs:     []uuid.UUID{uuid.New()},
 	}
@@ -561,7 +561,7 @@ func TestRunRemoteViaSDKCleanupScenarios(t *testing.T) {
 
 	testCases := []struct {
 		name               string
-		session            string
+		room            string
 		times              int
 		historyCalls       int
 		verifyStatus       int
@@ -573,7 +573,7 @@ func TestRunRemoteViaSDKCleanupScenarios(t *testing.T) {
 		expectErrContains  string
 	}{
 		{
-			name:               "success-no-session",
+			name:               "success-no-room",
 			times:              2,
 			historyCalls:       2,
 			verifyStatus:       http.StatusOK,
@@ -582,8 +582,8 @@ func TestRunRemoteViaSDKCleanupScenarios(t *testing.T) {
 			callVerifyBefore:   true,
 		},
 		{
-			name:             "success-with-session",
-			session:          "A",
+			name:             "success-with-room",
+			room:          "A",
 			times:            1,
 			historyCalls:     1,
 			verifyStatus:     http.StatusOK,
@@ -630,8 +630,8 @@ func TestRunRemoteViaSDKCleanupScenarios(t *testing.T) {
 			)
 
 			rest := newRemoteServer(t, func(w http.ResponseWriter, r *http.Request) {
-				if tc.session != "" {
-					require.Equal(t, tc.session, r.Header.Get("X-Gripmock-Session"))
+				if tc.room != "" {
+					require.Equal(t, tc.room, r.Header.Get("X-Gripmock-Room"))
 				}
 
 				switch r.URL.Path {
@@ -683,8 +683,8 @@ func TestRunRemoteViaSDKCleanupScenarios(t *testing.T) {
 			})
 
 			opts := []Option{WithRemote(grpcAddr, rest.URL), WithHealthCheckTimeout(time.Second)}
-			if tc.session != "" {
-				opts = append(opts, WithSession(tc.session))
+			if tc.room != "" {
+				opts = append(opts, WithRoom(tc.room))
 			}
 
 			mock, err := Run(ts, opts...)
@@ -749,7 +749,7 @@ func TestRunRemoteFullyMockedViaSDK(t *testing.T) {
 	rest := newRemoteServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/stubs":
-			require.Equal(t, "A", r.Header.Get("X-Gripmock-Session"))
+			require.Equal(t, "A", r.Header.Get("X-Gripmock-Room"))
 
 			if r.Method == http.MethodPost {
 				stubsPostCalls.Add(1)
@@ -778,11 +778,11 @@ func TestRunRemoteFullyMockedViaSDK(t *testing.T) {
 			mu.Unlock()
 
 			w.Header().Set("Content-Type", "application/json")
-			require.NoError(t, json.NewEncoder(w).Encode([]map[string]any{{"id": id, "session": "A"}}))
+			require.NoError(t, json.NewEncoder(w).Encode([]map[string]any{{"id": id, "room": "A"}}))
 
 		case "/api/history":
 			require.Equal(t, http.MethodGet, r.Method)
-			require.Equal(t, "A", r.Header.Get("X-Gripmock-Session"))
+			require.Equal(t, "A", r.Header.Get("X-Gripmock-Room"))
 			historyCalls.Add(1)
 
 			mu.Lock()
@@ -797,7 +797,7 @@ func TestRunRemoteFullyMockedViaSDK(t *testing.T) {
 
 		case "/api/verify":
 			require.Equal(t, http.MethodPost, r.Method)
-			require.Equal(t, "A", r.Header.Get("X-Gripmock-Session"))
+			require.Equal(t, "A", r.Header.Get("X-Gripmock-Room"))
 			verifyCalls.Add(1)
 
 			var req struct {
@@ -817,7 +817,7 @@ func TestRunRemoteFullyMockedViaSDK(t *testing.T) {
 
 		case "/api/stubs/batchDelete":
 			require.Equal(t, http.MethodPost, r.Method)
-			require.Equal(t, "A", r.Header.Get("X-Gripmock-Session"))
+			require.Equal(t, "A", r.Header.Get("X-Gripmock-Room"))
 			batchDeleteCall.Add(1)
 
 			var ids []string
@@ -836,7 +836,7 @@ func TestRunRemoteFullyMockedViaSDK(t *testing.T) {
 	t.Run("sdk-remote-lifecycle", func(t *testing.T) {
 		mock, err := Run(ts,
 			WithRemote(grpcAddr, rest.URL),
-			WithSession("A"),
+			WithRoom("A"),
 			WithHealthCheckTimeout(2*time.Second),
 		)
 		require.NoError(t, err)

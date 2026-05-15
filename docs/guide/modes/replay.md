@@ -20,7 +20,7 @@ Fallback is based on real matcher result with full criteria:
 
 - `input` / `inputs`
 - `headers`
-- `session`
+- `room`
 - `contains` / `matches`
 - `options.times`
 

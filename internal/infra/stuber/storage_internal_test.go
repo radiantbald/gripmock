@@ -666,17 +666,17 @@ func TestStorageFindByMethodAvailableHandlesMethodUpdate(t *testing.T) {
 	require.Equal(t, id, updated[0].ID)
 }
 
-func TestStorageFindAllAvailableBySession(t *testing.T) {
+func TestStorageFindAllAvailableByRoom(t *testing.T) {
 	t.Parallel()
 
 	s := newStorage()
 	global := newTestStub("Svc", "Method", 1)
-	sessionA := newTestStub("Svc", "Method", 2)
-	sessionA.Session = "A"
-	sessionB := newTestStub("Svc", "Method", 3)
-	sessionB.Session = "B"
+	roomA := newTestStub("Svc", "Method", 2)
+	roomA.Room = "A"
+	roomB := newTestStub("Svc", "Method", 3)
+	roomB.Room = "B"
 
-	s.upsert(global, sessionA, sessionB)
+	s.upsert(global, roomA, roomB)
 
 	globalOnly, err := s.findAllAvailable("Svc", "Method", "")
 	require.NoError(t, err)
@@ -687,17 +687,17 @@ func TestStorageFindAllAvailableBySession(t *testing.T) {
 	require.Len(t, collectStubs(forA), 2)
 }
 
-func TestStorageFindByMethodAvailableBySession(t *testing.T) {
+func TestStorageFindByMethodAvailableByRoom(t *testing.T) {
 	t.Parallel()
 
 	s := newStorage()
 	global := newTestStub("Svc1", "Method", 1)
-	sessionA := newTestStub("Svc2", "Method", 2)
-	sessionA.Session = "A"
-	sessionB := newTestStub("Svc3", "Method", 3)
-	sessionB.Session = "B"
+	roomA := newTestStub("Svc2", "Method", 2)
+	roomA.Room = "A"
+	roomB := newTestStub("Svc3", "Method", 3)
+	roomB.Room = "B"
 
-	s.upsert(global, sessionA, sessionB)
+	s.upsert(global, roomA, roomB)
 
 	require.Len(t, collectStubs(s.findByMethodAvailable("Method", "")), 1)
 	require.Len(t, collectStubs(s.findByMethodAvailable("Method", "A")), 2)

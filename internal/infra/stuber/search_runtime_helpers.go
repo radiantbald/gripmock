@@ -11,7 +11,7 @@ func (s *searcher) searchOptimized(query Query) (*Result, error) {
 }
 
 func (s *searcher) resolveSearchCandidates(query Query) ([]*Stub, error) {
-	lookup := s.lookup(query.Session)
+	lookup := s.lookup(query.Room)
 
 	stubs, err := lookup.LookupServiceAvailable(query.Service, query.Method)
 	if err == nil {

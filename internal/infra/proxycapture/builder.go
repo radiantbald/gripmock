@@ -69,7 +69,7 @@ func ResponseHeaders(head metadata.MD, tail metadata.MD) map[string]string {
 func BuildUnaryStub(
 	service string,
 	method string,
-	session string,
+	room string,
 	request map[string]any,
 	requestHeaders map[string]any,
 	response map[string]any,
@@ -79,7 +79,7 @@ func BuildUnaryStub(
 	stub := &stuber.Stub{
 		Service: service,
 		Method:  method,
-		Session: session,
+		Room: room,
 		Source:  stuber.SourceProxy,
 		Headers: stuber.InputHeader{Equals: requestHeaders},
 		Input:   stuber.InputData{Equals: request},
@@ -94,7 +94,7 @@ func BuildUnaryStub(
 func BuildServerStreamStub(
 	service string,
 	method string,
-	session string,
+	room string,
 	request map[string]any,
 	requestHeaders map[string]any,
 	responses []map[string]any,
@@ -104,7 +104,7 @@ func BuildServerStreamStub(
 	stub := &stuber.Stub{
 		Service: service,
 		Method:  method,
-		Session: session,
+		Room: room,
 		Source:  stuber.SourceProxy,
 		Headers: stuber.InputHeader{Equals: requestHeaders},
 		Input:   stuber.InputData{Equals: request},
@@ -119,7 +119,7 @@ func BuildServerStreamStub(
 func BuildClientStreamStub(
 	service string,
 	method string,
-	session string,
+	room string,
 	requests []map[string]any,
 	requestHeaders map[string]any,
 	response map[string]any,
@@ -129,7 +129,7 @@ func BuildClientStreamStub(
 	stub := &stuber.Stub{
 		Service: service,
 		Method:  method,
-		Session: session,
+		Room: room,
 		Source:  stuber.SourceProxy,
 		Headers: stuber.InputHeader{Equals: requestHeaders},
 		Inputs:  toInputs(requests),
@@ -144,7 +144,7 @@ func BuildClientStreamStub(
 func BuildBidiStub(
 	service string,
 	method string,
-	session string,
+	room string,
 	requests []map[string]any,
 	requestHeaders map[string]any,
 	responses []map[string]any,
@@ -154,7 +154,7 @@ func BuildBidiStub(
 	stub := &stuber.Stub{
 		Service: service,
 		Method:  method,
-		Session: session,
+		Room: room,
 		Source:  stuber.SourceProxy,
 		Headers: stuber.InputHeader{Equals: requestHeaders},
 		Inputs:  toInputs(requests),

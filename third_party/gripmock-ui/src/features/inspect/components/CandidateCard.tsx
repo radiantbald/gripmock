@@ -36,8 +36,8 @@ export const CandidateCard = ({
       />
       <Chip
         size="small"
-        color={candidate.visibleBySession ? "success" : "error"}
-        label={`session ${candidate.visibleBySession ? "ok" : "fail"}`}
+        color={candidate.visibleByRoom ? "success" : "error"}
+        label={`room ${candidate.visibleByRoom ? "ok" : "fail"}`}
       />
       <Chip
         size="small"

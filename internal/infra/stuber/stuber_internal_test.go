@@ -255,7 +255,7 @@ func TestBudgerigarUnused(t *testing.T) {
 			ID:      uuid.New(),
 			Service: "Greeter1",
 			Method:  "SayHello1",
-			Session: "s1",
+			Room: "s1",
 			Input: stuber.InputData{Contains: map[string]any{
 				"field1": "hello field2",
 			}},
@@ -797,7 +797,7 @@ func TestBudgerigarFindByQueryFoundWithPriority(t *testing.T) {
 			ID:       uuid.New(),
 			Service:  "Service",
 			Method:   "Method",
-			Session:  "prio",
+			Room:  "prio",
 			Input:    stuber.InputData{Contains: map[string]any{"id": "1"}},
 			Output:   stuber.Output{Data: map[string]any{"result": "fail"}},
 			Priority: -1,
@@ -806,7 +806,7 @@ func TestBudgerigarFindByQueryFoundWithPriority(t *testing.T) {
 			ID:       uuid.New(),
 			Service:  "Service",
 			Method:   "Method",
-			Session:  "prio",
+			Room:  "prio",
 			Input:    stuber.InputData{Matches: map[string]any{"id": "\\d+"}},
 			Output:   stuber.Output{Data: map[string]any{"result": "fail"}},
 			Priority: 0,
@@ -815,7 +815,7 @@ func TestBudgerigarFindByQueryFoundWithPriority(t *testing.T) {
 			ID:       uuid.New(),
 			Service:  "Service",
 			Method:   "Method",
-			Session:  "prio",
+			Room:  "prio",
 			Input:    stuber.InputData{Equals: map[string]any{"id": "1"}},
 			Output:   stuber.Output{Data: map[string]any{"result": "success"}},
 			Priority: 10,
@@ -824,7 +824,7 @@ func TestBudgerigarFindByQueryFoundWithPriority(t *testing.T) {
 			ID:       uuid.New(),
 			Service:  "Service",
 			Method:   "Method",
-			Session:  "prio",
+			Room:  "prio",
 			Input:    stuber.InputData{Equals: map[string]any{"id": "1"}},
 			Output:   stuber.Output{Data: map[string]any{"result": "fail"}},
 			Priority: 1,
@@ -834,7 +834,7 @@ func TestBudgerigarFindByQueryFoundWithPriority(t *testing.T) {
 	r, err := s.FindByQuery(stuber.Query{
 		Service: "Service",
 		Method:  "Method",
-		Session: "prio",
+		Room: "prio",
 		Input:   []map[string]any{{"id": "1"}},
 	})
 

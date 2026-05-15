@@ -15,7 +15,7 @@ type Repository struct {
 
 type Route struct {
 	ClientID    string
-	SessionID   string
+	RoomID   string
 	UserID      string
 	PeerHost    string
 	UserAgent   string
@@ -29,33 +29,33 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 func (r *Repository) Upsert(
 	ctx context.Context,
 	clientID string,
-	sessionID string,
+	roomID string,
 	userID string,
 	peerHost string,
 	userAgent string,
 	fingerprint string,
 ) error {
 	clientID = strings.TrimSpace(clientID)
-	sessionID = strings.TrimSpace(sessionID)
+	roomID = strings.TrimSpace(roomID)
 	userID = strings.TrimSpace(userID)
 	peerHost = strings.TrimSpace(peerHost)
 	userAgent = strings.TrimSpace(userAgent)
 	fingerprint = strings.TrimSpace(fingerprint)
-	if clientID == "" || sessionID == "" {
-		return errors.New("client_id and session_id are required")
+	if clientID == "" || roomID == "" {
+		return errors.New("client_id and room_id are required")
 	}
 
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO clients (client_id, session_id, "user", peer_host, user_agent, fingerprint, created_at, updated_at)
+		INSERT INTO clients (client_id, room_id, "user", peer_host, user_agent, fingerprint, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
 		ON CONFLICT (client_id) DO UPDATE
-		SET session_id = EXCLUDED.session_id,
+		SET room_id = EXCLUDED.room_id,
 			"user" = COALESCE(NULLIF(EXCLUDED."user", ''), clients."user"),
 			peer_host = COALESCE(NULLIF(EXCLUDED.peer_host, ''), clients.peer_host),
 			user_agent = COALESCE(NULLIF(EXCLUDED.user_agent, ''), clients.user_agent),
 			fingerprint = COALESCE(NULLIF(EXCLUDED.fingerprint, ''), clients.fingerprint),
 			updated_at = NOW()
-	`, clientID, sessionID, userID, peerHost, userAgent, fingerprint)
+	`, clientID, roomID, userID, peerHost, userAgent, fingerprint)
 	if err != nil {
 		return errors.Wrap(err, "failed to upsert client route")
 	}
@@ -63,30 +63,30 @@ func (r *Repository) Upsert(
 	return nil
 }
 
-func (r *Repository) SessionByClient(ctx context.Context, clientID string) (string, error) {
+func (r *Repository) RoomByClient(ctx context.Context, clientID string) (string, error) {
 	clientID = strings.TrimSpace(clientID)
 	if clientID == "" {
 		return "", nil
 	}
 
-	var sessionID string
-	err := r.pool.QueryRow(ctx, `SELECT session_id FROM clients WHERE client_id = $1`, clientID).Scan(&sessionID)
+	var roomID string
+	err := r.pool.QueryRow(ctx, `SELECT room_id FROM clients WHERE client_id = $1`, clientID).Scan(&roomID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", nil
 		}
 
-		return "", errors.Wrap(err, "failed to resolve session by client")
+		return "", errors.Wrap(err, "failed to resolve room by client")
 	}
 
-	return strings.TrimSpace(sessionID), nil
+	return strings.TrimSpace(roomID), nil
 }
 
 func (r *Repository) List(ctx context.Context) ([]Route, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT client_id, session_id, "user", peer_host, user_agent, fingerprint
+		SELECT client_id, room_id, "user", peer_host, user_agent, fingerprint
 		FROM clients
-		WHERE client_id <> '' AND session_id <> ''
+		WHERE client_id <> '' AND room_id <> ''
 	`)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list client routes")
@@ -98,7 +98,7 @@ func (r *Repository) List(ctx context.Context) ([]Route, error) {
 		var item Route
 		if scanErr := rows.Scan(
 			&item.ClientID,
-			&item.SessionID,
+			&item.RoomID,
 			&item.UserID,
 			&item.PeerHost,
 			&item.UserAgent,
@@ -108,12 +108,12 @@ func (r *Repository) List(ctx context.Context) ([]Route, error) {
 		}
 
 		item.ClientID = strings.TrimSpace(item.ClientID)
-		item.SessionID = strings.TrimSpace(item.SessionID)
+		item.RoomID = strings.TrimSpace(item.RoomID)
 		item.UserID = strings.TrimSpace(item.UserID)
 		item.PeerHost = strings.TrimSpace(item.PeerHost)
 		item.UserAgent = strings.TrimSpace(item.UserAgent)
 		item.Fingerprint = strings.TrimSpace(item.Fingerprint)
-		if item.ClientID == "" || item.SessionID == "" {
+		if item.ClientID == "" || item.RoomID == "" {
 			continue
 		}
 
@@ -127,15 +127,15 @@ func (r *Repository) List(ctx context.Context) ([]Route, error) {
 	return result, nil
 }
 
-func (r *Repository) DeleteBySession(ctx context.Context, sessionID string) (int, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
+func (r *Repository) DeleteByRoom(ctx context.Context, roomID string) (int, error) {
+	roomID = strings.TrimSpace(roomID)
+	if roomID == "" {
 		return 0, nil
 	}
 
-	tag, err := r.pool.Exec(ctx, `DELETE FROM clients WHERE session_id = $1`, sessionID)
+	tag, err := r.pool.Exec(ctx, `DELETE FROM clients WHERE room_id = $1`, roomID)
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to delete clients by session")
+		return 0, errors.Wrap(err, "failed to delete clients by room")
 	}
 
 	return int(tag.RowsAffected()), nil

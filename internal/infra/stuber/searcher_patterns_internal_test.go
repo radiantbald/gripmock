@@ -15,13 +15,13 @@ type instrumentedLookupProvider struct {
 	methodCalls  int
 }
 
-func (p *instrumentedLookupProvider) build(s *searcher, session string) *searcherLookup {
+func (p *instrumentedLookupProvider) build(s *searcher, room string) *searcherLookup {
 	p.built = true
 
 	return &searcherLookup{
 		id:      &instrumentedIDLookup{searcher: s, provider: p},
-		service: &instrumentedServiceLookup{searcher: s, provider: p, session: session},
-		method:  &instrumentedMethodLookup{searcher: s, provider: p, session: session},
+		service: &instrumentedServiceLookup{searcher: s, provider: p, room: room},
+		method:  &instrumentedMethodLookup{searcher: s, provider: p, room: room},
 	}
 }
 
@@ -39,34 +39,34 @@ func (l *instrumentedIDLookup) LookupID(id uuid.UUID) *Stub {
 type instrumentedServiceLookup struct {
 	searcher *searcher
 	provider *instrumentedLookupProvider
-	session  string
+	room  string
 }
 
 func (l *instrumentedServiceLookup) LookupServiceAvailable(service, method string) (iter.Seq[*Stub], error) {
 	l.provider.serviceCalls++
 
-	seq, err := l.searcher.storage.findAllAvailable(service, method, l.session)
+	seq, err := l.searcher.storage.findAllAvailable(service, method, l.room)
 	if err != nil {
 		return nil, err
 	}
 
-	return l.searcher.filterNotExhaustedSeq(seq, l.session), nil
+	return l.searcher.filterNotExhaustedSeq(seq, l.room), nil
 }
 
 type instrumentedMethodLookup struct {
 	searcher *searcher
 	provider *instrumentedLookupProvider
-	session  string
+	room  string
 }
 
 func (l *instrumentedMethodLookup) HasMethodAvailable(method string) bool {
-	return l.searcher.storage.hasMethodAvailable(method, l.session)
+	return l.searcher.storage.hasMethodAvailable(method, l.room)
 }
 
 func (l *instrumentedMethodLookup) LookupMethodAvailable(method string) iter.Seq[*Stub] {
 	l.provider.methodCalls++
 
-	return l.searcher.filterNotExhaustedSeq(l.searcher.storage.findByMethodAvailable(method, l.session), l.session)
+	return l.searcher.filterNotExhaustedSeq(l.searcher.storage.findByMethodAvailable(method, l.room), l.room)
 }
 
 type inspectTestEnv struct {

@@ -78,7 +78,7 @@ func (m *grpcMocker) recordUnaryStub(
 	m.recordCapturedStub(
 		func() *stuber.Stub {
 			return proxycapture.BuildUnaryStub(
-				m.fullServiceName, m.methodName, captureCtx.sessionID,
+				m.fullServiceName, m.methodName, captureCtx.roomID,
 				requestData, captureCtx.headers, responseData, responseHeaders, callErr,
 			)
 		},

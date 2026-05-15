@@ -196,9 +196,9 @@ func sameEnabledRoute(left, right *Stub) bool {
 		return false
 	}
 
-	leftSession := strings.TrimSpace(left.Session)
-	rightSession := strings.TrimSpace(right.Session)
-	if leftSession != "" && rightSession != "" && leftSession != rightSession {
+	leftRoom := strings.TrimSpace(left.Room)
+	rightRoom := strings.TrimSpace(right.Room)
+	if leftRoom != "" && rightRoom != "" && leftRoom != rightRoom {
 		return false
 	}
 
@@ -249,10 +249,10 @@ func (b *Budgerigar) DeleteByID(ids ...uuid.UUID) int {
 	return b.searcher.del(ids...)
 }
 
-// DeleteSession deletes all stubs that belong to the provided session.
-// Empty session is treated as global and is not deleted by this method.
-func (b *Budgerigar) DeleteSession(session string) int {
-	if session == "" {
+// DeleteRoom deletes all stubs that belong to the provided room.
+// Empty room is treated as global and is not deleted by this method.
+func (b *Budgerigar) DeleteRoom(room string) int {
+	if room == "" {
 		return 0
 	}
 
@@ -260,8 +260,8 @@ func (b *Budgerigar) DeleteSession(session string) int {
 	defer b.persistentLock.Unlock()
 
 	if b.persistent != nil {
-		if _, err := b.persistent.DeleteSession(context.Background(), session); err != nil {
-			log.Printf("[gripmock] failed to persist delete by session: %v", err)
+		if _, err := b.persistent.DeleteRoom(context.Background(), room); err != nil {
+			log.Printf("[gripmock] failed to persist delete by room: %v", err)
 
 			return 0
 		}
@@ -271,7 +271,7 @@ func (b *Budgerigar) DeleteSession(session string) int {
 	ids := make([]uuid.UUID, 0, len(all))
 
 	for _, stub := range all {
-		if stub.Session == session {
+		if stub.Room == room {
 			ids = append(ids, stub.ID)
 		}
 	}
@@ -334,9 +334,9 @@ func (b *Budgerigar) Unused() []*Stub {
 	return stubs
 }
 
-// Sessions returns sorted non-empty session IDs known by storage.
-func (b *Budgerigar) Sessions() []string {
-	return b.searcher.sessions()
+// Rooms returns sorted non-empty room IDs known by storage.
+func (b *Budgerigar) Rooms() []string {
+	return b.searcher.rooms()
 }
 
 // Clear removes all Stub values.

@@ -29,18 +29,18 @@ type searcherIDLookup struct {
 	searcher *searcher
 }
 
-type searcherSessionFallbackServiceLookup struct {
+type searcherRoomFallbackServiceLookup struct {
 	searcher *searcher
-	session  string
+	room  string
 }
 
-type searcherSessionFallbackMethodLookup struct {
+type searcherRoomFallbackMethodLookup struct {
 	searcher *searcher
-	session  string
+	room  string
 }
 
 type searcherLookupProvider interface {
-	build(s *searcher, session string) *searcherLookup
+	build(s *searcher, room string) *searcherLookup
 }
 
 type searcherLookupFactory struct {
@@ -58,13 +58,13 @@ type searcherLookup struct {
 var (
 	_ stubLookup    = (*searcherLookup)(nil)
 	_ idLookup      = (*searcherIDLookup)(nil)
-	_ serviceLookup = (*searcherSessionFallbackServiceLookup)(nil)
-	_ methodLookup  = (*searcherSessionFallbackMethodLookup)(nil)
+	_ serviceLookup = (*searcherRoomFallbackServiceLookup)(nil)
+	_ methodLookup  = (*searcherRoomFallbackMethodLookup)(nil)
 )
 
-func (s *searcher) lookup(session string) *searcherLookup {
+func (s *searcher) lookup(room string) *searcherLookup {
 	s.lookupMu.RLock()
-	lookup, ok := s.lookupCache[session]
+	lookup, ok := s.lookupCache[room]
 	s.lookupMu.RUnlock()
 
 	if ok {
@@ -74,12 +74,12 @@ func (s *searcher) lookup(session string) *searcherLookup {
 	s.lookupMu.Lock()
 	defer s.lookupMu.Unlock()
 
-	if lookup, ok = s.lookupCache[session]; ok {
+	if lookup, ok = s.lookupCache[room]; ok {
 		return lookup
 	}
 
-	lookup = s.lookupProvider.build(s, session)
-	s.lookupCache[session] = lookup
+	lookup = s.lookupProvider.build(s, room)
+	s.lookupCache[room] = lookup
 
 	return lookup
 }
@@ -89,26 +89,26 @@ func defaultSearcherLookupFactory() searcherLookupFactory {
 		newID: func(s *searcher) idLookup {
 			return &searcherIDLookup{searcher: s}
 		},
-		newService: func(s *searcher, session string) serviceLookup {
-			return &searcherSessionFallbackServiceLookup{
+		newService: func(s *searcher, room string) serviceLookup {
+			return &searcherRoomFallbackServiceLookup{
 				searcher: s,
-				session:  session,
+				room:  room,
 			}
 		},
-		newMethod: func(s *searcher, session string) methodLookup {
-			return &searcherSessionFallbackMethodLookup{
+		newMethod: func(s *searcher, room string) methodLookup {
+			return &searcherRoomFallbackMethodLookup{
 				searcher: s,
-				session:  session,
+				room:  room,
 			}
 		},
 	}
 }
 
-func (f searcherLookupFactory) build(s *searcher, session string) *searcherLookup {
+func (f searcherLookupFactory) build(s *searcher, room string) *searcherLookup {
 	return &searcherLookup{
 		id:      f.newID(s),
-		service: f.newService(s, session),
-		method:  f.newMethod(s, session),
+		service: f.newService(s, room),
+		method:  f.newMethod(s, room),
 	}
 }
 
@@ -116,25 +116,25 @@ func (l *searcherIDLookup) LookupID(id uuid.UUID) *Stub {
 	return l.searcher.findByID(id)
 }
 
-func (l *searcherSessionFallbackServiceLookup) LookupServiceAvailable(service, method string) (iter.Seq[*Stub], error) {
-	seq, err := l.searcher.storage.findAllAvailable(service, method, l.session)
+func (l *searcherRoomFallbackServiceLookup) LookupServiceAvailable(service, method string) (iter.Seq[*Stub], error) {
+	seq, err := l.searcher.storage.findAllAvailable(service, method, l.room)
 	if err != nil {
 		return nil, err
 	}
 
-	return l.searcher.filterNotExhaustedSeq(seq, l.session), nil
+	return l.searcher.filterNotExhaustedSeq(seq, l.room), nil
 }
 
-func (l *searcherSessionFallbackMethodLookup) LookupMethodAvailable(method string) iter.Seq[*Stub] {
-	if !l.searcher.storage.hasMethodAvailable(method, l.session) {
+func (l *searcherRoomFallbackMethodLookup) LookupMethodAvailable(method string) iter.Seq[*Stub] {
+	if !l.searcher.storage.hasMethodAvailable(method, l.room) {
 		return func(func(*Stub) bool) {}
 	}
 
-	return l.searcher.filterNotExhaustedSeq(l.searcher.storage.findByMethodAvailable(method, l.session), l.session)
+	return l.searcher.filterNotExhaustedSeq(l.searcher.storage.findByMethodAvailable(method, l.room), l.room)
 }
 
-func (l *searcherSessionFallbackMethodLookup) HasMethodAvailable(method string) bool {
-	return l.searcher.storage.hasMethodAvailable(method, l.session)
+func (l *searcherRoomFallbackMethodLookup) HasMethodAvailable(method string) bool {
+	return l.searcher.storage.hasMethodAvailable(method, l.room)
 }
 
 func (l *searcherLookup) LookupID(id uuid.UUID) *Stub {

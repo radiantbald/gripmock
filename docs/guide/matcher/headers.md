@@ -177,7 +177,7 @@ method: GetLogs
 headers:
   equals:
     x-debug-mode: "true"
-    x-trace-id: "debug-session-123"
+    x-trace-id: "debug-room-123"
 output:
   data:
     logs: ["debug log 1", "debug log 2"]

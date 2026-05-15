@@ -50,12 +50,12 @@ func (s *searcher) buildTraceCandidate(
 		Name:             stub.Name,
 		Service:          stub.Service,
 		Method:           stub.Method,
-		Session:          stub.Session,
+		Room:          stub.Room,
 		Priority:         stub.Priority,
 		Enabled:          eval.enabled,
 		Times:            eval.times,
 		Used:             eval.used,
-		VisibleBySession: eval.visible,
+		VisibleByRoom: eval.visible,
 		WithinTimes:      eval.withinTimes,
 		HeadersMatched:   eval.headersMatched,
 		InputMatched:     eval.inputMatched,
@@ -74,17 +74,17 @@ func (s *searcher) evalTraceCandidate(
 	events []InspectCandidateEvent,
 	reasons []string,
 ) traceEval {
-	used := s.stubCallCount[callCountKey{id: stub.ID, session: query.Session}]
+	used := s.stubCallCount[callCountKey{id: stub.ID, room: query.Room}]
 	times := stub.EffectiveTimes()
 	enabled := stub.IsEnabled()
 	withinTimes := times <= 0 || used < times
-	visible := isStubVisibleForSession(stub.Session, query.Session)
+	visible := isStubVisibleForRoom(stub.Room, query.Room)
 	headersMatched := doesQueryMatchStubHeaders(query, stub)
 	inputMatched := s.fastMatchV2(query, stub)
 	ranked := s.rankedMatchFor(query, stub)
 
 	routeStage, routePassed, routeReason, reasonCount := evalRoute(query, stub, fallbackToMethod, reasons)
-	reasonCount = appendReasonToBuffer(reasons, reasonCount, !visible, traceReasonSession)
+	reasonCount = appendReasonToBuffer(reasons, reasonCount, !visible, traceReasonRoom)
 	reasonCount = appendReasonToBuffer(reasons, reasonCount, !withinTimes, traceReasonTimes)
 	reasonCount = appendReasonToBuffer(reasons, reasonCount, !enabled, traceReasonDisabled)
 	reasonCount = appendReasonToBuffer(reasons, reasonCount, query.ID == nil && !headersMatched, traceReasonHeaders)
@@ -168,7 +168,7 @@ func buildTraceEvents(
 	inputMatched bool,
 ) {
 	events[0] = InspectCandidateEvent{Stage: routeStage, Result: boolResult(routePassed), Reason: routeReason}
-	events[1] = InspectCandidateEvent{Stage: traceStageSession, Result: boolResult(visible), Reason: reasonIf(!visible, traceReasonSession)}
+	events[1] = InspectCandidateEvent{Stage: traceStageRoom, Result: boolResult(visible), Reason: reasonIf(!visible, traceReasonRoom)}
 	events[2] = InspectCandidateEvent{
 		Stage:  traceStageTimes,
 		Result: boolResult(withinTimes),

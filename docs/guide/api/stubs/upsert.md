@@ -116,7 +116,7 @@ curl -X POST -d '[
 
 - `input.anyOf` and `headers.anyOf` are supported for OR-style alternatives.
 - `effects` is supported for runtime transitions (`upsert`, `delete`).
-- Effects inherit session automatically from matched parent stub.
+- Effects inherit room automatically from matched parent stub.
 
 ## Related Endpoints
 - `GET /api/stubs`: List all stubs.  

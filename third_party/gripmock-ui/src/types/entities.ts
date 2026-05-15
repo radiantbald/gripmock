@@ -54,7 +54,7 @@ export type HistoryRecord = {
   service?: string;
   method?: string;
   stubId?: string;
-  session?: string;
+  room?: string;
   timestamp?: string;
   code?: number;
   error?: string;

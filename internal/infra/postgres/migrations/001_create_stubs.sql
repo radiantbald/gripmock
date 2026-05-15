@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS stubs (
     name TEXT NOT NULL DEFAULT '',
     service TEXT NOT NULL,
     method TEXT NOT NULL,
-    session TEXT NOT NULL DEFAULT '',
+    room TEXT NOT NULL DEFAULT '',
     priority INTEGER NOT NULL DEFAULT 0,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     options JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -18,5 +18,5 @@ CREATE TABLE IF NOT EXISTS stubs (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_stubs_service_method_session ON stubs(service, method, session);
+CREATE INDEX IF NOT EXISTS idx_stubs_service_method_room ON stubs(service, method, room);
 CREATE INDEX IF NOT EXISTS idx_stubs_source ON stubs(source);

@@ -19,6 +19,7 @@ type queryJSON struct {
 	ID      *uuid.UUID       `json:"id,omitempty"`
 	Service string           `json:"service"`
 	Method  string           `json:"method"`
+	Room    string           `json:"room,omitempty"`
 	Headers map[string]any   `json:"headers"`
 	Data    map[string]any   `json:"data"`  // Legacy: unary request body
 	Input   []map[string]any `json:"input"` // Canonical: supports unary and streaming
@@ -28,10 +29,10 @@ type queryJSON struct {
 // Supports both unary (Input with one element) and streaming (Input with multiple elements).
 // JSON accepts "data" (legacy, maps to Input[0]) or "input" (array). Prefer "input".
 type Query struct {
-	ID            *uuid.UUID       `json:"id,omitempty"`      // The unique identifier of the stub (optional).
-	Service       string           `json:"service"`           // The service name to search for.
-	Method        string           `json:"method"`            // The method name to search for.
-	Session       string           `json:"session,omitempty"` // Session ID (empty = global only).
+	ID            *uuid.UUID       `json:"id,omitempty"`   // The unique identifier of the stub (optional).
+	Service       string           `json:"service"`        // The service name to search for.
+	Method        string           `json:"method"`         // The method name to search for.
+	Room          string           `json:"room,omitempty"` // Room ID (empty = global only).
 	StrictService bool             `json:"strictService,omitempty"`
 	Headers       map[string]any   `json:"headers"` // The headers to match.
 	Input         []map[string]any `json:"input"`   // The input data to match (unary or streaming).
@@ -82,6 +83,7 @@ func (q *Query) UnmarshalJSON(data []byte) error {
 	q.ID = raw.ID
 	q.Service = raw.Service
 	q.Method = raw.Method
+	q.Room = raw.Room
 	q.Headers = raw.Headers
 
 	switch {
@@ -115,10 +117,10 @@ func (q *Query) Data() map[string]any {
 // In bidirectional streaming, each message is treated as a separate unary request.
 // The server can respond with multiple messages for each request.
 type QueryBidi struct {
-	ID            *uuid.UUID     `json:"id,omitempty"`      // The unique identifier of the stub (optional).
-	Service       string         `json:"service"`           // The service name to search for.
-	Method        string         `json:"method"`            // The method name to search for.
-	Session       string         `json:"session,omitempty"` // Session ID (empty = global only).
+	ID            *uuid.UUID     `json:"id,omitempty"`   // The unique identifier of the stub (optional).
+	Service       string         `json:"service"`        // The service name to search for.
+	Method        string         `json:"method"`         // The method name to search for.
+	Room          string         `json:"room,omitempty"` // Room ID (empty = global only).
 	StrictService bool           `json:"strictService,omitempty"`
 	Headers       map[string]any `json:"headers"` // The headers to match.
 

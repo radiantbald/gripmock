@@ -44,8 +44,8 @@ func (s *storageWithInternal) Internal() InternalStubStorage {
 }
 
 // findAllAvailable wraps to include internal stubs.
-func (s *storageWithInternal) findAllAvailable(service, method, session string) (iter.Seq[*Stub], error) {
-	internalSeq, internalErr := s.internal.FindAllAvailable(service, method, session)
+func (s *storageWithInternal) findAllAvailable(service, method, room string) (iter.Seq[*Stub], error) {
+	internalSeq, internalErr := s.internal.FindAllAvailable(service, method, room)
 	if internalErr != nil && !shouldIgnoreInternalLookupErr(internalErr) {
 		return nil, internalErr
 	}
@@ -54,7 +54,7 @@ func (s *storageWithInternal) findAllAvailable(service, method, session string) 
 		internalSeq = nil
 	}
 
-	externalSeq, externalErr := s.storage.findAllAvailable(service, method, session)
+	externalSeq, externalErr := s.storage.findAllAvailable(service, method, room)
 	if externalErr != nil && internalSeq == nil {
 		return nil, externalErr
 	}
@@ -95,16 +95,16 @@ func yieldSeq(seq iter.Seq[*Stub], yield func(*Stub) bool) bool {
 }
 
 // findByMethodAvailable wraps to include internal stubs.
-func (s *storageWithInternal) findByMethodAvailable(method, session string) iter.Seq[*Stub] {
+func (s *storageWithInternal) findByMethodAvailable(method, room string) iter.Seq[*Stub] {
 	return func(yield func(*Stub) bool) {
 		// First yield internal stubs
-		for stub := range s.internal.FindByMethodAvailable(method, session) {
+		for stub := range s.internal.FindByMethodAvailable(method, room) {
 			if !yield(stub) {
 				return
 			}
 		}
 		// Then yield external stubs
-		for stub := range s.storage.findByMethodAvailable(method, session) {
+		for stub := range s.storage.findByMethodAvailable(method, room) {
 			if !yield(stub) {
 				return
 			}
@@ -113,12 +113,12 @@ func (s *storageWithInternal) findByMethodAvailable(method, session string) iter
 }
 
 // hasMethodAvailable checks internal + external.
-func (s *storageWithInternal) hasMethodAvailable(method, session string) bool {
-	if s.internal.HasMethodAvailable(method, session) {
+func (s *storageWithInternal) hasMethodAvailable(method, room string) bool {
+	if s.internal.HasMethodAvailable(method, room) {
 		return true
 	}
 
-	return s.storage.hasMethodAvailable(method, session)
+	return s.storage.hasMethodAvailable(method, room)
 }
 
 // findByID returns stub by ID from external storage only.
@@ -132,9 +132,9 @@ func (s *storageWithInternal) values() iter.Seq[*Stub] {
 	return s.storage.values()
 }
 
-// sessionsList returns only external sessions.
-func (s *storageWithInternal) sessionsList() []string {
-	return s.storage.sessionsList()
+// roomsList returns only external rooms.
+func (s *storageWithInternal) roomsList() []string {
+	return s.storage.roomsList()
 }
 
 // clear clears both storage and internal storage.

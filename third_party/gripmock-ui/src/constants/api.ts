@@ -20,10 +20,10 @@ export const API_CONFIG = {
   BASE_URL: runtimeAPIBase,
   INTERNAL_HEADER: "X-GripMock-RequestInternal",
   INTERNAL_VALUE: "92b4d5a9-c74b-4ac0-989c-717f80acba22",
-  SESSION_HEADER: "X-Gripmock-Session",
-  SESSION_RESET_HEADER: "X-Gripmock-Session-Reset",
+  ROOM_HEADER: "X-Gripmock-Room",
+  ROOM_RESET_HEADER: "X-Gripmock-Room-Reset",
   CLIENT_HEADER: "X-Gripmock-Client",
-  SESSION_STORAGE_KEY: "gripmock.ui.session",
+  ROOM_STORAGE_KEY: "gripmock.ui.room",
   CLIENT_STORAGE_KEY: "gripmock.ui.client",
   AUTH_PHONE_STORAGE_KEY: "gripmock.ui.authPhone",
 } as const;

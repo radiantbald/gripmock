@@ -29,7 +29,7 @@ export const InspectPage = () => {
   const [method, setMethod] = useState("");
   const [payload, setPayload] = useState('{\n  "name": "Alex"\n}');
   const [headers, setHeaders] = useState("{}");
-  const [session, setSession] = useState("");
+  const [room, setRoom] = useState("");
   const [showAllCandidates, setShowAllCandidates] = useState(false);
   const [candidateQuery, setCandidateQuery] = useState("");
   const [onlyMatched, setOnlyMatched] = useState(false);
@@ -125,7 +125,7 @@ export const InspectPage = () => {
             Object.keys(parsedHeaders.value).length === 0
               ? undefined
               : parsedHeaders.value,
-          session: session || undefined,
+          room: room || undefined,
         },
       });
 
@@ -162,9 +162,9 @@ export const InspectPage = () => {
                 onMethodChange={setMethod}
               />
               <TextField
-                label="Session (optional)"
-                value={session}
-                onChange={(event) => setSession(event.target.value)}
+                label="Room (optional)"
+                value={room}
+                onChange={(event) => setRoom(event.target.value)}
                 fullWidth
               />
               <TextField
@@ -193,7 +193,7 @@ export const InspectPage = () => {
                   onClick={() => {
                     setPayload('{\n  "name": "Alex"\n}');
                     setHeaders("{}");
-                    setSession("");
+                    setRoom("");
                   }}
                 >
                   Load default example
@@ -212,7 +212,7 @@ export const InspectPage = () => {
                   onClick={() => {
                     setPayload("{}");
                     setHeaders("{}");
-                    setSession("");
+                    setRoom("");
                   }}
                 >
                   Clear form
@@ -246,7 +246,7 @@ export const InspectPage = () => {
                   <Box display="flex" gap={1} flexWrap="wrap">
                     <Chip size="small" label={`Candidates: ${candidateStats.total}`} />
                     <Chip size="small" color="success" label={`Matched: ${candidateStats.matched}`} />
-                    <Chip size="small" label={`Visible by session: ${candidateStats.visibleBySession}`} />
+                    <Chip size="small" label={`Visible by room: ${candidateStats.visibleByRoom}`} />
                     <Chip size="small" label={`Within times: ${candidateStats.withinTimes}`} />
                     <Chip size="small" label={`Headers matched: ${candidateStats.headersMatched}`} />
                     <Chip size="small" label={`Input matched: ${candidateStats.inputMatched}`} />

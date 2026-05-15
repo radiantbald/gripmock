@@ -11,11 +11,11 @@ import {
 } from "./processing";
 import { canonicalResource } from "./resources";
 import type { Row } from "./types";
-import { getCurrentSession } from "../utils/session";
+import { getCurrentRoom } from "../utils/room";
 
 type RAResult<T> = { data: T };
 
-const extractSessionName = (value: unknown): string => {
+const extractRoomName = (value: unknown): string => {
   if (typeof value === "string") {
     return value.trim();
   }
@@ -25,20 +25,20 @@ const extractSessionName = (value: unknown): string => {
   }
 
   const row = value as Record<string, unknown>;
-  const candidate = row.session || row.name || row.id;
+  const candidate = row.room || row.name || row.id;
   return typeof candidate === "string" ? candidate.trim() : "";
 };
 
 const toText = (value: unknown): string => (typeof value === "string" ? value.trim() : String(value ?? "").trim());
 
-const extractSessionRow = (value: unknown): { id: string; session: string; name: string } | null => {
+const extractRoomRow = (value: unknown): { id: string; room: string; name: string } | null => {
   if (typeof value === "string") {
     const normalized = value.trim();
     if (!normalized) {
       return null;
     }
 
-    return { id: normalized, session: normalized, name: normalized };
+    return { id: normalized, room: normalized, name: normalized };
   }
 
   if (!value || typeof value !== "object") {
@@ -46,20 +46,20 @@ const extractSessionRow = (value: unknown): { id: string; session: string; name:
   }
 
   const row = value as Record<string, unknown>;
-  const sessionName = extractSessionName(value);
-  if (!sessionName) {
+  const roomName = extractRoomName(value);
+  if (!roomName) {
     return null;
   }
 
-  const id = toText(row.id || sessionName);
+  const id = toText(row.id || roomName);
   if (!id) {
     return null;
   }
 
   return {
     id,
-    session: sessionName,
-    name: sessionName,
+    room: roomName,
+    name: roomName,
   };
 };
 
@@ -83,17 +83,17 @@ const toNumericId = (value: unknown): number => {
 const dataProvider: DataProvider = {
   getList: async (resource, params) => {
     const canonical = canonicalResource(resource);
-    const activeSession = getCurrentSession().trim();
+    const activeRoom = getCurrentRoom().trim();
 
-    if (canonical === "sessions") {
+    if (canonical === "rooms") {
       const json = await apiClient.request<unknown>(`/${canonical}`);
       const payload =
-        ensureArray<unknown>((json as { sessions?: unknown[] } | undefined)?.sessions).length > 0
-          ? ensureArray<unknown>((json as { sessions?: unknown[] }).sessions)
+        ensureArray<unknown>((json as { rooms?: unknown[] } | undefined)?.rooms).length > 0
+          ? ensureArray<unknown>((json as { rooms?: unknown[] }).rooms)
           : ensureArray<unknown>(json);
-      const byId = new Map<string, { id: string; session: string; name: string }>();
+      const byId = new Map<string, { id: string; room: string; name: string }>();
       payload.forEach((item) => {
-        const row = extractSessionRow(item);
+        const row = extractRoomRow(item);
         if (!row) {
           return;
         }
@@ -117,10 +117,10 @@ const dataProvider: DataProvider = {
 
     if (backendListResources.has(canonical)) {
       const query = buildBackendListQuery(params);
-      const forceSessionScoped =
-        (canonical === "stubs" || canonical === "stubs/used" || canonical === "stubs/unused") && activeSession;
-      const sessionQuery = forceSessionScoped ? `${query ? "&" : "?"}session=${encodeURIComponent(activeSession)}` : "";
-      const response = await apiClient.request<unknown>(`/${canonical}${query}${sessionQuery}`);
+      const forceRoomScoped =
+        (canonical === "stubs" || canonical === "stubs/used" || canonical === "stubs/unused") && activeRoom;
+      const roomQuery = forceRoomScoped ? `${query ? "&" : "?"}room=${encodeURIComponent(activeRoom)}` : "";
+      const response = await apiClient.request<unknown>(`/${canonical}${query}${roomQuery}`);
       const json = ensureArray<Row>(response);
       const normalized = canonical === "history" ? normalizeHistoryRows(json) : json;
 
@@ -212,7 +212,7 @@ const dataProvider: DataProvider = {
 
       const data = asRow(
         await apiClient.requestBinary<Row>(`/${canonical}`, file, {
-          skipSessionHeader: true,
+          skipRoomHeader: true,
           headers: {
             "X-Gripmock-Descriptor-Filename": file.name,
           },
@@ -252,10 +252,10 @@ const dataProvider: DataProvider = {
     }
 
     const requestBody = Array.isArray(params.data) ? params.data : [params.data];
-    const activeSession = getCurrentSession().trim();
+    const activeRoom = getCurrentRoom().trim();
     const endpoint =
-      canonical === "stubs" && activeSession
-        ? `/${canonical}?session=${encodeURIComponent(activeSession)}`
+      canonical === "stubs" && activeRoom
+        ? `/${canonical}?room=${encodeURIComponent(activeRoom)}`
         : `/${canonical}`;
 
     const response = await apiClient.request<unknown>(endpoint, {
@@ -282,12 +282,12 @@ const dataProvider: DataProvider = {
   update: async (resource, params) => {
     const canonical = canonicalResource(resource);
     if (canonical === "stubs") {
-      const activeSession = getCurrentSession().trim();
-      const sessionQuery = activeSession ? `?session=${encodeURIComponent(activeSession)}` : "";
+      const activeRoom = getCurrentRoom().trim();
+      const roomQuery = activeRoom ? `?room=${encodeURIComponent(activeRoom)}` : "";
       const payload = (params.data || {}) as Record<string, unknown>;
       const { id: _ignoredID, ...patchPayload } = payload;
 
-      await apiClient.request(`/${canonical}/${encodeURIComponent(String(params.id))}${sessionQuery}`, {
+      await apiClient.request(`/${canonical}/${encodeURIComponent(String(params.id))}${roomQuery}`, {
         method: "PATCH",
         body: JSON.stringify(patchPayload),
       });

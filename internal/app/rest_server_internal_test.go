@@ -24,7 +24,9 @@ import (
 	"github.com/bavix/gripmock/v3/internal/domain/history"
 	"github.com/bavix/gripmock/v3/internal/domain/protoset"
 	"github.com/bavix/gripmock/v3/internal/domain/rest"
+	"github.com/bavix/gripmock/v3/internal/infra/muxmiddleware"
 	pgprotometadata "github.com/bavix/gripmock/v3/internal/infra/postgres/protometadata"
+	"github.com/bavix/gripmock/v3/internal/infra/room"
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
 )
 
@@ -359,26 +361,26 @@ func (s *RestServerTestSuite) TestListStubsParams() {
 	s.Equal("Ping", response[0].Method)
 }
 
-func (s *RestServerTestSuite) TestListStubs_SessionFromHeader() {
+func (s *RestServerTestSuite) TestListStubs_RoomFromHeader() {
 	s.budgerigar.PutMany(
 		&stuber.Stub{
 			Service: "svc.Scope",
 			Method:  "Ping",
-			Session: "A",
+			Room:    "A",
 			Input:   stuber.InputData{},
 			Output:  stuber.Output{},
 		},
 		&stuber.Stub{
 			Service: "svc.Scope",
 			Method:  "Ping",
-			Session: "B",
+			Room:    "B",
 			Input:   stuber.InputData{},
 			Output:  stuber.Output{},
 		},
 	)
 
 	req := httptest.NewRequestWithContext(s.T().Context(), http.MethodGet, "/api/stubs?service=svc.Scope&method=Ping", nil)
-	req.Header.Set("X-Gripmock-Session", "A")
+	req.Header.Set("X-Gripmock-Room", "A")
 
 	w := httptest.NewRecorder()
 	s.server.ListStubs(w, req, rest.ListStubsParams{
@@ -586,7 +588,7 @@ func (s *RestServerTestSuite) TestMcpMessageDescriptorsLifecycle() {
 	s.True(ok)
 }
 
-func (s *RestServerTestSuite) TestAddStub_SessionFromHeader() {
+func (s *RestServerTestSuite) TestAddStub_RoomFromHeader() {
 	// Arrange
 	stubJSON := `[
 		{
@@ -599,7 +601,7 @@ func (s *RestServerTestSuite) TestAddStub_SessionFromHeader() {
 
 	// Act
 	w := s.addStubJSONWithRequest(s.server, stubJSON, func(req *http.Request) {
-		req.Header.Set("X-Gripmock-Session", "header-session")
+		req.Header.Set("X-Gripmock-Room", "header-room")
 	})
 
 	// Assert
@@ -607,10 +609,10 @@ func (s *RestServerTestSuite) TestAddStub_SessionFromHeader() {
 
 	stubs := s.budgerigar.All()
 	s.Require().Len(stubs, 1)
-	s.Equal("header-session", stubs[0].Session)
+	s.Equal("header-room", stubs[0].Room)
 }
 
-func (s *RestServerTestSuite) TestAddStub_SessionFromQueryWhenHeaderMissing() {
+func (s *RestServerTestSuite) TestAddStub_RoomFromQueryWhenHeaderMissing() {
 	// Arrange
 	stubJSON := `[
 		{
@@ -623,7 +625,7 @@ func (s *RestServerTestSuite) TestAddStub_SessionFromQueryWhenHeaderMissing() {
 
 	// Act
 	w := s.addStubJSONWithRequest(s.server, stubJSON, func(req *http.Request) {
-		req.URL.RawQuery = "session=query-session"
+		req.URL.RawQuery = "room=query-room"
 	})
 
 	// Assert
@@ -631,10 +633,10 @@ func (s *RestServerTestSuite) TestAddStub_SessionFromQueryWhenHeaderMissing() {
 
 	stubs := s.budgerigar.All()
 	s.Require().Len(stubs, 1)
-	s.Equal("query-session", stubs[0].Session)
+	s.Equal("query-room", stubs[0].Room)
 }
 
-func (s *RestServerTestSuite) TestAddStub_UpdateByIDPreservesSessionScope() {
+func (s *RestServerTestSuite) TestAddStub_UpdateByIDPreservesRoomScope() {
 	initial := `[
 		{
 			"service": "svc",
@@ -646,7 +648,7 @@ func (s *RestServerTestSuite) TestAddStub_UpdateByIDPreservesSessionScope() {
 	]`
 
 	w := s.addStubJSONWithRequest(s.server, initial, func(req *http.Request) {
-		req.Header.Set("X-Gripmock-Session", "scope-A")
+		req.Header.Set("X-Gripmock-Room", "scope-A")
 	})
 	s.Equal(http.StatusOK, w.Code)
 
@@ -668,11 +670,11 @@ func (s *RestServerTestSuite) TestAddStub_UpdateByIDPreservesSessionScope() {
 
 	stubs = s.budgerigar.All()
 	s.Require().Len(stubs, 1)
-	s.Equal("scope-A", stubs[0].Session, "updating by id must not drop session scope")
+	s.Equal("scope-A", stubs[0].Room, "updating by id must not drop room scope")
 	s.True(stubs[0].IsEnabled(), "updated stub must keep enabled flag")
 }
 
-func (s *RestServerTestSuite) TestUpdateStubEnabledByID_SessionScopedRoute() {
+func (s *RestServerTestSuite) TestUpdateStubEnabledByID_RoomScopedRoute() {
 	base := `[
 		{
 			"service": "svc",
@@ -691,7 +693,7 @@ func (s *RestServerTestSuite) TestUpdateStubEnabledByID_SessionScopedRoute() {
 	]`
 
 	w := s.addStubJSONWithRequest(s.server, base, func(req *http.Request) {
-		req.Header.Set("X-Gripmock-Session", "A")
+		req.Header.Set("X-Gripmock-Room", "A")
 	})
 	s.Equal(http.StatusOK, w.Code)
 
@@ -715,7 +717,7 @@ func (s *RestServerTestSuite) TestUpdateStubEnabledByID_SessionScopedRoute() {
 		bytes.NewBufferString(`{"enabled":true}`),
 	)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Gripmock-Session", "A")
+	req.Header.Set("X-Gripmock-Room", "A")
 	req = mux.SetURLVars(req, map[string]string{
 		"uuid": strconv.FormatUint(uint64(publicID), 10),
 	})
@@ -733,10 +735,10 @@ func (s *RestServerTestSuite) TestUpdateStubEnabledByID_SessionScopedRoute() {
 			s.Equal("2", stub.Input.Equals["x"])
 		}
 	}
-	s.Equal(1, enabledCount, "only one stub must be enabled for session/service/method route")
+	s.Equal(1, enabledCount, "only one stub must be enabled for room/service/method route")
 }
 
-func (s *RestServerTestSuite) TestUpdateStubEnabledByID_RejectsWrongSession() {
+func (s *RestServerTestSuite) TestUpdateStubEnabledByID_RejectsWrongRoom() {
 	payload := `[
 		{
 			"service": "svc",
@@ -748,7 +750,7 @@ func (s *RestServerTestSuite) TestUpdateStubEnabledByID_RejectsWrongSession() {
 	]`
 
 	w := s.addStubJSONWithRequest(s.server, payload, func(req *http.Request) {
-		req.Header.Set("X-Gripmock-Session", "A")
+		req.Header.Set("X-Gripmock-Room", "A")
 	})
 	s.Equal(http.StatusOK, w.Code)
 
@@ -763,7 +765,7 @@ func (s *RestServerTestSuite) TestUpdateStubEnabledByID_RejectsWrongSession() {
 		bytes.NewBufferString(`{"enabled":true}`),
 	)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Gripmock-Session", "B")
+	req.Header.Set("X-Gripmock-Room", "B")
 	req = mux.SetURLVars(req, map[string]string{
 		"uuid": strconv.FormatUint(uint64(publicID), 10),
 	})
@@ -792,7 +794,7 @@ func (s *RestServerTestSuite) TestUpdateStubEnabledByID_EnableFromAllDisabled() 
 	]`
 
 	w := s.addStubJSONWithRequest(s.server, base, func(req *http.Request) {
-		req.Header.Set("X-Gripmock-Session", "A")
+		req.Header.Set("X-Gripmock-Room", "A")
 	})
 	s.Equal(http.StatusOK, w.Code)
 
@@ -816,7 +818,7 @@ func (s *RestServerTestSuite) TestUpdateStubEnabledByID_EnableFromAllDisabled() 
 		bytes.NewBufferString(`{"enabled":true}`),
 	)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Gripmock-Session", "A")
+	req.Header.Set("X-Gripmock-Room", "A")
 	req = mux.SetURLVars(req, map[string]string{
 		"uuid": strconv.FormatUint(uint64(publicID), 10),
 	})
@@ -892,8 +894,8 @@ func (s *RestServerTestSuite) TestMcpToolsListIncludesExpandedSurface() {
 
 func (s *RestServerTestSuite) TestMcpVerifyCallsTool() {
 	server := s.newRestServerWithHistory(
-		history.CallRecord{Service: "svc", Method: "M", Session: "A"},
-		history.CallRecord{Service: "svc", Method: "M", Session: "A"},
+		history.CallRecord{Service: "svc", Method: "M", Room: "A"},
+		history.CallRecord{Service: "svc", Method: "M", Room: "A"},
 	)
 
 	okResponse := s.mcpToolCallWithRequest(server, 1, "verify.calls", map[string]any{
@@ -901,7 +903,7 @@ func (s *RestServerTestSuite) TestMcpVerifyCallsTool() {
 		"method":        "M",
 		"expectedCount": 2,
 	}, func(req *http.Request) {
-		req.Header.Set("X-Gripmock-Session", "A")
+		req.Header.Set("X-Gripmock-Room", "A")
 	})
 
 	okResult := s.mcpStructuredContent(okResponse)
@@ -1182,7 +1184,7 @@ func (s *RestServerTestSuite) TestMcpNotificationReturnsNoContent() {
 	}, http.StatusAccepted)
 }
 
-func (s *RestServerTestSuite) TestMcpHistoryList_SessionScoping() {
+func (s *RestServerTestSuite) TestMcpHistoryList_RoomScoping() {
 	tests := []struct {
 		name           string
 		arguments      map[string]any
@@ -1190,29 +1192,29 @@ func (s *RestServerTestSuite) TestMcpHistoryList_SessionScoping() {
 		expectedLen    int
 	}{
 		{
-			name:        "uses session from header",
+			name:        "uses room from header",
 			arguments:   map[string]any{"service": "svc", "method": "M"},
 			expectedLen: 2,
 			prepareRequest: func(req *http.Request) {
-				req.Header.Set("X-Gripmock-Session", "A")
+				req.Header.Set("X-Gripmock-Room", "A")
 			},
 		},
 		{
-			name:           "without session returns all records",
+			name:           "without room returns all records",
 			arguments:      map[string]any{"service": "svc", "method": "M"},
 			expectedLen:    3,
 			prepareRequest: nil,
 		},
 		{
-			name: "explicit session overrides transport session",
+			name: "explicit room overrides transport room",
 			arguments: map[string]any{
 				"service": "svc",
 				"method":  "M",
-				"session": "B",
+				"room":    "B",
 			},
 			expectedLen: 2,
 			prepareRequest: func(req *http.Request) {
-				req.Header.Set("X-Gripmock-Session", "A")
+				req.Header.Set("X-Gripmock-Room", "A")
 			},
 		},
 	}
@@ -1220,7 +1222,7 @@ func (s *RestServerTestSuite) TestMcpHistoryList_SessionScoping() {
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			// Arrange
-			server := s.newRestServerWithSessionHistory()
+			server := s.newRestServerWithRoomHistory()
 
 			// Act
 			response := s.mcpToolCallWithRequest(server, 1, "history.list", tt.arguments, tt.prepareRequest)
@@ -1234,7 +1236,7 @@ func (s *RestServerTestSuite) TestMcpHistoryList_SessionScoping() {
 	}
 }
 
-func (s *RestServerTestSuite) TestMcpDebugCall_SessionScoping() {
+func (s *RestServerTestSuite) TestMcpDebugCall_RoomScoping() {
 	tests := []struct {
 		name           string
 		arguments      map[string]any
@@ -1242,22 +1244,22 @@ func (s *RestServerTestSuite) TestMcpDebugCall_SessionScoping() {
 		expectedCount  float64
 	}{
 		{
-			name:      "uses session from transport for stub scope",
+			name:      "uses room from transport for stub scope",
 			arguments: map[string]any{"service": "svc.Greeter", "method": "SayHello"},
 			prepareRequest: func(req *http.Request) {
-				req.Header.Set("X-Gripmock-Session", "A")
+				req.Header.Set("X-Gripmock-Room", "A")
 			},
 			expectedCount: 2.0,
 		},
 		{
-			name: "explicit session overrides transport session for stub scope",
+			name: "explicit room overrides transport room for stub scope",
 			arguments: map[string]any{
 				"service": "svc.Greeter",
 				"method":  "SayHello",
-				"session": "B",
+				"room":    "B",
 			},
 			prepareRequest: func(req *http.Request) {
-				req.Header.Set("X-Gripmock-Session", "A")
+				req.Header.Set("X-Gripmock-Room", "A")
 			},
 			expectedCount: 2.0,
 		},
@@ -1322,13 +1324,13 @@ func (s *RestServerTestSuite) TestListHistory() {
 	s.Empty(list)
 }
 
-func (s *RestServerTestSuite) TestListHistory_SessionFromHeader() {
+func (s *RestServerTestSuite) TestListHistory_RoomFromHeader() {
 	// Arrange
-	server := s.newRestServerWithSessionHistory()
+	server := s.newRestServerWithRoomHistory()
 
 	// Act
 	w := s.listHistory(server, func(req *http.Request) {
-		req.Header.Set("X-Gripmock-Session", "A")
+		req.Header.Set("X-Gripmock-Room", "A")
 	})
 	s.Equal(http.StatusOK, w.Code)
 
@@ -1422,13 +1424,13 @@ func (s *RestServerTestSuite) TestVerifyCallsWithHistory() {
 	s.Equal(http.StatusBadRequest, w3.Code)
 }
 
-func (s *RestServerTestSuite) TestVerifyCallsWithHistory_SessionFromHeader() {
+func (s *RestServerTestSuite) TestVerifyCallsWithHistory_RoomFromHeader() {
 	// Arrange
-	server := s.newRestServerWithSessionHistory()
+	server := s.newRestServerWithRoomHistory()
 
 	// Act
 	w := s.verifyCalls(server, map[string]any{"service": "svc", "method": "M", "expectedCount": 2}, func(req *http.Request) {
-		req.Header.Set("X-Gripmock-Session", "A")
+		req.Header.Set("X-Gripmock-Room", "A")
 	})
 
 	// Assert
@@ -1538,12 +1540,12 @@ func (s *RestServerTestSuite) TestSearchStubs() {
 	s.Contains(response, "data")
 }
 
-func (s *RestServerTestSuite) TestSearchStubs_SessionFromHeader() {
+func (s *RestServerTestSuite) TestSearchStubs_RoomFromHeader() {
 	// Arrange
 	s.budgerigar.PutMany(&stuber.Stub{
 		Service: "svc",
 		Method:  "M",
-		Session: "A",
+		Room:    "A",
 		Input: stuber.InputData{
 			Contains: map[string]any{"x": "1"},
 		},
@@ -1558,14 +1560,14 @@ func (s *RestServerTestSuite) TestSearchStubs_SessionFromHeader() {
 	s.Require().NoError(err)
 
 	// Act
-	wNoSession := s.searchStubs(s.server, nil, searchBody)
-	s.Equal(http.StatusNotFound, wNoSession.Code)
+	wNoRoom := s.searchStubs(s.server, nil, searchBody)
+	s.Equal(http.StatusNotFound, wNoRoom.Code)
 
-	wWithSession := s.searchStubsWithRequest(s.server, nil, searchBody, func(req *http.Request) {
-		req.Header.Set("X-Gripmock-Session", "A")
+	wWithRoom := s.searchStubsWithRequest(s.server, nil, searchBody, func(req *http.Request) {
+		req.Header.Set("X-Gripmock-Room", "A")
 	})
 	// Assert
-	s.Equal(http.StatusOK, wWithSession.Code)
+	s.Equal(http.StatusOK, wWithRoom.Code)
 }
 
 // TestServiceMethodsList tests listing service methods.
@@ -1997,11 +1999,11 @@ func (s *RestServerTestSuite) newRestServerWithStore(store history.Reader) *Rest
 	return server
 }
 
-func (s *RestServerTestSuite) newRestServerWithSessionHistory() *RestServer {
+func (s *RestServerTestSuite) newRestServerWithRoomHistory() *RestServer {
 	return s.newRestServerWithHistory(
-		history.CallRecord{Service: "svc", Method: "M", Session: ""},
-		history.CallRecord{Service: "svc", Method: "M", Session: "A"},
-		history.CallRecord{Service: "svc", Method: "M", Session: "B"},
+		history.CallRecord{Service: "svc", Method: "M", Room: ""},
+		history.CallRecord{Service: "svc", Method: "M", Room: "A"},
+		history.CallRecord{Service: "svc", Method: "M", Room: "B"},
 	)
 }
 
@@ -2067,7 +2069,7 @@ func (s *RestServerTestSuite) addDebugScopeStubs(server *RestServer) {
 		server,
 		`[{"service":"svc.Greeter","method":"SayHello","input":{"equals":{"name":"Alex"}},"output":{"data":{"message":"Hi A"}}}]`,
 		func(req *http.Request) {
-			req.Header.Set("X-Gripmock-Session", "A")
+			req.Header.Set("X-Gripmock-Room", "A")
 		},
 	)
 
@@ -2075,7 +2077,7 @@ func (s *RestServerTestSuite) addDebugScopeStubs(server *RestServer) {
 		server,
 		`[{"service":"svc.Greeter","method":"SayHello","input":{"equals":{"name":"Alex"}},"output":{"data":{"message":"Hi B"}}}]`,
 		func(req *http.Request) {
-			req.Header.Set("X-Gripmock-Session", "B")
+			req.Header.Set("X-Gripmock-Room", "B")
 		},
 	)
 
@@ -2182,6 +2184,64 @@ func (s *RestServerTestSuite) mcpErrorCode(response map[string]any) float64 {
 	s.Require().True(ok)
 
 	return code
+}
+
+func (s *RestServerTestSuite) TestRoomsDeleteByOwner() {
+	const (
+		roomID  = "101"
+		ownerID = "owner-1"
+	)
+
+	room.TouchWithOwner(roomID, ownerID)
+	s.budgerigar.PutMany(&stuber.Stub{
+		Service: "svc.Room",
+		Method:  "Delete",
+		Room:    roomID,
+		Input:   stuber.InputData{Contains: map[string]any{"key": "value"}},
+		Output:  stuber.Output{Data: map[string]any{"ok": true}},
+	})
+
+	req := httptest.NewRequestWithContext(s.T().Context(), http.MethodDelete, "/api/rooms/"+roomID, nil)
+	req = mux.SetURLVars(req, map[string]string{"roomID": roomID})
+	req = req.WithContext(muxmiddleware.WithOwnerContext(req.Context(), ownerID))
+
+	w := httptest.NewRecorder()
+	s.server.RoomsDelete(w, req)
+
+	s.Require().Equal(http.StatusOK, w.Code)
+	s.Require().Empty(s.budgerigar.All())
+
+	var response map[string]any
+	s.Require().NoError(json.Unmarshal(w.Body.Bytes(), &response))
+	s.Require().InDelta(float64(1), response["deletedCount"], 0)
+	s.Require().Equal(roomID, response["room"])
+}
+
+func (s *RestServerTestSuite) TestRoomsDeleteForbiddenForAnotherOwner() {
+	const (
+		roomID      = "102"
+		roomOwnerID = "owner-1"
+		otherOwner  = "owner-2"
+	)
+
+	room.TouchWithOwner(roomID, roomOwnerID)
+	s.budgerigar.PutMany(&stuber.Stub{
+		Service: "svc.Room",
+		Method:  "Delete",
+		Room:    roomID,
+		Input:   stuber.InputData{Contains: map[string]any{"key": "value"}},
+		Output:  stuber.Output{Data: map[string]any{"ok": true}},
+	})
+
+	req := httptest.NewRequestWithContext(s.T().Context(), http.MethodDelete, "/api/rooms/"+roomID, nil)
+	req = mux.SetURLVars(req, map[string]string{"roomID": roomID})
+	req = req.WithContext(muxmiddleware.WithOwnerContext(req.Context(), otherOwner))
+
+	w := httptest.NewRecorder()
+	s.server.RoomsDelete(w, req)
+
+	s.Require().Equal(http.StatusForbidden, w.Code)
+	s.Require().Len(s.budgerigar.All(), 1)
 }
 
 func ptrString(value string) *string {

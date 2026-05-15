@@ -1,34 +1,11 @@
-import { useEffect, useState } from "react";
-import { Menu, useGetList, useSidebarState } from "react-admin";
+import { Menu, useSidebarState } from "react-admin";
 import StorageIcon from "@mui/icons-material/Storage";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import DevicesIcon from "@mui/icons-material/Devices";
 
-import { getCurrentSession, subscribeSessionChanges } from "../../utils/session";
-import type { SessionRow } from "../../features/session/model";
-
 export const CustomMenu = () => {
   const [sidebarOpen] = useSidebarState();
-  const [session, setSession] = useState(() => getCurrentSession());
-  const { data: sessions = [], refetch: refetchSessions } = useGetList<SessionRow>(
-    "sessions",
-    { pagination: { page: 1, perPage: 1000 } },
-    { retry: false, staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: true },
-  );
-  const sessionExistsInDb = sessions.some((row) => {
-    const value = String(row?.id || row?.session || row?.name || "").trim();
-    return value !== "" && value === session;
-  });
-
-  useEffect(
-    () =>
-      subscribeSessionChanges(() => {
-        setSession(getCurrentSession());
-        void refetchSessions();
-      }),
-    [refetchSessions],
-  );
 
   return (
     <Menu
@@ -58,7 +35,7 @@ export const CustomMenu = () => {
       }}
     >
       <Menu.Item to="/sniffer" primaryText="Sniffer" leftIcon={<TravelExploreIcon />} />
-      {sessionExistsInDb ? <Menu.Item to="/stubs" primaryText="Stubs" leftIcon={<StorageIcon />} /> : null}
+      <Menu.Item to="/stubs" primaryText="Stubs" leftIcon={<StorageIcon />} />
       <Menu.Item to="/protofiles" primaryText="Protofiles" leftIcon={<DescriptionOutlinedIcon />} />
       <Menu.Item to="/clients" primaryText="Clients" leftIcon={<DevicesIcon />} />
     </Menu>

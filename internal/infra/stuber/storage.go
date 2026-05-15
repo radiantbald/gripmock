@@ -47,7 +47,7 @@ type storage struct {
 	items        map[uint64]map[uuid.UUID]*Stub
 	itemSorted   map[uint64]map[string][]*Stub
 	itemsByID    map[uuid.UUID]*Stub
-	sessions     map[string]int
+	rooms     map[string]int
 }
 
 // newStorage creates a new instance of the storage struct.
@@ -58,7 +58,7 @@ func newStorage() *storage {
 		items:        make(map[uint64]map[uuid.UUID]*Stub),
 		itemSorted:   make(map[uint64]map[string][]*Stub),
 		itemsByID:    make(map[uuid.UUID]*Stub),
-		sessions:     make(map[string]int),
+		rooms:     make(map[string]int),
 	}
 }
 
@@ -72,17 +72,17 @@ func (s *storage) clear() {
 	s.items = make(map[uint64]map[uuid.UUID]*Stub)
 	s.itemSorted = make(map[uint64]map[string][]*Stub)
 	s.itemsByID = make(map[uuid.UUID]*Stub)
-	s.sessions = make(map[string]int)
+	s.rooms = make(map[string]int)
 }
 
-// findByMethodAvailable retrieves method stubs visible for session.
-func (s *storage) findByMethodAvailable(method, session string) iter.Seq[*Stub] {
+// findByMethodAvailable retrieves method stubs visible for room.
+func (s *storage) findByMethodAvailable(method, room string) iter.Seq[*Stub] {
 	return func(yield func(*Stub) bool) {
 		s.mu.RLock()
 		defer s.mu.RUnlock()
 
 		methodID := s.id(method)
-		if session == "" {
+		if room == "" {
 			for _, stub := range s.methodSorted[methodID][""] {
 				if !yield(stub) {
 					return
@@ -92,11 +92,11 @@ func (s *storage) findByMethodAvailable(method, session string) iter.Seq[*Stub] 
 			return
 		}
 
-		yieldMergedSorted(s.methodSorted[methodID][""], s.methodSorted[methodID][session], yield)
+		yieldMergedSorted(s.methodSorted[methodID][""], s.methodSorted[methodID][room], yield)
 	}
 }
 
-func (s *storage) hasMethodAvailable(method, session string) bool {
+func (s *storage) hasMethodAvailable(method, room string) bool {
 	methodID := s.id(method)
 
 	s.mu.RLock()
@@ -107,15 +107,15 @@ func (s *storage) hasMethodAvailable(method, session string) bool {
 		return true
 	}
 
-	if session == "" {
+	if room == "" {
 		return false
 	}
 
-	return len(buckets[session]) > 0
+	return len(buckets[room]) > 0
 }
 
-// findAllAvailable retrieves stubs by service/method visible for session.
-func (s *storage) findAllAvailable(left, right, session string) (iter.Seq[*Stub], error) {
+// findAllAvailable retrieves stubs by service/method visible for room.
+func (s *storage) findAllAvailable(left, right, room string) (iter.Seq[*Stub], error) {
 	indexes, err := s.posByPN(left, right)
 	if err != nil {
 		return nil, err
@@ -125,7 +125,7 @@ func (s *storage) findAllAvailable(left, right, session string) (iter.Seq[*Stub]
 		s.mu.RLock()
 		defer s.mu.RUnlock()
 
-		for _, stub := range collectAvailableSorted(s.itemSorted, indexes, session) {
+		for _, stub := range collectAvailableSorted(s.itemSorted, indexes, room) {
 			if !yield(stub) {
 				return
 			}
@@ -447,9 +447,9 @@ func (s *storage) upsert(values ...*Stub) []uuid.UUID {
 		}
 
 		s.items[index][v.ID] = v
-		s.upsertSessionIndex(s.itemSorted, index, v.Session, v)
-		s.upsertMethodSessionIndex(rightID, v.Session, v)
-		s.incrementSession(v.Session)
+		s.upsertRoomIndex(s.itemSorted, index, v.Room, v)
+		s.upsertMethodRoomIndex(rightID, v.Room, v)
+		s.incrementRoom(v.Room)
 		s.itemsByID[v.ID] = v
 		s.lefts[leftID] = struct{}{}
 	}
@@ -488,53 +488,53 @@ func (s *storage) removeStubIndexes(stub *Stub) {
 		}
 	}
 
-	s.removeSessionIndex(s.itemSorted, pos, stub.Session, stub.ID)
+	s.removeRoomIndex(s.itemSorted, pos, stub.Room, stub.ID)
 	methodID := s.id(stub.Method)
-	s.removeMethodSessionIndex(methodID, stub.Session, stub.ID)
-	s.decrementSession(stub.Session)
+	s.removeMethodRoomIndex(methodID, stub.Room, stub.ID)
+	s.decrementRoom(stub.Room)
 }
 
-func (s *storage) incrementSession(session string) {
-	if session == "" {
+func (s *storage) incrementRoom(room string) {
+	if room == "" {
 		return
 	}
 
-	s.sessions[session]++
+	s.rooms[room]++
 }
 
-func (s *storage) decrementSession(session string) {
-	if session == "" {
+func (s *storage) decrementRoom(room string) {
+	if room == "" {
 		return
 	}
 
-	next := s.sessions[session] - 1
+	next := s.rooms[room] - 1
 	if next <= 0 {
-		delete(s.sessions, session)
+		delete(s.rooms, room)
 
 		return
 	}
 
-	s.sessions[session] = next
+	s.rooms[room] = next
 }
 
-func (s *storage) sessionsList() []string {
+func (s *storage) roomsList() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	sessions := slices.Collect(maps.Keys(s.sessions))
-	if sessions == nil {
+	rooms := slices.Collect(maps.Keys(s.rooms))
+	if rooms == nil {
 		return []string{}
 	}
 
-	slices.Sort(sessions)
+	slices.Sort(rooms)
 
-	return sessions
+	return rooms
 }
 
-func (s *storage) upsertSessionIndex(
+func (s *storage) upsertRoomIndex(
 	sorted map[uint64]map[string][]*Stub,
 	key uint64,
-	session string,
+	room string,
 	stub *Stub,
 ) {
 	sortedBuckets := sorted[key]
@@ -543,23 +543,23 @@ func (s *storage) upsertSessionIndex(
 		sorted[key] = sortedBuckets
 	}
 
-	sortedBuckets[session] = insertSortedStub(sortedBuckets[session], stub)
+	sortedBuckets[room] = insertSortedStub(sortedBuckets[room], stub)
 }
 
-func (s *storage) upsertMethodSessionIndex(key uint32, session string, stub *Stub) {
+func (s *storage) upsertMethodRoomIndex(key uint32, room string, stub *Stub) {
 	sortedBuckets := s.methodSorted[key]
 	if sortedBuckets == nil {
 		sortedBuckets = make(map[string][]*Stub)
 		s.methodSorted[key] = sortedBuckets
 	}
 
-	sortedBuckets[session] = insertSortedStub(sortedBuckets[session], stub)
+	sortedBuckets[room] = insertSortedStub(sortedBuckets[room], stub)
 }
 
-func (s *storage) removeSessionIndex(
+func (s *storage) removeRoomIndex(
 	sorted map[uint64]map[string][]*Stub,
 	key uint64,
-	session string,
+	room string,
 	id uuid.UUID,
 ) {
 	sortedBuckets, exists := sorted[key]
@@ -567,9 +567,9 @@ func (s *storage) removeSessionIndex(
 		return
 	}
 
-	sortedBuckets[session] = removeSortedStubByID(sortedBuckets[session], id)
-	if len(sortedBuckets[session]) == 0 {
-		delete(sortedBuckets, session)
+	sortedBuckets[room] = removeSortedStubByID(sortedBuckets[room], id)
+	if len(sortedBuckets[room]) == 0 {
+		delete(sortedBuckets, room)
 	}
 
 	if len(sortedBuckets) == 0 {
@@ -577,15 +577,15 @@ func (s *storage) removeSessionIndex(
 	}
 }
 
-func (s *storage) removeMethodSessionIndex(key uint32, session string, id uuid.UUID) {
+func (s *storage) removeMethodRoomIndex(key uint32, room string, id uuid.UUID) {
 	sortedBuckets, exists := s.methodSorted[key]
 	if !exists {
 		return
 	}
 
-	sortedBuckets[session] = removeSortedStubByID(sortedBuckets[session], id)
-	if len(sortedBuckets[session]) == 0 {
-		delete(sortedBuckets, session)
+	sortedBuckets[room] = removeSortedStubByID(sortedBuckets[room], id)
+	if len(sortedBuckets[room]) == 0 {
+		delete(sortedBuckets, room)
 	}
 
 	if len(sortedBuckets) == 0 {
@@ -614,12 +614,12 @@ func removeSortedStubByID(stubs []*Stub, id uuid.UUID) []*Stub {
 	return stubs
 }
 
-func yieldMergedSorted(global, session []*Stub, yield func(*Stub) bool) {
+func yieldMergedSorted(global, room []*Stub, yield func(*Stub) bool) {
 	i := 0
 	j := 0
 
-	for i < len(global) && j < len(session) {
-		if compareStubsByPriorityAndID(global[i], session[j]) <= 0 {
+	for i < len(global) && j < len(room) {
+		if compareStubsByPriorityAndID(global[i], room[j]) <= 0 {
 			if !yield(global[i]) {
 				return
 			}
@@ -629,7 +629,7 @@ func yieldMergedSorted(global, session []*Stub, yield func(*Stub) bool) {
 			continue
 		}
 
-		if !yield(session[j]) {
+		if !yield(room[j]) {
 			return
 		}
 
@@ -644,8 +644,8 @@ func yieldMergedSorted(global, session []*Stub, yield func(*Stub) bool) {
 		i++
 	}
 
-	for j < len(session) {
-		if !yield(session[j]) {
+	for j < len(room) {
+		if !yield(room[j]) {
 			return
 		}
 
@@ -653,7 +653,7 @@ func yieldMergedSorted(global, session []*Stub, yield func(*Stub) bool) {
 	}
 }
 
-func collectAvailableSorted(indexBuckets map[uint64]map[string][]*Stub, indexes []uint64, session string) []*Stub {
+func collectAvailableSorted(indexBuckets map[uint64]map[string][]*Stub, indexes []uint64, room string) []*Stub {
 	if len(indexes) == 0 {
 		return nil
 	}
@@ -667,8 +667,8 @@ func collectAvailableSorted(indexBuckets map[uint64]map[string][]*Stub, indexes 
 		}
 
 		indexStubs := buckets[""]
-		if session != "" {
-			indexStubs = mergeSortedSlices(indexStubs, buckets[session])
+		if room != "" {
+			indexStubs = mergeSortedSlices(indexStubs, buckets[room])
 		}
 
 		if len(indexStubs) == 0 {

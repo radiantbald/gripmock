@@ -55,7 +55,7 @@ func TestMyService_WithHelper(t *testing.T) {
 
 ## Parallel Tests
 
-Use sessions for parallel tests when using remote mode:
+Use rooms for parallel tests when using remote mode:
 
 ```go
 func TestMyService_Parallel(t *testing.T) {
@@ -65,7 +65,7 @@ func TestMyService_Parallel(t *testing.T) {
     mock, err := sdk.Run(t,
         sdk.WithRemote("localhost:4770", "http://localhost:4771"),
         sdk.WithFileDescriptor(service.File_service_proto),
-        sdk.WithSession(t.Name()), // Isolate this test's stubs
+        sdk.WithRoom(t.Name()), // Isolate this test's stubs
     )
     require.NoError(t, err)
     

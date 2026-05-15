@@ -38,11 +38,11 @@ func (s *searcher) ensureServiceMethodExists(service, method string) error {
 	return nil
 }
 
-func (s *searcher) lookupVisibleByID(session string, id uuid.UUID) (*searcherLookup, *Stub) {
-	lookup := s.lookup(session)
+func (s *searcher) lookupVisibleByID(room string, id uuid.UUID) (*searcherLookup, *Stub) {
+	lookup := s.lookup(room)
 	found := lookup.LookupID(id)
 
-	if found == nil || !s.isVisibleAndNotExhausted(found, session) {
+	if found == nil || !s.isVisibleAndNotExhausted(found, room) {
 		return lookup, nil
 	}
 

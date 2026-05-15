@@ -70,15 +70,15 @@ func TestRemoteSetOpErrKeepsFirstError(t *testing.T) {
 	require.ErrorIs(t, m.getOpErr(), first)
 }
 
-func TestRemoteArmSessionTTLNoSessionNoTimer(t *testing.T) {
+func TestRemoteArmRoomTTLNoRoomNoTimer(t *testing.T) {
 	t.Parallel()
 
-	m := &remoteMock{sessionTTL: time.Millisecond}
-	m.armSessionTTL()
+	m := &remoteMock{roomTTL: time.Millisecond}
+	m.armRoomTTL()
 	require.Nil(t, m.ttlTimer)
 }
 
-func TestRemoteArmSessionTTLTriggersOwnedCleanup(t *testing.T) {
+func TestRemoteArmRoomTTLTriggersOwnedCleanup(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
@@ -97,13 +97,13 @@ func TestRemoteArmSessionTTLTriggersOwnedCleanup(t *testing.T) {
 	m := &remoteMock{
 		restBaseURL: rest.URL,
 		httpClient:  rest.Client(),
-		session:     "A",
-		sessionTTL:  10 * time.Millisecond,
+		room:     "A",
+		roomTTL:  10 * time.Millisecond,
 		stubIDs:     []uuid.UUID{uuid.New()},
 	}
 
 	// Act
-	m.armSessionTTL()
+	m.armRoomTTL()
 	t.Cleanup(func() {
 		if m.ttlTimer != nil {
 			m.ttlTimer.Stop()
@@ -119,7 +119,7 @@ func TestRemoteArmSessionTTLTriggersOwnedCleanup(t *testing.T) {
 	}
 }
 
-func TestRemoteArmSessionTTLStoresCleanupError(t *testing.T) {
+func TestRemoteArmRoomTTLStoresCleanupError(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
@@ -136,13 +136,13 @@ func TestRemoteArmSessionTTLStoresCleanupError(t *testing.T) {
 	m := &remoteMock{
 		restBaseURL: rest.URL,
 		httpClient:  rest.Client(),
-		session:     "A",
-		sessionTTL:  10 * time.Millisecond,
+		room:     "A",
+		roomTTL:  10 * time.Millisecond,
 		stubIDs:     []uuid.UUID{uuid.New()},
 	}
 
 	// Act
-	m.armSessionTTL()
+	m.armRoomTTL()
 	t.Cleanup(func() {
 		if m.ttlTimer != nil {
 			m.ttlTimer.Stop()
@@ -152,7 +152,7 @@ func TestRemoteArmSessionTTLStoresCleanupError(t *testing.T) {
 	deadline := time.Now().Add(500 * time.Millisecond)
 	for time.Now().Before(deadline) {
 		if err := m.getOpErr(); err != nil {
-			require.Contains(t, err.Error(), "session TTL cleanup failed")
+			require.Contains(t, err.Error(), "room TTL cleanup failed")
 			return
 		}
 

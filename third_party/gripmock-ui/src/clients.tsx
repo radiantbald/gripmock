@@ -38,7 +38,7 @@ export const ClientsList = () => {
       <ActiveFiltersSummary />
       <Datagrid bulkActionButtons={false} size={gridSize} sx={gridDensitySx}>
         <TextField source="client" sortable />
-        <TextField source="session" sortable />
+        <TextField source="room" sortable />
       </Datagrid>
     </List>
   );

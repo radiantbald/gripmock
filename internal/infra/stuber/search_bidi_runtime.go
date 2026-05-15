@@ -158,7 +158,7 @@ func (s *searcher) findBidi(query QueryBidi) (*BidiResult, error) {
 		return nil, err
 	}
 
-	return s.newBidiResult(query, nil, s.lookup(query.Session)), nil
+	return s.newBidiResult(query, nil, s.lookup(query.Room)), nil
 }
 
 // searchByIDBidi handles ID-based queries for bidirectional streaming.
@@ -168,7 +168,7 @@ func (s *searcher) searchByIDBidi(query QueryBidi) (*BidiResult, error) {
 		return nil, err
 	}
 
-	lookup, found := s.lookupVisibleByID(query.Session, *query.ID)
+	lookup, found := s.lookupVisibleByID(query.Room, *query.ID)
 	if found == nil || !found.IsEnabled() {
 		// Return an error if the Stub value is not found
 		return nil, ErrServiceNotFound
@@ -188,7 +188,7 @@ func (s *searcher) newBidiResult(query QueryBidi, matchingStubs []*Stub, lookup 
 	result.reserveQuery = Query{
 		Service:       query.Service,
 		Method:        query.Method,
-		Session:       query.Session,
+		Room:       query.Room,
 		StrictService: query.StrictService,
 		Headers:       query.Headers,
 		Input:         result.inputBuf[:],

@@ -20,7 +20,7 @@ type CallRecord struct {
 	StubID    uuid.UUID        `json:"stubId,omitempty"`
 	Service   string           `json:"service,omitempty"`
 	Method    string           `json:"method,omitempty"`
-	Session   string           `json:"session,omitempty"`   // Session ID (empty = global).
+	Room   string           `json:"room,omitempty"`   // Room ID (empty = global).
 	Request   map[string]any   `json:"request,omitempty"`   // Deprecated: use Requests.
 	Requests  []map[string]any `json:"requests,omitempty"`  // For streaming calls with multiple messages.
 	Response  map[string]any   `json:"response,omitempty"`  // Deprecated: use Responses.
@@ -39,11 +39,11 @@ type Recorder interface {
 
 // FilterOpts specifies filter criteria for recorded calls.
 // Empty string means "no filter" for that field.
-// Session non-empty: records with Session=="" or Session==Session (visible to session).
+// Room non-empty: records with Room=="" or Room==Room (visible to room).
 type FilterOpts struct {
 	Service string
 	Method  string
-	Session string
+	Room string
 }
 
 // Reader provides read access to recorded calls.
@@ -59,9 +59,9 @@ type Subscriber interface {
 	Subscribe(buffer int) (<-chan CallRecord, func())
 }
 
-// SessionCleaner removes records for a specific session.
-type SessionCleaner interface {
-	DeleteSession(session string) int
+// RoomCleaner removes records for a specific room.
+type RoomCleaner interface {
+	DeleteRoom(room string) int
 }
 
 // MemoryStore implements both Recorder and Reader (in-memory).
@@ -340,7 +340,7 @@ func (s *MemoryStore) FilterSeq(opts FilterOpts) iter.Seq[CallRecord] {
 				continue
 			}
 
-			if opts.Session != "" && c.Session != "" && c.Session != opts.Session {
+			if opts.Room != "" && c.Room != "" && c.Room != opts.Room {
 				continue
 			}
 
@@ -356,10 +356,10 @@ func (s *MemoryStore) FilterByMethod(service, method string) []CallRecord {
 	return s.Filter(FilterOpts{Service: service, Method: method})
 }
 
-// DeleteSession removes records that belong strictly to the provided session.
-// Global records (Session == "") are not affected.
-func (s *MemoryStore) DeleteSession(session string) int {
-	if session == "" {
+// DeleteRoom removes records that belong strictly to the provided room.
+// Global records (Room == "") are not affected.
+func (s *MemoryStore) DeleteRoom(room string) int {
+	if room == "" {
 		return 0
 	}
 
@@ -372,7 +372,7 @@ func (s *MemoryStore) DeleteSession(session string) int {
 	var bytesAfter int64
 
 	for _, c := range s.calls {
-		if c.Session == session {
+		if c.Room == room {
 			deleted++
 
 			continue

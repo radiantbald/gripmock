@@ -62,7 +62,7 @@ func (b *Builder) RestServe(
 	ctx context.Context,
 	stubPath string,
 ) (*RestServer, error) {
-	b.StartSessionGC(ctx)
+	b.StartRoomGC(ctx)
 
 	extender := b.Extender(ctx)
 	// Load stubs synchronously before starting HTTP server
@@ -97,8 +97,8 @@ func (b *Builder) RestServe(
 	if allowedPhones, allowedErr := b.AllowedPhonesRepository(ctx); allowedErr == nil {
 		apiServer.SetAllowedPhonesRepository(allowedPhones)
 	}
-	if sessionsRepository, sessionsErr := b.SessionsRepository(ctx); sessionsErr == nil {
-		apiServer.SetSessionsRepository(sessionsRepository)
+	if roomsRepository, roomsErr := b.RoomsRepository(ctx); roomsErr == nil {
+		apiServer.SetRoomsRepository(roomsRepository)
 	}
 	if clientsRepository, clientsErr := b.ClientsRepository(ctx); clientsErr == nil {
 		apiServer.SetClientsRepository(clientsRepository)
@@ -119,7 +119,7 @@ func (b *Builder) RestServe(
 		Middlewares: []rest.MiddlewareFunc{
 			httputil.MaxBodySize(httputil.MaxBodyBytes()),
 			muxmiddleware.PanicRecoveryMiddleware,
-			muxmiddleware.TransportSession,
+			muxmiddleware.TransportRoom,
 			muxmiddleware.ContentType,
 			muxmiddleware.RequestLogger,
 		},
@@ -149,14 +149,17 @@ func (b *Builder) RestServe(
 	router.Path("/api/auth/allowlist").Methods(http.MethodDelete).Handler(
 		withMCPMiddlewares(http.HandlerFunc(apiServer.DeleteAllowedPhone)),
 	)
-	router.Path("/api/sessions").Methods(http.MethodPost).Handler(
-		withMCPMiddlewares(http.HandlerFunc(apiServer.SessionsCreate)),
+	router.Path("/api/rooms").Methods(http.MethodPost).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.RoomsCreate)),
 	)
-	router.Path("/api/sessions/peers").Methods(http.MethodPost).Handler(
-		withMCPMiddlewares(http.HandlerFunc(apiServer.SessionsAssignPeer)),
+	router.Path("/api/rooms/{roomID}").Methods(http.MethodDelete).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.RoomsDelete)),
 	)
-	router.Path("/api/sessions/peers/status").Methods(http.MethodGet).Handler(
-		withMCPMiddlewares(http.HandlerFunc(apiServer.SessionsPeerStatus)),
+	router.Path("/api/rooms/peers").Methods(http.MethodPost).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.RoomsAssignPeer)),
+	)
+	router.Path("/api/rooms/peers/status").Methods(http.MethodGet).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.RoomsPeerStatus)),
 	)
 	router.Path("/api/proto-metadata/status").Methods(http.MethodGet).Handler(
 		withMCPMiddlewares(http.HandlerFunc(apiServer.ProtoMetadataStatus)),
@@ -194,7 +197,7 @@ func (b *Builder) RestServe(
 		handlers.AllowedHeaders([]string{
 			"Accept", "Accept-Language", "Content-Type", "Content-Language", "Origin",
 			"X-GripMock-RequestInternal",
-			"X-Gripmock-Session",
+			"X-Gripmock-Room",
 		}),
 		handlers.AllowedMethods([]string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch}),
 	)(router)
@@ -249,7 +252,7 @@ func withMCPMiddlewares(handler http.Handler) http.Handler {
 	middlewares := []func(http.Handler) http.Handler{
 		httputil.MaxBodySize(httputil.MaxBodyBytes()),
 		muxmiddleware.PanicRecoveryMiddleware,
-		muxmiddleware.TransportSession,
+		muxmiddleware.TransportRoom,
 		muxmiddleware.ContentType,
 		muxmiddleware.RequestLogger,
 	}

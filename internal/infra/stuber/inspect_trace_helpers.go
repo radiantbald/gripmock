@@ -16,12 +16,12 @@ func reasonIf(condition bool, reason string) string {
 	return ""
 }
 
-func isStubVisibleForSession(stubSession, querySession string) bool {
-	if querySession == "" {
-		return stubSession == ""
+func isStubVisibleForRoom(stubRoom, queryRoom string) bool {
+	if queryRoom == "" {
+		return stubRoom == ""
 	}
 
-	return stubSession == "" || stubSession == querySession
+	return stubRoom == "" || stubRoom == queryRoom
 }
 
 func doesQueryMatchStubHeaders(query Query, stub *Stub) bool {

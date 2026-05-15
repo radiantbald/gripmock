@@ -18,8 +18,8 @@ tags:
     description: Healthcheck
   - name: dashboard
     description: Dashboard and runtime telemetry
-  - name: sessions
-    description: Session management
+  - name: rooms
+    description: Room management
   - name: services
     description: Services reflection
   - name: stubs
@@ -119,21 +119,21 @@ paths:
         '500':
           description: Internal Server Error
 
-  # sessions
-  /sessions:
+  # rooms
+  /rooms:
     get:
       tags:
-        - sessions
-      summary: Session options
-      description: Returns distinct non-empty session IDs available in current stubs.
-      operationId: sessionsList
+        - rooms
+      summary: Room options
+      description: Returns distinct non-empty room IDs available in current stubs.
+      operationId: roomsList
       responses:
         '200':
           description: Successful operation
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Sessions'
+                $ref: '#/components/schemas/Rooms'
         '500':
           description: Internal Server Error
 
@@ -337,9 +337,9 @@ paths:
           required: false
           schema:
             type: string
-        - name: session
+        - name: room
           in: query
-          description: Filter by session ID (empty means global stubs)
+          description: Filter by room ID (empty means global stubs)
           required: false
           schema:
             type: string
@@ -536,7 +536,7 @@ paths:
         '500':
           description: Internal Server Error
       requestBody:
-        description: Inspect criteria including service, method, optional headers/session and input messages
+        description: Inspect criteria including service, method, optional headers/room and input messages
         required: true
         content:
           application/json:
@@ -578,7 +578,7 @@ paths:
           required: false
           schema:
             type: string
-        - name: session
+        - name: room
           in: query
           required: false
           schema:
@@ -926,9 +926,9 @@ components:
           type: string
         name:
           type: string
-        session:
+        room:
           type: string
-          description: Session ID (empty = global)
+          description: Room ID (empty = global)
         stubId:
           $ref: '#/components/schemas/ID'
           description: Stub identifier
@@ -1009,7 +1009,7 @@ components:
           type: string
         name:
           type: string
-        session:
+        room:
           type: string
         headers:
           type: object
@@ -1055,13 +1055,13 @@ components:
         - id
         - service
         - method
-        - session
+        - room
         - priority
         - times
         - used
         - specificity
         - score
-        - visibleBySession
+        - visibleByRoom
         - withinTimes
         - headersMatched
         - inputMatched
@@ -1077,7 +1077,7 @@ components:
           type: string
         name:
           type: string
-        session:
+        room:
           type: string
         priority:
           type: integer
@@ -1092,7 +1092,7 @@ components:
         score:
           type: number
           format: double
-        visibleBySession:
+        visibleByRoom:
           type: boolean
         withinTimes:
           type: boolean
@@ -1115,7 +1115,7 @@ components:
       required:
         - service
         - method
-        - session
+        - room
         - matchedStubId
         - similarStubId
         - fallbackToMethod
@@ -1127,7 +1127,7 @@ components:
           type: string
         method:
           type: string
-        session:
+        room:
           type: string
         matchedStubId:
           type: string
@@ -1152,7 +1152,7 @@ components:
         - totalStubs
         - usedStubs
         - unusedStubs
-        - totalSessions
+        - totalRooms
         - runtimeDescriptors
         - totalHistory
         - historyErrors
@@ -1169,7 +1169,7 @@ components:
         unusedStubs:
           type: integer
           minimum: 0
-        totalSessions:
+        totalRooms:
           type: integer
           minimum: 0
         runtimeDescriptors:
@@ -1181,16 +1181,16 @@ components:
         historyErrors:
           type: integer
           minimum: 0
-    Sessions:
+    Rooms:
       type: object
       required:
-        - sessions
+        - rooms
       properties:
-        sessions:
+        rooms:
           type: array
           items:
-            $ref: '#/components/schemas/Session'
-    Session:
+            $ref: '#/components/schemas/Room'
+    Room:
       type: object
       required:
         - id
@@ -1215,7 +1215,7 @@ components:
         - historyEnabled
         - totalServices
         - totalStubs
-        - totalSessions
+        - totalRooms
         - runtimeDescriptors
       properties:
         appName:
@@ -1249,7 +1249,7 @@ components:
         totalStubs:
           type: integer
           minimum: 0
-        totalSessions:
+        totalRooms:
           type: integer
           minimum: 0
         runtimeDescriptors:
@@ -1273,7 +1273,7 @@ components:
         - totalStubs
         - usedStubs
         - unusedStubs
-        - totalSessions
+        - totalRooms
         - runtimeDescriptors
         - totalHistory
         - historyErrors
@@ -1315,7 +1315,7 @@ components:
         unusedStubs:
           type: integer
           minimum: 0
-        totalSessions:
+        totalRooms:
           type: integer
           minimum: 0
         runtimeDescriptors:

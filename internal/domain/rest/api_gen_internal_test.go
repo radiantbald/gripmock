@@ -48,8 +48,8 @@ func (m *mockServer) Dashboard(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (m *mockServer) SessionsList(w http.ResponseWriter, _ *http.Request) {
-	m.called["SessionsList"] = true
+func (m *mockServer) RoomsList(w http.ResponseWriter, _ *http.Request) {
+	m.called["RoomsList"] = true
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -198,7 +198,7 @@ func TestHandlerRoutes(t *testing.T) {
 		{http.MethodGet, "/health/readiness", "Readiness"},
 		{http.MethodGet, "/dashboard/overview", "DashboardOverview"},
 		{http.MethodGet, "/dashboard", "Dashboard"},
-		{http.MethodGet, "/sessions", "SessionsList"},
+		{http.MethodGet, "/rooms", "RoomsList"},
 		{http.MethodGet, "/dashboard/info", "DashboardInfo"},
 		{http.MethodGet, "/services", "ServicesList"},
 		{http.MethodGet, "/services/myservice", "ServiceGet"},

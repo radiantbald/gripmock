@@ -82,12 +82,12 @@ type InspectCandidate struct {
 	Name             string                  `json:"name,omitempty"`
 	Service          string                  `json:"service"`
 	Method           string                  `json:"method"`
-	Session          string                  `json:"session,omitempty"`
+	Room          string                  `json:"room,omitempty"`
 	Priority         int                     `json:"priority"`
 	Enabled          bool                    `json:"enabled"`
 	Times            int                     `json:"times"`
 	Used             int                     `json:"used"`
-	VisibleBySession bool                    `json:"visibleBySession"`
+	VisibleByRoom bool                    `json:"visibleByRoom"`
 	WithinTimes      bool                    `json:"withinTimes"`
 	HeadersMatched   bool                    `json:"headersMatched"`
 	InputMatched     bool                    `json:"inputMatched"`
@@ -107,7 +107,7 @@ type InspectCandidateEvent struct {
 type InspectReport struct {
 	Service          string             `json:"service"`
 	Method           string             `json:"method"`
-	Session          string             `json:"session,omitempty"`
+	Room          string             `json:"room,omitempty"`
 	FallbackToMethod bool               `json:"fallbackToMethod"`
 	Error            *string            `json:"error,omitempty"`
 	MatchedStubID    *uuid.UUID         `json:"matchedStubId,omitempty"`
@@ -149,7 +149,7 @@ func (s *searcher) inspect(query Query) InspectReport {
 	report := InspectReport{
 		Service:    query.Service,
 		Method:     query.Method,
-		Session:    query.Session,
+		Room:    query.Room,
 		Stages:     trace.stages,
 		Candidates: trace.finalizeCandidates(),
 	}
@@ -170,7 +170,7 @@ func (s *searcher) detectFallbackToMethod(query Query) bool {
 		return false
 	}
 
-	lookup := s.lookup(query.Session)
+	lookup := s.lookup(query.Room)
 	if _, err := lookup.LookupServiceAvailable(query.Service, query.Method); err != nil && lookup.HasMethodAvailable(query.Method) {
 		return true
 	}

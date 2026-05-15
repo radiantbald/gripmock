@@ -15,7 +15,7 @@ import (
 
 //nolint:funlen,cyclop
 func (b *Builder) GRPCServe(ctx context.Context, param *proto.Arguments) error {
-	b.StartSessionGC(ctx)
+	b.StartRoomGC(ctx)
 
 	grpcTLS := b.grpcTLSConfig()
 	grpcTLS.ClientAuth = b.config.GRPCTLSClientAuth

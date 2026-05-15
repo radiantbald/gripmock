@@ -22,7 +22,7 @@ This project demonstrates all four types of gRPC streaming in a single service:
 ### 4. Bidirectional Streaming
 - **Method**: `Chat`
 - **Pattern**: Multiple requests ↔ Multiple responses
-- **Use Case**: Real-time chat, interactive sessions
+- **Use Case**: Real-time chat, interactive rooms
 
 ## Project Structure
 

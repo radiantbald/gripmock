@@ -200,7 +200,7 @@ func BenchmarkStorageFindByMethodAvailable(b *testing.B) {
 	for i := range b.N {
 		stub := newTestStub("Svc", "Method", i%100)
 		if i%3 == 0 {
-			stub.Session = "A"
+			stub.Room = "A"
 		}
 
 		items = append(items, stub)

@@ -190,7 +190,7 @@ output:
   data:
     token: "jwt-token-here"
   headers:
-    "Set-Cookie": "session=abc123; HttpOnly"
+    "Set-Cookie": "room=abc123; HttpOnly"
     "X-Custom-Header": "custom-value"
 ```
 
@@ -436,7 +436,7 @@ output:
         id: "admin"
         role: "administrator"
     headers:
-      "Set-Cookie": "session=admin-session; HttpOnly; Secure"
+      "Set-Cookie": "room=admin-room; HttpOnly; Secure"
 
 - service: AuthService
   method: Login
@@ -452,7 +452,7 @@ output:
         id: "user123"
         role: "user"
     headers:
-      "Set-Cookie": "session=user-session; HttpOnly"
+      "Set-Cookie": "room=user-room; HttpOnly"
 
 - service: AuthService
   method: Login

@@ -104,7 +104,7 @@ func TestPutManySingleEnabledPerRouteTrimmedV2(t *testing.T) {
 	require.True(t, s.FindByID(second.ID).IsEnabled())
 }
 
-func TestPutManySingleEnabledPerRoutePerSessionV2(t *testing.T) {
+func TestPutManySingleEnabledPerRoutePerRoomV2(t *testing.T) {
 	t.Parallel()
 
 	s := stuber.NewBudgerigar()
@@ -114,32 +114,32 @@ func TestPutManySingleEnabledPerRoutePerSessionV2(t *testing.T) {
 		ID:      uuid.New(),
 		Service: "Calculator",
 		Method:  "MultiplyByFive",
-		Session: "A",
+		Room: "A",
 		Enabled: &enabled,
 	}
 	twoA := &stuber.Stub{
 		ID:      uuid.New(),
 		Service: "Calculator ",
 		Method:  "MultiplyByFive ",
-		Session: "A",
+		Room: "A",
 		Enabled: &enabled,
 	}
 	oneB := &stuber.Stub{
 		ID:      uuid.New(),
 		Service: "Calculator",
 		Method:  "MultiplyByFive",
-		Session: "B",
+		Room: "B",
 		Enabled: &enabled,
 	}
 
 	s.PutMany(oneA, twoA, oneB)
 
-	require.False(t, s.FindByID(oneA.ID).IsEnabled(), "previous stub in session A must be disabled")
-	require.True(t, s.FindByID(twoA.ID).IsEnabled(), "latest stub in session A must remain enabled")
-	require.True(t, s.FindByID(oneB.ID).IsEnabled(), "session B stub must remain enabled")
+	require.False(t, s.FindByID(oneA.ID).IsEnabled(), "previous stub in room A must be disabled")
+	require.True(t, s.FindByID(twoA.ID).IsEnabled(), "latest stub in room A must remain enabled")
+	require.True(t, s.FindByID(oneB.ID).IsEnabled(), "room B stub must remain enabled")
 }
 
-func TestPutManySingleEnabledPerRouteGlobalConflictsWithSessionV2(t *testing.T) {
+func TestPutManySingleEnabledPerRouteGlobalConflictsWithRoomV2(t *testing.T) {
 	t.Parallel()
 
 	s := stuber.NewBudgerigar()
@@ -151,18 +151,18 @@ func TestPutManySingleEnabledPerRouteGlobalConflictsWithSessionV2(t *testing.T) 
 		Method:  "MultiplyByFive",
 		Enabled: &enabled,
 	}
-	session := &stuber.Stub{
+	room := &stuber.Stub{
 		ID:      uuid.New(),
 		Service: "Calculator",
 		Method:  "MultiplyByFive",
-		Session: "A",
+		Room: "A",
 		Enabled: &enabled,
 	}
 
-	s.PutMany(global, session)
+	s.PutMany(global, room)
 
 	require.False(t, s.FindByID(global.ID).IsEnabled(), "global stub must be disabled by route-specific enabled stub")
-	require.True(t, s.FindByID(session.ID).IsEnabled(), "session stub must remain enabled")
+	require.True(t, s.FindByID(room.ID).IsEnabled(), "room stub must remain enabled")
 }
 
 func TestPutManySingleEnabledPerRouteServiceAliasV2(t *testing.T) {
@@ -175,14 +175,14 @@ func TestPutManySingleEnabledPerRouteServiceAliasV2(t *testing.T) {
 		ID:      uuid.New(),
 		Service: "calculator.v1.CalculatorService",
 		Method:  "MultiplyByFive",
-		Session: "A",
+		Room: "A",
 		Enabled: &enabled,
 	}
 	short := &stuber.Stub{
 		ID:      uuid.New(),
 		Service: "CalculatorService",
 		Method:  "MultiplyByFive",
-		Session: "A",
+		Room: "A",
 		Enabled: &enabled,
 	}
 
@@ -202,14 +202,14 @@ func TestPutManySingleEnabledPerRouteDifferentFullNamesV2(t *testing.T) {
 		ID:      uuid.New(),
 		Service: "foo.v1.UserService",
 		Method:  "Ping",
-		Session: "A",
+		Room: "A",
 		Enabled: &enabled,
 	}
 	right := &stuber.Stub{
 		ID:      uuid.New(),
 		Service: "bar.v1.UserService",
 		Method:  "Ping",
-		Session: "A",
+		Room: "A",
 		Enabled: &enabled,
 	}
 
@@ -887,7 +887,7 @@ func TestBidiStreamingFallback(t *testing.T) {
 		ID:      uuid.New(),
 		Service: "ChatService",
 		Method:  "Chat",
-		Session: "chat",
+		Room: "chat",
 		Input: stuber.InputData{
 			Equals: map[string]any{"user": "Charlie", "text": "Anyone there?"},
 		},
@@ -900,7 +900,7 @@ func TestBidiStreamingFallback(t *testing.T) {
 	query := stuber.QueryBidi{
 		Service: "ChatService",
 		Method:  "Chat",
-		Session: "chat",
+		Room: "chat",
 	}
 
 	result, err := s.FindByQueryBidi(query)
@@ -1096,12 +1096,12 @@ func TestBidiStreamingStatefulLogic(t *testing.T) {
 		{Equals: map[string]any{"message": "universe"}},
 		{Equals: map[string]any{"message": "farewell"}},
 	}, stuber.Output{Data: map[string]any{"response": "Pattern 2 completed"}})
-	stub2.Session = "bidi-stateful"
+	stub2.Room = "bidi-stateful"
 
 	s.PutMany(stub1, stub2)
 
 	query := newBidiQuery()
-	query.Session = "bidi-stateful"
+	query.Room = "bidi-stateful"
 	result, err := s.FindByQueryBidi(query)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -1142,12 +1142,12 @@ func TestBidiStreamingStatefulLogicDifferentPattern(t *testing.T) {
 		{Equals: map[string]any{"message": "hello"}},
 		{Equals: map[string]any{"message": "universe"}},
 	}, stuber.Output{Data: map[string]any{"response": "Pattern 2"}})
-	stub2.Session = "bidi-pattern"
+	stub2.Room = "bidi-pattern"
 
 	s.PutMany(stub1, stub2)
 
 	query := newBidiQuery()
-	query.Session = "bidi-pattern"
+	query.Room = "bidi-pattern"
 
 	result, err := s.FindByQueryBidi(query)
 	require.NoError(t, err)
@@ -1256,7 +1256,7 @@ func TestBidiNestedStructures(t *testing.T) {
 		ID:      uuid.New(),
 		Service: "Svc",
 		Method:  "Mth",
-		Session: "nested",
+		Room: "nested",
 		Input: stuber.InputData{
 			Equals: map[string]any{"ids": []any{1.0, 2.0, 3.0}},
 		},
@@ -1264,7 +1264,7 @@ func TestBidiNestedStructures(t *testing.T) {
 	}
 	s.PutMany(stubMap, stubSlice)
 
-	query := stuber.QueryBidi{Service: "Svc", Method: "Mth", Session: "nested"}
+	query := stuber.QueryBidi{Service: "Svc", Method: "Mth", Room: "nested"}
 	result, err := s.FindByQueryBidi(query)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -1421,14 +1421,14 @@ func TestPriorityHeadersOverEquals(t *testing.T) {
 
 	// Create stubs
 	stub1, stub2 := createTestStubs()
-	stub2.Session = "headers-priority"
+	stub2.Room = "headers-priority"
 	s.PutMany(stub1, stub2)
 
 	// Test query with headers that should match stub2
 	query := stuber.Query{
 		Service: "helloworld.Greeter",
 		Method:  "SayHello",
-		Session: "headers-priority",
+		Room: "headers-priority",
 		Headers: map[string]any{
 			"x-user":  "Ivan",
 			"x-token": "123",
@@ -1454,7 +1454,7 @@ func TestPriorityHeadersOverEquals(t *testing.T) {
 	queryWithoutHeaders := stuber.Query{
 		Service: "helloworld.Greeter",
 		Method:  "SayHello",
-		Session: "headers-priority",
+		Room: "headers-priority",
 		Input: []map[string]any{
 			{"name": "Bob"},
 		},
@@ -1473,79 +1473,79 @@ func TestPriorityHeadersOverEquals(t *testing.T) {
 }
 
 //nolint:funlen
-func TestBudgerigarFindByQuerySessionIsolation(t *testing.T) {
+func TestBudgerigarFindByQueryRoomIsolation(t *testing.T) {
 	t.Parallel()
 
 	s := stuber.NewBudgerigar()
 
-	// Global stub (Session empty) - visible to all
+	// Global stub (Room empty) - visible to all
 	globalStub := &stuber.Stub{
 		Service: "svc",
 		Method:  "M",
 		Input:   stuber.InputData{Equals: map[string]any{"x": "1"}},
 		Output:  stuber.Output{Data: map[string]any{"v": "global"}},
 	}
-	// Session A stub - only visible when Query.Session == "A"
+	// Room A stub - only visible when Query.Room == "A"
 	stubA := &stuber.Stub{
 		Service: "svc",
 		Method:  "M",
-		Session: "A",
+		Room: "A",
 		Input:   stuber.InputData{Equals: map[string]any{"x": "2"}},
-		Output:  stuber.Output{Data: map[string]any{"v": "session-a"}},
+		Output:  stuber.Output{Data: map[string]any{"v": "room-a"}},
 	}
-	// Session B stub - only visible when Query.Session == "B"
+	// Room B stub - only visible when Query.Room == "B"
 	stubB := &stuber.Stub{
 		Service: "svc",
 		Method:  "M",
-		Session: "B",
+		Room: "B",
 		Input:   stuber.InputData{Equals: map[string]any{"x": "3"}},
-		Output:  stuber.Output{Data: map[string]any{"v": "session-b"}},
+		Output:  stuber.Output{Data: map[string]any{"v": "room-b"}},
 	}
 
 	s.PutMany(globalStub, stubA, stubB)
 
-	// Query without session: global stub is disabled by route-specific enabled stubs.
+	// Query without room: global stub is disabled by route-specific enabled stubs.
 	result, err := s.FindByQuery(stuber.Query{
-		Service: "svc", Method: "M", Session: "",
+		Service: "svc", Method: "M", Room: "",
 		Input: []map[string]any{{"x": "1"}},
 	})
 	require.ErrorIs(t, err, stuber.ErrStubNotFound)
 	require.Nil(t, result)
 
-	// Query without session, matching session-A input: no exact match (session stubs hidden)
+	// Query without room, matching room-A input: no exact match (room stubs hidden)
 	result, err = s.FindByQuery(stuber.Query{
-		Service: "svc", Method: "M", Session: "",
+		Service: "svc", Method: "M", Room: "",
 		Input: []map[string]any{{"x": "2"}},
 	})
 	require.ErrorIs(t, err, stuber.ErrStubNotFound)
 	require.Nil(t, result)
 
-	// Query with Session A: matches session-A stub
+	// Query with Room A: matches room-A stub
 	result, err = s.FindByQuery(stuber.Query{
-		Service: "svc", Method: "M", Session: "A",
+		Service: "svc", Method: "M", Room: "A",
 		Input: []map[string]any{{"x": "2"}},
 	})
 	require.NoError(t, err)
 	require.NotNil(t, result.Found())
-	require.Equal(t, "session-a", result.Found().Output.Data["v"])
+	require.Equal(t, "room-a", result.Found().Output.Data["v"])
 
-	// Query with Session A no longer matches global because session-specific enabled stub disables it.
+	// Query with Room A no longer matches global because room-specific enabled stub disables it.
 	result, err = s.FindByQuery(stuber.Query{
-		Service: "svc", Method: "M", Session: "A",
+		Service: "svc", Method: "M", Room: "A",
 		Input: []map[string]any{{"x": "1"}},
 	})
 	require.NoError(t, err)
 	require.Nil(t, result.Found())
 	require.NotNil(t, result.Similar())
 
-	// Query with Session B: matches session-B stub, not A
+	// Query with Room B: matches room-B stub, not A
 	result, err = s.FindByQuery(stuber.Query{
-		Service: "svc", Method: "M", Session: "B",
+		Service: "svc", Method: "M", Room: "B",
 		Input: []map[string]any{{"x": "3"}},
 	})
 	require.NoError(t, err)
 	require.NotNil(t, result.Found())
-	require.Equal(t, "session-b", result.Found().Output.Data["v"])
+	require.Equal(t, "room-b", result.Found().Output.Data["v"])
 }
 
 // TestBudgerigar_Times_ConcurrentNoRace verifies Times limit under concurrent load without race.

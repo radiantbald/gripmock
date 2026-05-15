@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS users (
     id BIGSERIAL PRIMARY KEY,
     phone TEXT NOT NULL UNIQUE,
-    session TEXT NOT NULL UNIQUE,
+    room TEXT NOT NULL UNIQUE,
     client_id TEXT NOT NULL DEFAULT '',
     verification_code TEXT NOT NULL DEFAULT '',
     code_expires_at TIMESTAMPTZ,
@@ -18,8 +18,8 @@ BEGIN
         FROM information_schema.columns
         WHERE table_schema = 'public'
           AND table_name = 'users'
-          AND column_name = 'session'
+          AND column_name = 'room'
     ) THEN
-        EXECUTE 'CREATE INDEX IF NOT EXISTS idx_users_session ON users(session)';
+        EXECUTE 'CREATE INDEX IF NOT EXISTS idx_users_room ON users(room)';
     END IF;
 END $$;

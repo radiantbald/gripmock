@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Button,
@@ -10,13 +10,14 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useDataProvider, useNotify } from "react-admin";
+import { useDataProvider, useGetList, useNotify } from "react-admin";
 
 import { ServiceMethodSelectors } from "./components/inputs/ServiceMethodSelectors";
-import { clearCurrentSession, getCurrentSession, subscribeSessionChanges } from "./utils/session";
-import { SessionScopeChip } from "./features/session/components/SessionScopeChip";
+import { clearCurrentRoom, getCurrentRoom, subscribeRoomChanges } from "./utils/room";
+import { RoomScopeChip } from "./features/room/components/RoomScopeChip";
 import { VerifyResultAlert } from "./features/verify/components/VerifyResultAlert";
 import type { VerifyResponse } from "./features/verify/types";
+import { resolveRoomRow, type RoomRow } from "./features/room/model";
 
 export const VerifyPage = () => {
   const notify = useNotify();
@@ -28,9 +29,24 @@ export const VerifyPage = () => {
   const [result, setResult] = useState<VerifyResponse | null>(null);
   const [isError, setIsError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [session, setSession] = useState(() => getCurrentSession());
+  const [room, setRoom] = useState(() => getCurrentRoom());
+  const { data: rooms = [] } = useGetList<RoomRow>(
+    "rooms",
+    { pagination: { page: 1, perPage: 1000 } },
+    { retry: false, staleTime: 30_000, refetchOnMount: false, refetchOnWindowFocus: false },
+  );
+  const roomNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    rooms.forEach((row) => {
+      const resolved = resolveRoomRow(row);
+      if (resolved) {
+        map.set(resolved.id, resolved.name);
+      }
+    });
+    return map;
+  }, [rooms]);
 
-  useEffect(() => subscribeSessionChanges(() => setSession(getCurrentSession())), []);
+  useEffect(() => subscribeRoomChanges(() => setRoom(getCurrentRoom())), []);
 
   const onSubmit = async () => {
     setIsSubmitting(true);
@@ -51,10 +67,10 @@ export const VerifyPage = () => {
     }
   };
 
-  const withGlobalSession = () => {
-    clearCurrentSession();
-    setSession("");
-    notify("Switched to global session", { type: "info" });
+  const withGlobalRoom = () => {
+    clearCurrentRoom();
+    setRoom("");
+    notify("Switched to global room", { type: "info" });
   };
 
   return (
@@ -62,17 +78,17 @@ export const VerifyPage = () => {
       <Card>
         <CardHeader
           title="Verify calls"
-          subheader="Counters are cumulative per session. If you see expected 1 but got 4, start a fresh session first."
+          subheader="Counters are cumulative per room. If you see expected 1 but got 4, start a fresh room first."
         />
         <CardContent>
           <Box display="flex" flexDirection="column" gap={2}>
             <Box>
               <Typography variant="body2" color="text.secondary" gutterBottom>
-                Active session scope
+                Active room scope
               </Typography>
               <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                <SessionScopeChip session={session} />
-                <Button size="small" variant="text" onClick={withGlobalSession}>
+                <RoomScopeChip room={room} roomName={roomNameById.get(room)} />
+                <Button size="small" variant="text" onClick={withGlobalRoom}>
                   Use global
                 </Button>
               </Stack>

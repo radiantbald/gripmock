@@ -20,7 +20,7 @@ import (
 type Client struct {
 	BaseURL    string
 	HTTPClient *http.Client
-	Session    string
+	Room    string
 	Context    context.Context
 }
 
@@ -75,8 +75,8 @@ func (c Client) newRequest(method, requestURL string, body []byte, contentType s
 		req.Header.Set("Content-Type", contentType)
 	}
 
-	if c.Session != "" {
-		req.Header.Set("X-Gripmock-Session", c.Session)
+	if c.Room != "" {
+		req.Header.Set("X-Gripmock-Room", c.Room)
 	}
 
 	return req, nil

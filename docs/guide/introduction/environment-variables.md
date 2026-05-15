@@ -42,12 +42,12 @@ GripMock reads configuration from environment variables on startup.
 | `HISTORY_MESSAGE_MAX_BYTES` | `262144` | Max stored payload size per message. |
 | `HISTORY_REDACT_KEYS` | *(empty)* | Comma-separated keys to redact in history. |
 
-## Session GC
+## Room GC
 
 | Variable | Default | Description |
 |---|---|---|
-| `SESSION_GC_INTERVAL` | `30s` | Session cleanup loop interval. |
-| `SESSION_GC_TTL` | `60s` | Session time-to-live. |
+| `ROOM_GC_INTERVAL` | `30s` | Room cleanup loop interval. |
+| `ROOM_GC_TTL` | `60s` | Room time-to-live. |
 
 ## Plugins
 

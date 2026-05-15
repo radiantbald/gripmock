@@ -19,20 +19,20 @@ var ErrMethodNotFound = errors.New("method not found")
 // ErrStubNotFound is returned when the stub is not found.
 var ErrStubNotFound = errors.New("stub not found")
 
-// callCountKey identifies a stub's match count per session. Session empty = global count.
+// callCountKey identifies a stub's match count per room. Room empty = global count.
 type callCountKey struct {
 	id      uuid.UUID
-	session string
+	room string
 }
 
 // searcher is a struct that manages the storage of search results.
 //
 // It contains a mutex for concurrent access, a map to store and retrieve
-// used stubs by their UUID (and session for isolation), and a pointer to the storage struct.
+// used stubs by their UUID (and room for isolation), and a pointer to the storage struct.
 type searcher struct {
 	mu              sync.RWMutex
 	lookupMu        sync.RWMutex
-	stubCallCount   map[callCountKey]int // count of matches per stub+session (for Times limit)
+	stubCallCount   map[callCountKey]int // count of matches per stub+room (for Times limit)
 	storage         stubStorage
 	internalStorage InternalStubStorage
 	lookupProvider  searcherLookupProvider

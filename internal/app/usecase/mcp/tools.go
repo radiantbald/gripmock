@@ -9,7 +9,7 @@ const (
 	ToolOverview  = "dashboard.overview"
 	ToolInfo      = "dashboard.info"
 
-	ToolSessionsList   = "sessions.list"
+	ToolRoomsList   = "rooms.list"
 	ToolGripmockInfo   = "gripmock.info"
 	ToolReflectInfo    = "reflect.info"
 	ToolReflectSources = "reflect.sources"
@@ -47,7 +47,7 @@ func ListTools() []map[string]any {
 		dashboardTool(),
 		dashboardOverviewTool(),
 		dashboardInfoTool(),
-		sessionsListTool(),
+		roomsListTool(),
 		gripmockInfoTool(),
 		reflectInfoTool(),
 		reflectSourcesTool(),
@@ -134,19 +134,19 @@ func healthStatusTool() map[string]any {
 }
 
 func dashboardTool() map[string]any {
-	return newTool(ToolDashboard, "Get full dashboard payload", objectSchema(map[string]any{"session": stringProp()}))
+	return newTool(ToolDashboard, "Get full dashboard payload", objectSchema(map[string]any{"room": stringProp()}))
 }
 
 func dashboardOverviewTool() map[string]any {
-	return newTool(ToolOverview, "Get lightweight dashboard overview", objectSchema(map[string]any{"session": stringProp()}))
+	return newTool(ToolOverview, "Get lightweight dashboard overview", objectSchema(map[string]any{"room": stringProp()}))
 }
 
 func dashboardInfoTool() map[string]any {
-	return newTool(ToolInfo, "Get runtime and build information", objectSchema(map[string]any{"session": stringProp()}))
+	return newTool(ToolInfo, "Get runtime and build information", objectSchema(map[string]any{"room": stringProp()}))
 }
 
-func sessionsListTool() map[string]any {
-	return newTool(ToolSessionsList, "List active non-empty sessions", objectSchema(nil))
+func roomsListTool() map[string]any {
+	return newTool(ToolRoomsList, "List active non-empty rooms", objectSchema(nil))
 }
 
 func gripmockInfoTool() map[string]any {
@@ -221,14 +221,14 @@ func historyListTool() map[string]any {
 	return newTool(ToolHistoryList, "List recent gRPC call history for debugging", objectSchema(map[string]any{
 		"service": stringProp(),
 		"method":  stringProp(),
-		"session": stringProp(),
+		"room": stringProp(),
 		"limit":   nonNegativeIntegerProp(),
 	}))
 }
 
 func historyErrorsTool() map[string]any {
 	return newTool(ToolHistoryErrors, "List recent gRPC calls that ended with errors", objectSchema(map[string]any{
-		"session": stringProp(),
+		"room": stringProp(),
 		"limit":   nonNegativeIntegerProp(),
 	}))
 }
@@ -237,7 +237,7 @@ func debugCallTool() map[string]any {
 	return newTool(ToolDebugCall, "Diagnose why a service/method call is failing", objectSchema(map[string]any{
 		"service":    stringProp(),
 		"method":     stringProp(),
-		"session":    stringProp(),
+		"room":    stringProp(),
 		"limit":      nonNegativeIntegerProp(),
 		"stubsLimit": nonNegativeIntegerProp(),
 	}, "service"))
@@ -248,7 +248,7 @@ func verifyCallsTool() map[string]any {
 		"service":       stringProp(),
 		"method":        stringProp(),
 		"expectedCount": nonNegativeIntegerProp(),
-		"session":       stringProp(),
+		"room":       stringProp(),
 	}, "service", "method", "expectedCount"))
 }
 
@@ -266,7 +266,7 @@ func stubsUpsertTool() map[string]any {
 				"stubs",
 			},
 			"properties": map[string]any{
-				"session": map[string]any{"type": "string"},
+				"room": map[string]any{"type": "string"},
 				"stubs": map[string]any{
 					"description": "Stub object or array of stub objects",
 					"oneOf": []map[string]any{
@@ -283,7 +283,7 @@ func stubsListTool() map[string]any {
 	return newTool(ToolStubsList, "List stubs with optional filters", objectSchema(map[string]any{
 		"service": stringProp(),
 		"method":  stringProp(),
-		"session": stringProp(),
+		"room": stringProp(),
 		"limit":   nonNegativeIntegerProp(),
 		"offset":  nonNegativeIntegerProp(),
 	}))
@@ -338,7 +338,7 @@ func stubsBatchDeleteTool() map[string]any {
 }
 
 func stubsPurgeTool() map[string]any {
-	return newTool(ToolStubsPurge, "Delete all stubs or session-scoped stubs", objectSchema(map[string]any{"session": stringProp()}))
+	return newTool(ToolStubsPurge, "Delete all stubs or room-scoped stubs", objectSchema(map[string]any{"room": stringProp()}))
 }
 
 func stubsSearchTool() map[string]any {
@@ -355,7 +355,7 @@ func stubsSearchTool() map[string]any {
 			"properties": map[string]any{
 				"service": map[string]any{"type": "string"},
 				"method":  map[string]any{"type": "string"},
-				"session": map[string]any{"type": "string"},
+				"room": map[string]any{"type": "string"},
 				"headers": map[string]any{"type": "object", "additionalProperties": true},
 				"payload": map[string]any{"type": "object", "additionalProperties": true},
 				"input": map[string]any{
@@ -372,7 +372,7 @@ func stubsInspectTool() map[string]any {
 		"id":      stringProp(),
 		"service": stringProp(),
 		"method":  stringProp(),
-		"session": stringProp(),
+		"room": stringProp(),
 		"headers": objectAnyProp(),
 		"input":   objectArrayAnyProp(),
 	}, "service", "method"))

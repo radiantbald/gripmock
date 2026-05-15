@@ -127,7 +127,7 @@ If you need to pass a specific context (for cancellation, tracing, request-scope
 func TestMyService_RemoteContextAwareChecks(t *testing.T) {
     mock, err := sdk.Run(t,
         sdk.WithRemote("localhost:4770", "http://localhost:4771"),
-        sdk.WithSession(t.Name()),
+        sdk.WithRoom(t.Name()),
     )
     require.NoError(t, err)
 

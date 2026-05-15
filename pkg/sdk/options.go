@@ -39,8 +39,8 @@ type options struct {
 	remoteAddr      string // gRPC address for remote mode
 	remoteRestURL   string // REST base URL (e.g. "http://localhost:4771") for remote mode
 	httpClient      *http.Client
-	session         string // X-Gripmock-Session for isolation (remote mode)
-	sessionTTL      time.Duration
+	room         string // X-Gripmock-Room for isolation (remote mode)
+	roomTTL      time.Duration
 	grpcTimeout     time.Duration
 	listenNetwork   string // "tcp" for real port
 	listenAddr      string // ":0" for real port
@@ -49,7 +49,7 @@ type options struct {
 
 const (
 	defaultHealthyTimeout = 10 * time.Second
-	defaultSessionTTL     = 60 * time.Second
+	defaultRoomTTL     = 60 * time.Second
 )
 
 // Option configures Run behavior.
@@ -120,19 +120,19 @@ func WithHTTPClient(client *http.Client) Option {
 	}
 }
 
-// WithSession sets the session ID for isolation (remote mode only).
-// Stubs and history are partitioned by session; use with t.Parallel() when sharing one gripmock.
-func WithSession(sessionID string) Option {
+// WithRoom sets the room ID for isolation (remote mode only).
+// Stubs and history are partitioned by room; use with t.Parallel() when sharing one gripmock.
+func WithRoom(roomID string) Option {
 	return func(o *options) {
-		o.session = strings.TrimSpace(sessionID)
+		o.room = strings.TrimSpace(roomID)
 	}
 }
 
-// WithSessionTTL configures automatic cleanup time for session-scoped remote resources.
+// WithRoomTTL configures automatic cleanup time for room-scoped remote resources.
 // Only applies to WithRemote mode.
-func WithSessionTTL(d time.Duration) Option {
+func WithRoomTTL(d time.Duration) Option {
 	return func(o *options) {
-		o.sessionTTL = d
+		o.roomTTL = d
 	}
 }
 

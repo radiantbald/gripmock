@@ -179,7 +179,7 @@ export default defineConfig({
           { text: 'Advanced Features', link: '/guide/embedded-sdk/advanced-features' },
           { text: 'Verification', link: '/guide/embedded-sdk/verification' },
           { text: 'Remote Mode', link: '/guide/embedded-sdk/remote-mode' },
-          { text: 'Sessions', link: '/guide/embedded-sdk/sessions' },
+          { text: 'Rooms', link: '/guide/embedded-sdk/rooms' },
           { text: 'Best Practices', link: '/guide/embedded-sdk/best-practices' },
         ],
         collapsed: false,

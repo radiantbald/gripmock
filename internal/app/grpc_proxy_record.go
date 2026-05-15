@@ -70,7 +70,7 @@ func (m *grpcMocker) recordProxyCall(
 		Transport:          "proxy",
 		Service:            m.fullServiceName,
 		Method:             m.methodName,
-		Session:            m.sessionFromContext(ctx),
+		Room:            m.roomFromContext(ctx),
 		Client:             clientFromContext(ctx),
 		Requests:           requests,
 		Responses:          responses,

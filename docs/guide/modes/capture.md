@@ -24,7 +24,7 @@ Capture stores request and upstream result in stub form:
 - response data/stream
 - grpc error code/message/details (when present)
 - response headers
-- session context (if present)
+- room context (if present)
 
 ## URL schemes
 

@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/bavix/gripmock/v3/internal/domain/rest"
-	"github.com/bavix/gripmock/v3/internal/infra/session"
+	"github.com/bavix/gripmock/v3/internal/infra/room"
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
 )
 
@@ -367,19 +367,19 @@ func (s *RestServerExtendedTestSuite) TestDashboardOverview() {
 	s.Contains(payload, "totalStubs")
 	s.Contains(payload, "usedStubs")
 	s.Contains(payload, "unusedStubs")
-	s.Contains(payload, "totalSessions")
+	s.Contains(payload, "totalRooms")
 	s.Contains(payload, "runtimeDescriptors")
 	s.Contains(payload, "totalHistory")
 	s.Contains(payload, "historyErrors")
 }
 
-func (s *RestServerExtendedTestSuite) TestSessionsList() {
-	// Without a sessions repository, endpoint should still return [] (not null).
+func (s *RestServerExtendedTestSuite) TestRoomsList() {
+	// Without a rooms repository, endpoint should still return [] (not null).
 	{
-		req := httptest.NewRequestWithContext(s.T().Context(), http.MethodGet, "/api/sessions", nil)
+		req := httptest.NewRequestWithContext(s.T().Context(), http.MethodGet, "/api/rooms", nil)
 		w := httptest.NewRecorder()
 
-		s.server.SessionsList(w, req)
+		s.server.RoomsList(w, req)
 
 		s.Require().Equal(http.StatusOK, w.Code)
 
@@ -387,22 +387,22 @@ func (s *RestServerExtendedTestSuite) TestSessionsList() {
 
 		err := json.Unmarshal(w.Body.Bytes(), &payload)
 		s.Require().NoError(err)
-		s.Contains(payload, "sessions")
-		s.NotNil(payload["sessions"])
-		s.Empty(payload["sessions"])
+		s.Contains(payload, "rooms")
+		s.NotNil(payload["rooms"])
+		s.Empty(payload["rooms"])
 	}
 
-	// In-memory values should not leak into API payload when sessions source is DB-only.
+	// In-memory values should not leak into API payload when rooms source is DB-only.
 	s.server.budgerigar.PutMany(
-		&stuber.Stub{ID: uuid.New(), Service: "SessionService", Method: "M1", Session: "b"},
-		&stuber.Stub{ID: uuid.New(), Service: "SessionService", Method: "M2", Session: "a"},
-		&stuber.Stub{ID: uuid.New(), Service: "SessionService", Method: "M3", Session: "b"},
+		&stuber.Stub{ID: uuid.New(), Service: "RoomService", Method: "M1", Room: "b"},
+		&stuber.Stub{ID: uuid.New(), Service: "RoomService", Method: "M2", Room: "a"},
+		&stuber.Stub{ID: uuid.New(), Service: "RoomService", Method: "M3", Room: "b"},
 	)
 
-	req := httptest.NewRequestWithContext(s.T().Context(), http.MethodGet, "/api/sessions", nil)
+	req := httptest.NewRequestWithContext(s.T().Context(), http.MethodGet, "/api/rooms", nil)
 	w := httptest.NewRecorder()
 
-	s.server.SessionsList(w, req)
+	s.server.RoomsList(w, req)
 
 	s.Require().Equal(http.StatusOK, w.Code)
 
@@ -410,16 +410,16 @@ func (s *RestServerExtendedTestSuite) TestSessionsList() {
 
 	err := json.Unmarshal(w.Body.Bytes(), &payload)
 	s.Require().NoError(err)
-	s.Empty(payload["sessions"])
+	s.Empty(payload["rooms"])
 
-	activeID := "active-session-for-list-test"
-	session.Touch(activeID)
-	defer session.Forget(activeID)
+	activeID := "active-room-for-list-test"
+	room.Touch(activeID)
+	defer room.Forget(activeID)
 
-	reqActive := httptest.NewRequestWithContext(s.T().Context(), http.MethodGet, "/api/sessions", nil)
+	reqActive := httptest.NewRequestWithContext(s.T().Context(), http.MethodGet, "/api/rooms", nil)
 	wActive := httptest.NewRecorder()
 
-	s.server.SessionsList(wActive, reqActive)
+	s.server.RoomsList(wActive, reqActive)
 
 	s.Require().Equal(http.StatusOK, wActive.Code)
 
@@ -427,7 +427,7 @@ func (s *RestServerExtendedTestSuite) TestSessionsList() {
 
 	err = json.Unmarshal(wActive.Body.Bytes(), &payloadActive)
 	s.Require().NoError(err)
-	s.Empty(payloadActive["sessions"])
+	s.Empty(payloadActive["rooms"])
 }
 
 func (s *RestServerExtendedTestSuite) TestDashboardInfo() {
@@ -456,7 +456,7 @@ func (s *RestServerExtendedTestSuite) TestDashboardInfo() {
 	s.Contains(payload, "historyEnabled")
 	s.Contains(payload, "totalServices")
 	s.Contains(payload, "totalStubs")
-	s.Contains(payload, "totalSessions")
+	s.Contains(payload, "totalRooms")
 	s.Contains(payload, "runtimeDescriptors")
 }
 
@@ -479,7 +479,7 @@ func (s *RestServerExtendedTestSuite) TestDashboard() {
 	s.Contains(payload, "totalStubs")
 	s.Contains(payload, "usedStubs")
 	s.Contains(payload, "unusedStubs")
-	s.Contains(payload, "totalSessions")
+	s.Contains(payload, "totalRooms")
 	s.Contains(payload, "runtimeDescriptors")
 	s.Contains(payload, "totalHistory")
 	s.Contains(payload, "historyErrors")

@@ -365,7 +365,7 @@ func TestSearcherUsesConfiguredRankerForCandidateOrdering(t *testing.T) {
 	require.True(t, ranker.called)
 }
 
-func TestSessionLookupFallsBackToGlobalWhenSessionEmpty(t *testing.T) {
+func TestRoomLookupFallsBackToGlobalWhenRoomEmpty(t *testing.T) {
 	t.Parallel()
 
 	global := &Stub{
@@ -382,7 +382,7 @@ func TestSessionLookupFallsBackToGlobalWhenSessionEmpty(t *testing.T) {
 	result, err := s.find(Query{
 		Service: "svc",
 		Method:  "M",
-		Session: "S1",
+		Room: "S1",
 		Input:   []map[string]any{{"name": "Alex"}},
 	})
 
@@ -392,7 +392,7 @@ func TestSessionLookupFallsBackToGlobalWhenSessionEmpty(t *testing.T) {
 	require.Equal(t, global.ID, result.Found().ID)
 }
 
-func TestSessionLookupMergesSessionAndGlobalStorage(t *testing.T) {
+func TestRoomLookupMergesRoomAndGlobalStorage(t *testing.T) {
 	t.Parallel()
 
 	global := &Stub{
@@ -403,22 +403,22 @@ func TestSessionLookupMergesSessionAndGlobalStorage(t *testing.T) {
 		Output:  Output{Data: map[string]any{"scope": "global"}},
 	}
 
-	session := &Stub{
+	room := &Stub{
 		ID:      uuid.New(),
 		Service: "svc",
 		Method:  "M",
-		Session: "S1",
+		Room: "S1",
 		Input:   InputData{Equals: map[string]any{"name": "Bob"}},
-		Output:  Output{Data: map[string]any{"scope": "session"}},
+		Output:  Output{Data: map[string]any{"scope": "room"}},
 	}
 
 	s := newSearcher()
-	s.upsert(global, session)
+	s.upsert(global, room)
 
 	result, err := s.find(Query{
 		Service: "svc",
 		Method:  "M",
-		Session: "S1",
+		Room: "S1",
 		Input:   []map[string]any{{"name": "Alex"}},
 	})
 
@@ -430,12 +430,12 @@ func TestSessionLookupMergesSessionAndGlobalStorage(t *testing.T) {
 	result, err = s.find(Query{
 		Service: "svc",
 		Method:  "M",
-		Session: "S1",
+		Room: "S1",
 		Input:   []map[string]any{{"name": "Bob"}},
 	})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, result.Found())
-	require.Equal(t, session.ID, result.Found().ID)
+	require.Equal(t, room.ID, result.Found().ID)
 }

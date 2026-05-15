@@ -297,13 +297,13 @@ func (s *mockableHealthServer) buildHealthStub(
 	switch method {
 	case healthMethodCheck:
 		return proxycapture.BuildUnaryStub(
-			HealthServiceFullName, method, sessionFromMetadata(md),
+			HealthServiceFullName, method, roomFromMetadata(md),
 			map[string]any{"service": req.GetService()}, requestHeadersFromMetadata(md),
 			response, responseHeaders, callErr,
 		)
 	case healthMethodWatch:
 		return proxycapture.BuildServerStreamStub(
-			HealthServiceFullName, method, sessionFromMetadata(md),
+			HealthServiceFullName, method, roomFromMetadata(md),
 			map[string]any{"service": req.GetService()}, requestHeadersFromMetadata(md),
 			responses, responseHeaders, callErr,
 		)

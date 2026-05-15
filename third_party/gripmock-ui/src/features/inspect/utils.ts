@@ -40,7 +40,7 @@ export const candidateMatchesFilter = (
     candidate.id,
     candidate.service,
     candidate.method,
-    candidate.session || "",
+    candidate.room || "",
     ...(candidate.excludedBy || []),
   ]
     .join(" ")
@@ -56,7 +56,7 @@ export const buildCandidateStats = (result: InspectResponse | null) => {
 
   const total = result.candidates.length;
   const matched = result.candidates.filter((candidate) => candidate.matched).length;
-  const visibleBySession = result.candidates.filter((candidate) => candidate.visibleBySession).length;
+  const visibleByRoom = result.candidates.filter((candidate) => candidate.visibleByRoom).length;
   const withinTimes = result.candidates.filter((candidate) => candidate.withinTimes).length;
   const headersMatched = result.candidates.filter((candidate) => candidate.headersMatched).length;
   const inputMatched = result.candidates.filter((candidate) => candidate.inputMatched).length;
@@ -64,7 +64,7 @@ export const buildCandidateStats = (result: InspectResponse | null) => {
   return {
     total,
     matched,
-    visibleBySession,
+    visibleByRoom,
     withinTimes,
     headersMatched,
     inputMatched,

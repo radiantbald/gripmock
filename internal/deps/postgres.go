@@ -12,7 +12,7 @@ import (
 	pgclients "github.com/bavix/gripmock/v3/internal/infra/postgres/clients"
 	pgmigrations "github.com/bavix/gripmock/v3/internal/infra/postgres/migrations"
 	pgprotometadata "github.com/bavix/gripmock/v3/internal/infra/postgres/protometadata"
-	pgsessions "github.com/bavix/gripmock/v3/internal/infra/postgres/sessions"
+	pgrooms "github.com/bavix/gripmock/v3/internal/infra/postgres/rooms"
 	pgstubs "github.com/bavix/gripmock/v3/internal/infra/postgres/stubs"
 	pgusers "github.com/bavix/gripmock/v3/internal/infra/postgres/users"
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
@@ -65,19 +65,19 @@ func (b *Builder) AllowedPhonesRepository(ctx context.Context) (*pgallowlist.Rep
 	return b.allowedPhonesRepository, b.allowedPhonesRepositoryErr
 }
 
-func (b *Builder) SessionsRepository(ctx context.Context) (*pgsessions.Repository, error) {
-	b.sessionsRepositoryOnce.Do(func() {
+func (b *Builder) RoomsRepository(ctx context.Context) (*pgrooms.Repository, error) {
+	b.roomsRepositoryOnce.Do(func() {
 		pool, err := b.initPostgresPool(ctx)
 		if err != nil {
-			b.sessionsRepositoryErr = err
+			b.roomsRepositoryErr = err
 
 			return
 		}
 
-		b.sessionsRepository = pgsessions.NewRepository(pool)
+		b.roomsRepository = pgrooms.NewRepository(pool)
 	})
 
-	return b.sessionsRepository, b.sessionsRepositoryErr
+	return b.roomsRepository, b.roomsRepositoryErr
 }
 
 func (b *Builder) ClientsRepository(ctx context.Context) (*pgclients.Repository, error) {

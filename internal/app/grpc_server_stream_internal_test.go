@@ -18,7 +18,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
-	sessioninfra "github.com/bavix/gripmock/v3/internal/infra/session"
+	roominfra "github.com/bavix/gripmock/v3/internal/infra/room"
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
 	"github.com/bavix/gripmock/v3/internal/infra/types"
 )
@@ -506,53 +506,53 @@ func TestProcessHeadersMultipleValues(t *testing.T) {
 	require.Equal(t, "value1;value2;value3", result["x-header"])
 }
 
-func TestSessionFromMetadataEmpty(t *testing.T) {
+func TestRoomFromMetadataEmpty(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
 	md := metadata.New(nil)
 
 	// Act
-	result := sessionFromMetadata(md)
+	result := roomFromMetadata(md)
 
 	// Assert
 	require.Empty(t, result)
 }
 
-func TestSessionFromMetadataFirstNonEmptyTrimmed(t *testing.T) {
+func TestRoomFromMetadataFirstNonEmptyTrimmed(t *testing.T) {
 	t.Parallel()
 
 	md := metadata.Pairs(
-		sessionHeaderKey, "   ",
-		sessionHeaderKey, "  test-session  ",
+		roomHeaderKey, "   ",
+		roomHeaderKey, "  test-room  ",
 	)
 
 	// Act
-	result := sessionFromMetadata(md)
+	result := roomFromMetadata(md)
 
 	// Assert
-	require.Equal(t, "test-session", result)
+	require.Equal(t, "test-room", result)
 }
 
-func TestSessionFromMetadataHeaderAbsent(t *testing.T) {
+func TestRoomFromMetadataHeaderAbsent(t *testing.T) {
 	t.Parallel()
 
 	md := metadata.Pairs("x-other", "value")
 
 	// Act
-	result := sessionFromMetadata(md)
+	result := roomFromMetadata(md)
 
 	// Assert
 	require.Empty(t, result)
 }
 
-func TestSessionFromContextUsesPeerBindingWhenHeaderMissing(t *testing.T) {
+func TestRoomFromContextUsesPeerBindingWhenHeaderMissing(t *testing.T) {
 	// Arrange
 	const (
 		peerHost  = "172.21.199.199"
-		sessionID = "peer-bound-session"
+		roomID = "peer-bound-room"
 	)
-	sessioninfra.AssignClient(peerHost, sessionID)
+	roominfra.AssignClient(peerHost, roomID)
 
 	ctx := peer.NewContext(context.Background(), &peer.Peer{
 		Addr: &net.TCPAddr{
@@ -562,10 +562,10 @@ func TestSessionFromContextUsesPeerBindingWhenHeaderMissing(t *testing.T) {
 	})
 
 	// Act
-	result := sessionFromContext(ctx)
+	result := roomFromContext(ctx)
 
 	// Assert
-	require.Equal(t, sessionID, result)
+	require.Equal(t, roomID, result)
 }
 
 func TestClientFromContextIncludesUserAgentFingerprint(t *testing.T) {
@@ -586,13 +586,13 @@ func TestClientFromContextIncludesUserAgentFingerprint(t *testing.T) {
 	require.Equal(t, "172.21.199.199|grpcurl/1.9.3", result)
 }
 
-func TestSessionFromContextFallsBackToPeerOnlyBinding(t *testing.T) {
+func TestRoomFromContextFallsBackToPeerOnlyBinding(t *testing.T) {
 	// Arrange
 	const (
 		peerHost  = "172.21.199.200"
-		sessionID = "peer-only-session"
+		roomID = "peer-only-room"
 	)
-	sessioninfra.AssignClient(peerHost, sessionID)
+	roominfra.AssignClient(peerHost, roomID)
 
 	ctx := peer.NewContext(context.Background(), &peer.Peer{
 		Addr: &net.TCPAddr{
@@ -603,10 +603,10 @@ func TestSessionFromContextFallsBackToPeerOnlyBinding(t *testing.T) {
 	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs("user-agent", "PostmanRuntime/grpc"))
 
 	// Act
-	result := sessionFromContext(ctx)
+	result := roomFromContext(ctx)
 
 	// Assert
-	require.Equal(t, sessionID, result)
+	require.Equal(t, roomID, result)
 }
 
 // TestConvertToMap_Proto3DefaultValues verifies that scalar fields with default values (e.g. 0.0)

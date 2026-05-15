@@ -43,12 +43,12 @@ effects:
     id: "8f2d9b80-8c66-42a6-9f3d-c331f3aee6dd"
 ```
 
-## Session Inheritance (Automatic)
+## Room Inheritance (Automatic)
 
-Effects inherit session from parent matched stub automatically.
+Effects inherit room from parent matched stub automatically.
 
-- parent stub in global session (`session: ""`) -> generated/deleted targets are global
-- parent stub in named session (`session: "test-a"`) -> generated/deleted targets are in same session
+- parent stub in global room (`room: ""`) -> generated/deleted targets are global
+- parent stub in named room (`room: "test-a"`) -> generated/deleted targets are in same room
 
 No `scope` field.
 

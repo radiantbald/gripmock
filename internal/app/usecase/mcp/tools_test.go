@@ -19,7 +19,7 @@ func TestListToolsContainsAllExpectedTools(t *testing.T) {
 		mcpusecase.ToolDashboard:       {},
 		mcpusecase.ToolOverview:        {},
 		mcpusecase.ToolInfo:            {},
-		mcpusecase.ToolSessionsList:    {},
+		mcpusecase.ToolRoomsList:    {},
 		mcpusecase.ToolGripmockInfo:    {},
 		mcpusecase.ToolReflectInfo:     {},
 		mcpusecase.ToolReflectSources:  {},

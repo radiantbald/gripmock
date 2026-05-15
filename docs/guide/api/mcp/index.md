@@ -8,14 +8,14 @@ GripMock exposes MCP over HTTP at `POST /api/mcp` using `github.com/modelcontext
 - Transport: Streamable HTTP (stateless JSON mode)
 - Endpoint: `http://127.0.0.1:4771/api/mcp`
 
-## Session behavior
+## Room behavior
 
-Session source priority:
+Room source priority:
 
-1. explicit `arguments.session`
-2. `X-Gripmock-Session` request header
+1. explicit `arguments.room`
+2. `X-Gripmock-Room` request header
 
-The header session is injected by middleware into MCP tool execution context.
+The header room is injected by middleware into MCP tool execution context.
 
 ## Available tools
 
@@ -23,7 +23,7 @@ Use `tools/list` to discover runtime tool metadata. Current tool surface:
 
 - health: `health.liveness`, `health.readiness`, `health.status`
 - dashboard: `dashboard.full`, `dashboard.overview`, `dashboard.info`
-- sessions: `sessions.list`
+- rooms: `rooms.list`
 - gripmock: `gripmock.info`
 - reflection: `reflect.info`, `reflect.sources`
 - descriptors: `descriptors.add`, `descriptors.list`
@@ -161,8 +161,8 @@ Notification (`notifications/initialized`):
 }
 ```
 
-Optional request header for session-scoped calls:
+Optional request header for room-scoped calls:
 
 ```text
-X-Gripmock-Session: qa-run-42
+X-Gripmock-Room: qa-run-42
 ```

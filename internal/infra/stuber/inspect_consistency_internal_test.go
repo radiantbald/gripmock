@@ -37,13 +37,13 @@ func TestInspectConsistencyWithFindByQuery(t *testing.T) {
 
 		exact := newStub("s.demo", "Hello", "exact")
 		contains := newStub("s.demo", "Hello", "contains")
-		contains.Session = "s1"
+		contains.Room = "s1"
 		contains.Input = stuber.InputData{Contains: map[string]any{"name": "Al"}}
 
 		tc := inspectConsistencyCase{
 			name:            "exactPreferredOverContains",
 			stubs:           []*stuber.Stub{exact, contains},
-			query:           stuber.Query{Service: "s.demo", Method: "Hello", Session: "s1", Input: []map[string]any{{"name": "Alex"}}, Headers: nil},
+			query:           stuber.Query{Service: "s.demo", Method: "Hello", Room: "s1", Input: []map[string]any{{"name": "Alex"}}, Headers: nil},
 			expectedMatched: exact.ID,
 		}
 
@@ -54,7 +54,7 @@ func TestInspectConsistencyWithFindByQuery(t *testing.T) {
 		t.Parallel()
 
 		prod := newStub("s.demo", "Hello", "prod")
-		prod.Session = "s1"
+		prod.Room = "s1"
 		prod.Headers = stuber.InputHeader{Equals: map[string]any{"x-env": "prod"}}
 		generic := newStub("s.demo", "Hello", "generic")
 
@@ -66,7 +66,7 @@ func TestInspectConsistencyWithFindByQuery(t *testing.T) {
 				Method:  "Hello",
 				Headers: map[string]any{"x-env": "prod"},
 				Input:   []map[string]any{{"name": "Alex"}},
-				Session: "s1",
+				Room: "s1",
 			},
 			expectedMatched: prod.ID,
 		}
@@ -74,25 +74,25 @@ func TestInspectConsistencyWithFindByQuery(t *testing.T) {
 		runInspectConsistencyCase(t, tc)
 	})
 
-	t.Run("sessionScopedBeatsGlobal", func(t *testing.T) {
+	t.Run("roomScopedBeatsGlobal", func(t *testing.T) {
 		t.Parallel()
 
-		sessionStub := newStub("s.demo", "Hello", "session")
-		sessionStub.Session = "s1"
+		roomStub := newStub("s.demo", "Hello", "room")
+		roomStub.Room = "s1"
 		globalStub := newStub("s.demo", "Hello", "global")
 		globalStub.Input = stuber.InputData{Contains: map[string]any{"name": "Al"}}
 
 		tc := inspectConsistencyCase{
-			name:  "sessionScopedBeatsGlobal",
-			stubs: []*stuber.Stub{sessionStub, globalStub},
+			name:  "roomScopedBeatsGlobal",
+			stubs: []*stuber.Stub{roomStub, globalStub},
 			query: stuber.Query{
 				Service: "s.demo",
 				Method:  "Hello",
-				Session: "s1",
+				Room: "s1",
 				Input:   []map[string]any{{"name": "Alex"}},
 				Headers: nil,
 			},
-			expectedMatched: sessionStub.ID,
+			expectedMatched: roomStub.ID,
 		}
 
 		runInspectConsistencyCase(t, tc)
@@ -102,7 +102,7 @@ func TestInspectConsistencyWithFindByQuery(t *testing.T) {
 		t.Parallel()
 
 		once := newStub("s.demo", "Hello", "once")
-		once.Session = "s1"
+		once.Room = "s1"
 		once.Options = stuber.StubOptions{Times: 1}
 		once.Priority = 10
 		fallback := newStub("s.demo", "Hello", "fallback")
@@ -110,10 +110,10 @@ func TestInspectConsistencyWithFindByQuery(t *testing.T) {
 		tc := inspectConsistencyCase{
 			name:            "timesExhaustionMatchesFallback",
 			stubs:           []*stuber.Stub{once, fallback},
-			query:           stuber.Query{Service: "s.demo", Method: "Hello", Session: "s1", Input: []map[string]any{{"name": "Alex"}}},
+			query:           stuber.Query{Service: "s.demo", Method: "Hello", Room: "s1", Input: []map[string]any{{"name": "Alex"}}},
 			expectedMatched: fallback.ID,
 			beforeInspect: func(s *stuber.Budgerigar) {
-				_, err := s.FindByQuery(stuber.Query{Service: "s.demo", Method: "Hello", Session: "s1", Input: []map[string]any{{"name": "Alex"}}})
+				_, err := s.FindByQuery(stuber.Query{Service: "s.demo", Method: "Hello", Room: "s1", Input: []map[string]any{{"name": "Alex"}}})
 				require.NoError(t, err)
 			},
 		}
@@ -189,7 +189,7 @@ func runInspectConsistencyCase(t *testing.T, tc inspectConsistencyCase) {
 
 	require.Equal(t, 1, matchedCount)
 
-	requireStagesPresent(t, &report, "session", "times", "headers", "input")
+	requireStagesPresent(t, &report, "room", "times", "headers", "input")
 
 	if findResult.Similar() != nil {
 		require.NotNil(t, report.SimilarStubID)
@@ -289,7 +289,7 @@ func TestInspectTraceStagesEdgeCases(t *testing.T) {
 		require.NotNil(t, report.MatchedStubID)
 		require.Equal(t, stub.ID, *report.MatchedStubID)
 
-		requireStagesPresent(t, &report, "id", "session", "times", "headers", "input")
+		requireStagesPresent(t, &report, "id", "room", "times", "headers", "input")
 	})
 
 	t.Run("idLookupDoesNotUseInputOrHeadersAsExclusion", func(t *testing.T) {
@@ -404,12 +404,12 @@ func TestInspectCandidateEventFlagConsistency(t *testing.T) {
 	assertEventConsistency := func(t *testing.T, p eventAssertParams) {
 		t.Helper()
 
-		if _, ok := p.expectFailed["session"]; ok {
-			require.False(t, p.candidate.VisibleBySession)
+		if _, ok := p.expectFailed["room"]; ok {
+			require.False(t, p.candidate.VisibleByRoom)
 
-			event := p.eventByStage["session"]
+			event := p.eventByStage["room"]
 			require.Equal(t, "failed", event.Result)
-			require.Equal(t, "session", event.Reason)
+			require.Equal(t, "room", event.Reason)
 		}
 
 		if _, ok := p.expectFailed["headers"]; ok {
@@ -450,22 +450,22 @@ func TestInspectCandidateEventFlagConsistency(t *testing.T) {
 
 	testCases := []inspectEventConsistencyCase{
 		{
-			name: "sessionMismatch",
+			name: "roomMismatch",
 			stub: &stuber.Stub{
 				ID:      uuid.New(),
 				Service: "s.demo",
 				Method:  "Hello",
-				Session: "s1",
+				Room: "s1",
 				Input:   stuber.InputData{Equals: map[string]any{"name": "Alex"}},
 				Output:  stuber.Output{Data: map[string]any{"ok": true}},
 			},
 			query: stuber.Query{
 				Service: "s.demo",
 				Method:  "Hello",
-				Session: "s2",
+				Room: "s2",
 				Input:   []map[string]any{{"name": "Alex"}},
 			},
-			expectFailed: map[string]struct{}{"session": {}},
+			expectFailed: map[string]struct{}{"room": {}},
 		},
 		{
 			name: "headersRequiredButMissing",

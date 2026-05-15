@@ -45,11 +45,11 @@ func metadataInterceptorCases() []metadataInterceptorCase {
 			stream:      StreamBearerInterceptor("tkn"),
 		},
 		{
-			name:        "session",
-			headerName:  sessionHeader,
+			name:        "room",
+			headerName:  roomHeader,
 			headerValue: "A",
-			unary:       UnarySessionInterceptor("A"),
-			stream:      StreamSessionInterceptor("A"),
+			unary:       UnaryRoomInterceptor("A"),
+			stream:      StreamRoomInterceptor("A"),
 		},
 	}
 }

@@ -15,8 +15,9 @@ import { CheckCircle, Error as ErrorIcon, Warning } from "@mui/icons-material";
 import { Link as RouterLink } from "react-router-dom";
 
 import { API_CONFIG } from "../../../constants/api";
-import { getCurrentSession, subscribeSessionChanges } from "../../../utils/session";
+import { getCurrentRoom, subscribeRoomChanges } from "../../../utils/room";
 import type { Dashboard } from "../types";
+import { formatRoomLabel, resolveRoomRow, type RoomRow } from "../../room/model";
 
 type StatItemProps = {
   label: string;
@@ -158,8 +159,8 @@ export const StatisticsCard = () => {
     { pagination: { page: 1, perPage: 9999 } },
     { enabled: historyEnabled },
   );
-  const { data: sessions, isLoading: sessionsLoading } = useGetList(
-    "sessions",
+  const { data: rooms, isLoading: roomsLoading } = useGetList(
+    "rooms",
     { pagination: { page: 1, perPage: 9999 } },
     { enabled: loadFallbackLists },
   );
@@ -179,9 +180,9 @@ export const StatisticsCard = () => {
   const descriptorsCount = useBackendStatistics
     ? Number(statistics?.runtimeDescriptors || 0)
     : descriptors?.length || 0;
-  const sessionsCount = useBackendStatistics
-    ? Number(statistics?.totalSessions || 0)
-    : sessions?.length || 0;
+  const roomsCount = useBackendStatistics
+    ? Number(statistics?.totalRooms || 0)
+    : rooms?.length || 0;
   const totalHistory = useBackendStatistics
     ? Number(statistics?.totalHistory || 0)
     : historyEnabled
@@ -195,7 +196,7 @@ export const StatisticsCard = () => {
 
   const loadingByList =
     loadFallbackLists &&
-    (servicesLoading || stubsLoading || usedStubsLoading || descriptorsLoading || sessionsLoading);
+    (servicesLoading || stubsLoading || usedStubsLoading || descriptorsLoading || roomsLoading);
   const historyMetricsLoading =
     useBackendStatistics ? false : historyEnabled && historyLoading;
 
@@ -244,8 +245,8 @@ export const StatisticsCard = () => {
             color="secondary.main"
           />
           <StatItem
-            label="Sessions"
-            value={sessionsCount}
+            label="Rooms"
+            value={roomsCount}
             loading={statisticsLoading || loadingByList}
             color="info.main"
           />
@@ -290,7 +291,19 @@ export const StatisticsCard = () => {
 };
 
 export const ApiInfoCard = () => {
-  const [session, setSession] = useState(() => getCurrentSession() || "none");
+  const [room, setRoom] = useState(() => getCurrentRoom() || "none");
+  const { data: rooms = [] } = useGetList<RoomRow>(
+    "rooms",
+    { pagination: { page: 1, perPage: 1000 } },
+    { retry: false, staleTime: 30_000, refetchOnMount: false, refetchOnWindowFocus: false },
+  );
+  const roomNameById = new Map(
+    rooms
+      .map((row) => resolveRoomRow(row))
+      .filter((item): item is { id: string; name: string } => item !== null)
+      .map((item) => [item.id, item.name]),
+  );
+  const roomLabel = room === "none" ? "none" : formatRoomLabel(room, roomNameById.get(room));
   const { data, isLoading, error } = useGetOne<Dashboard & { id: string }>(
     "dashboard",
     { id: "runtime" },
@@ -298,7 +311,7 @@ export const ApiInfoCard = () => {
   );
 
   useEffect(
-    () => subscribeSessionChanges(() => setSession(getCurrentSession() || "none")),
+    () => subscribeRoomChanges(() => setRoom(getCurrentRoom() || "none")),
     [],
   );
 
@@ -383,9 +396,9 @@ export const ApiInfoCard = () => {
           </Box>
           <Box display="flex" alignItems="center" gap={1}>
             <Typography variant="body2" fontWeight="bold">
-              Session:
+              Room:
             </Typography>
-            <Chip label={session} size="small" />
+            <Chip label={roomLabel} size="small" />
           </Box>
         </Box>
       </CardContent>
@@ -407,8 +420,8 @@ export const QuickActionsCard = () => {
           <Button size="small" variant="outlined" component={RouterLink} to={createPath({ resource: "inspect", type: "list" })}>
             Inspect matching
           </Button>
-          <Button size="small" variant="outlined" component={RouterLink} to={createPath({ resource: "session", type: "list" })}>
-            Session scope
+          <Button size="small" variant="outlined" component={RouterLink} to={createPath({ resource: "room", type: "list" })}>
+            Room scope
           </Button>
           <Button size="small" variant="outlined" component={RouterLink} to={createPath({ resource: "descriptors", type: "list" })}>
             Runtime descriptors

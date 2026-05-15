@@ -3,7 +3,7 @@ export type DashboardOverview = {
   totalStubs?: number;
   usedStubs?: number;
   unusedStubs?: number;
-  totalSessions?: number;
+  totalRooms?: number;
   runtimeDescriptors?: number;
   totalHistory?: number;
   historyErrors?: number;
@@ -23,7 +23,7 @@ export type DashboardInfo = {
   historyEnabled?: boolean;
   totalServices?: number;
   totalStubs?: number;
-  totalSessions?: number;
+  totalRooms?: number;
   runtimeDescriptors?: number;
 };
 

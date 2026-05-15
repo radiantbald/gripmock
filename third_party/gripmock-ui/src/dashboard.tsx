@@ -9,13 +9,13 @@ import {
   QuickActionsCard,
   StatisticsCard,
 } from "./features/dashboard/components/DashboardCards";
-import { getCurrentSession, subscribeSessionChanges } from "./utils/session";
+import { getCurrentRoom, subscribeRoomChanges } from "./utils/room";
 
 export const Dashboard = () => {
-  const [session, setSession] = useState(() => getCurrentSession() || "global");
+  const [room, setRoom] = useState(() => getCurrentRoom() || "global");
 
   useEffect(
-    () => subscribeSessionChanges(() => setSession(getCurrentSession() || "global")),
+    () => subscribeRoomChanges(() => setRoom(getCurrentRoom() || "global")),
     [],
   );
 
@@ -44,7 +44,7 @@ export const Dashboard = () => {
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             <Chip
               icon={<HubIcon fontSize="small" />}
-              label={`Session: ${session}`}
+              label={`Room: ${room}`}
               size="small"
               sx={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
             />

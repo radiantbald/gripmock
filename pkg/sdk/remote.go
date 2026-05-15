@@ -28,8 +28,8 @@ type remoteMock struct {
 	addr          string
 	restBaseURL   string
 	httpClient    *http.Client
-	session       string
-	sessionTTL    time.Duration
+	room       string
+	roomTTL    time.Duration
 	ttlTimer      *time.Timer
 	expectedTotal atomic.Int32
 	expectedMu    sync.Mutex
@@ -87,14 +87,14 @@ func (m *remoteMock) getOpErr() error {
 	return m.opErr
 }
 
-func (m *remoteMock) armSessionTTL() {
-	if m.session == "" || m.sessionTTL <= 0 {
+func (m *remoteMock) armRoomTTL() {
+	if m.room == "" || m.roomTTL <= 0 {
 		return
 	}
 
-	m.ttlTimer = time.AfterFunc(m.sessionTTL, func() {
+	m.ttlTimer = time.AfterFunc(m.roomTTL, func() {
 		if err := m.cleanupStubs(); err != nil {
-			m.setOpErr(fmt.Errorf("gripmock: session TTL cleanup failed: %w", err))
+			m.setOpErr(fmt.Errorf("gripmock: room TTL cleanup failed: %w", err))
 		}
 	})
 }
@@ -144,7 +144,7 @@ func (m *remoteMock) apiWithContext(ctx context.Context) remoteapi.Client {
 	return remoteapi.Client{
 		BaseURL:    m.restBaseURL,
 		HTTPClient: httpClient,
-		Session:    m.session,
+		Room:    m.room,
 		Context:    requestCtx,
 	}
 }
@@ -213,10 +213,10 @@ func runRemote(ctx context.Context, o *options) (Mock, error) {
 
 	unaryInterceptors := []grpc.UnaryClientInterceptor{grpcclient.UnaryTimeoutInterceptor(o.grpcTimeout)}
 	streamInterceptors := []grpc.StreamClientInterceptor{grpcclient.StreamTimeoutInterceptor(o.grpcTimeout)}
-	if o.session != "" {
-		sess := o.session
-		unaryInterceptors = append(unaryInterceptors, grpcclient.UnarySessionInterceptor(sess))
-		streamInterceptors = append(streamInterceptors, grpcclient.StreamSessionInterceptor(sess))
+	if o.room != "" {
+		sess := o.room
+		unaryInterceptors = append(unaryInterceptors, grpcclient.UnaryRoomInterceptor(sess))
+		streamInterceptors = append(streamInterceptors, grpcclient.StreamRoomInterceptor(sess))
 	}
 
 	opts = append(opts,
@@ -238,8 +238,8 @@ func runRemote(ctx context.Context, o *options) (Mock, error) {
 		addr:        o.remoteAddr,
 		restBaseURL: o.remoteRestURL,
 		httpClient:  o.httpClient,
-		session:     o.session,
-		sessionTTL:  o.sessionTTL,
+		room:     o.room,
+		roomTTL:  o.roomTTL,
 	}
 
 	if err := rm.uploadDescriptors(o.descriptorFiles); err != nil {
@@ -247,7 +247,7 @@ func runRemote(ctx context.Context, o *options) (Mock, error) {
 		return nil, err
 	}
 
-	rm.armSessionTTL()
+	rm.armRoomTTL()
 
 	return rm, nil
 }

@@ -22,7 +22,7 @@ import (
 	pgallowlist "github.com/bavix/gripmock/v3/internal/infra/postgres/allowlist"
 	pgclients "github.com/bavix/gripmock/v3/internal/infra/postgres/clients"
 	pgprotometadata "github.com/bavix/gripmock/v3/internal/infra/postgres/protometadata"
-	pgsessions "github.com/bavix/gripmock/v3/internal/infra/postgres/sessions"
+	pgrooms "github.com/bavix/gripmock/v3/internal/infra/postgres/rooms"
 	pgusers "github.com/bavix/gripmock/v3/internal/infra/postgres/users"
 	reflectclient "github.com/bavix/gripmock/v3/internal/infra/reflectclient"
 	sourceclient "github.com/bavix/gripmock/v3/internal/infra/sourceclient"
@@ -81,9 +81,9 @@ type Builder struct {
 	allowedPhonesRepositoryOnce sync.Once
 	allowedPhonesRepositoryErr  error
 
-	sessionsRepository     *pgsessions.Repository
-	sessionsRepositoryOnce sync.Once
-	sessionsRepositoryErr  error
+	roomsRepository     *pgrooms.Repository
+	roomsRepositoryOnce sync.Once
+	roomsRepositoryErr  error
 
 	clientsRepository     *pgclients.Repository
 	clientsRepositoryOnce sync.Once
@@ -100,7 +100,7 @@ type Builder struct {
 	pluginRegistry *internalplugins.Registry
 	pluginOnce     sync.Once
 
-	sessionGCOnce sync.Once
+	roomGCOnce sync.Once
 }
 
 func NewBuilder(opts ...Option) *Builder {

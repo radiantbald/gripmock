@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
-import { AppBar } from "react-admin";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppBar, useGetList } from "react-admin";
 import { Box, IconButton, Menu, MenuItem, Typography } from "@mui/material";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import HubIcon from "@mui/icons-material/Hub";
 import { Link as RouterLink, useLocation } from "react-router-dom";
 import { clearAuthorizedPhone } from "../../utils/auth";
-import { getCurrentSession, subscribeSessionChanges } from "../../utils/session";
+import { getCurrentRoom, subscribeRoomChanges } from "../../utils/room";
+import { resolveRoomRow, type RoomRow } from "../../features/room/model";
 
 const resolveSectionTitle = (pathname: string): string => {
   if (pathname === "/" || pathname === "") return "Dashboard";
@@ -16,7 +17,7 @@ const resolveSectionTitle = (pathname: string): string => {
   if (pathname.startsWith("/descriptors")) return "Descriptors";
   if (pathname.startsWith("/history")) return "History";
   if (pathname.startsWith("/sniffer")) return "Sniffer";
-  if (pathname.startsWith("/session")) return "Session Scope";
+  if (pathname.startsWith("/room")) return "";
   if (pathname.startsWith("/verify")) return "Verify";
   if (pathname.startsWith("/inspect")) return "Inspector";
 
@@ -26,17 +27,61 @@ const resolveSectionTitle = (pathname: string): string => {
 export const CustomAppBar = () => {
   const location = useLocation();
   const sectionTitle = resolveSectionTitle(location.pathname);
-  const [session, setSession] = useState(() => getCurrentSession());
+  const isRoomPage = location.pathname.startsWith("/room");
+  const [room, setRoom] = useState(() => getCurrentRoom());
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
   const isMenuOpen = Boolean(menuAnchorEl);
+  const appBarContentRef = useRef<HTMLDivElement | null>(null);
+  const roomScopeSlotRef = useRef<HTMLDivElement | null>(null);
+  const [roomScopeSlotLeft, setRoomScopeSlotLeft] = useState<number | null>(null);
+  const { data: rooms = [] } = useGetList<RoomRow>(
+    "rooms",
+    { pagination: { page: 1, perPage: 1000 } },
+    { retry: false, staleTime: 30_000, refetchOnMount: false, refetchOnWindowFocus: false },
+  );
+  const roomNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    rooms.forEach((row) => {
+      const resolved = resolveRoomRow(row);
+      if (resolved) {
+        map.set(resolved.id, resolved.name);
+      }
+    });
+    return map;
+  }, [rooms]);
+  const activeRoomName = room ? String(roomNameById.get(room) || "").trim() : "";
 
   useEffect(
     () =>
-      subscribeSessionChanges(() => {
-        setSession(getCurrentSession());
+      subscribeRoomChanges(() => {
+        setRoom(getCurrentRoom());
       }),
     [],
   );
+
+  const updateRoomScopeSlotLeft = useCallback(() => {
+    const container = appBarContentRef.current;
+    const slot = roomScopeSlotRef.current;
+    if (!container || !slot) {
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const slotRect = slot.getBoundingClientRect();
+    setRoomScopeSlotLeft(slotRect.left - containerRect.left);
+  }, []);
+
+  useEffect(() => {
+    updateRoomScopeSlotLeft();
+  }, [updateRoomScopeSlotLeft, sectionTitle, isRoomPage]);
+
+  useEffect(() => {
+    const handleResize = () => updateRoomScopeSlotLeft();
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [updateRoomScopeSlotLeft]);
 
   const openProfileMenu = (event: React.MouseEvent<HTMLElement>) => {
     setMenuAnchorEl(event.currentTarget);
@@ -53,7 +98,7 @@ export const CustomAppBar = () => {
 
   return (
     <AppBar toolbar={null}>
-      <Box sx={{ position: "relative", width: "100%", display: "flex", alignItems: "center" }}>
+      <Box ref={appBarContentRef} sx={{ position: "relative", width: "100%", display: "flex", alignItems: "center" }}>
         <Typography
           variant="subtitle1"
           sx={{
@@ -66,18 +111,28 @@ export const CustomAppBar = () => {
         >
           GripMock UI
         </Typography>
-        {sectionTitle ? (
-          <Typography
-            variant="subtitle2"
-            color="text.secondary"
-            sx={{
-              mr: 1,
-              whiteSpace: "nowrap",
-            }}
-          >
-            {sectionTitle}
-          </Typography>
-        ) : null}
+        <Box
+          ref={roomScopeSlotRef}
+          sx={{
+            display: "inline-flex",
+            alignItems: "center",
+            mr: 1,
+            minWidth: isRoomPage ? 1 : 0,
+            minHeight: 1,
+          }}
+        >
+          {sectionTitle ? (
+            <Typography
+              variant="subtitle2"
+              color="text.secondary"
+              sx={{
+                whiteSpace: "nowrap",
+              }}
+            >
+              {sectionTitle}
+            </Typography>
+          ) : null}
+        </Box>
         <Box sx={{ flex: 1 }} />
         <IconButton
           color="inherit"
@@ -103,17 +158,18 @@ export const CustomAppBar = () => {
         <Box
           sx={{
             position: "absolute",
-            left: "50%",
+            left: isRoomPage && roomScopeSlotLeft !== null ? `${roomScopeSlotLeft}px` : "50%",
             top: "50%",
-            transform: "translate(-50%, -50%)",
+            transform: isRoomPage ? "translate(0, -50%)" : "translate(-50%, -50%)",
             display: "inline-flex",
             alignItems: "center",
             gap: 1,
+            transition: "left 280ms cubic-bezier(0.22, 1, 0.36, 1), transform 280ms cubic-bezier(0.22, 1, 0.36, 1)",
           }}
         >
           <Box
             component={RouterLink}
-            to="/session"
+            to="/room"
             sx={{
               height: "calc(100% - 12px)",
               minHeight: 30,
@@ -139,7 +195,7 @@ export const CustomAppBar = () => {
           >
             <HubIcon sx={{ fontSize: 18, color: "primary.main" }} />
             <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1, whiteSpace: "nowrap" }}>
-              Sessions
+              Rooms
             </Typography>
           </Box>
           <Typography
@@ -154,7 +210,35 @@ export const CustomAppBar = () => {
               fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
             }}
           >
-            current session - {session || "none"}
+            <Box component="span">current - </Box>
+            {room ? (
+              <>
+                <Box
+                  component="span"
+                  sx={{
+                    fontSize: 11,
+                    color: "text.disabled",
+                  }}
+                >
+                  #{room}
+                </Box>
+                {activeRoomName ? (
+                  <Box
+                    component="span"
+                    sx={{
+                      ml: 0.65,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: "#D7DCE2",
+                    }}
+                  >
+                    {activeRoomName}
+                  </Box>
+                ) : null}
+              </>
+            ) : (
+              <Box component="span">none</Box>
+            )}
           </Typography>
         </Box>
       </Box>

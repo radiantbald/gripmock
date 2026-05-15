@@ -16,11 +16,11 @@ export type InspectCandidate = {
   name?: string;
   service: string;
   method: string;
-  session?: string;
+  room?: string;
   enabled: boolean;
   times: number;
   used: number;
-  visibleBySession: boolean;
+  visibleByRoom: boolean;
   withinTimes: boolean;
   headersMatched: boolean;
   inputMatched: boolean;
@@ -34,7 +34,7 @@ export type InspectCandidate = {
 export type InspectResponse = {
   service: string;
   method: string;
-  session?: string;
+  room?: string;
   fallbackToMethod: boolean;
   error?: string;
   matchedStubId?: string;

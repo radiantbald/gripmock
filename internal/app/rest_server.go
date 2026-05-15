@@ -45,10 +45,10 @@ import (
 	pgallowlist "github.com/bavix/gripmock/v3/internal/infra/postgres/allowlist"
 	pgclients "github.com/bavix/gripmock/v3/internal/infra/postgres/clients"
 	pgprotometadata "github.com/bavix/gripmock/v3/internal/infra/postgres/protometadata"
-	pgsessions "github.com/bavix/gripmock/v3/internal/infra/postgres/sessions"
+	pgrooms "github.com/bavix/gripmock/v3/internal/infra/postgres/rooms"
 	pgusers "github.com/bavix/gripmock/v3/internal/infra/postgres/users"
 	protosetinfra "github.com/bavix/gripmock/v3/internal/infra/protoset"
-	sessioninfra "github.com/bavix/gripmock/v3/internal/infra/session"
+	roominfra "github.com/bavix/gripmock/v3/internal/infra/room"
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
 	"github.com/bavix/gripmock/v3/internal/pbs"
 )
@@ -93,7 +93,7 @@ type RestServer struct {
 	mcpHandler      http.Handler
 	usersRepository *pgusers.Repository
 	allowedPhones   *pgallowlist.Repository
-	sessionsRepo    *pgsessions.Repository
+	roomsRepo       *pgrooms.Repository
 	clientsRepo     *pgclients.Repository
 	protoMetadata   ProtoMetadataWriter
 }
@@ -155,8 +155,8 @@ func (h *RestServer) SetAllowedPhonesRepository(repository *pgallowlist.Reposito
 	h.allowedPhones = repository
 }
 
-func (h *RestServer) SetSessionsRepository(repository *pgsessions.Repository) {
-	h.sessionsRepo = repository
+func (h *RestServer) SetRoomsRepository(repository *pgrooms.Repository) {
+	h.roomsRepo = repository
 }
 
 func (h *RestServer) SetClientsRepository(repository *pgclients.Repository) {
@@ -170,7 +170,7 @@ func (h *RestServer) SetClientsRepository(repository *pgclients.Repository) {
 		return
 	}
 	for _, route := range routes {
-		sessioninfra.AssignClient(route.ClientID, route.SessionID)
+		roominfra.AssignClient(route.ClientID, route.RoomID)
 	}
 }
 
@@ -217,9 +217,10 @@ const (
 )
 
 var (
-	errServiceNotFound        = stderrors.New("service not found")
-	errMethodNotFound         = stderrors.New("method not found in service")
-	errSessionForbiddenDelete = stderrors.New("only session creator can delete this session")
+	errServiceNotFound     = stderrors.New("service not found")
+	errMethodNotFound      = stderrors.New("method not found in service")
+	errRoomForbiddenDelete = stderrors.New("only room creator can delete this room")
+	errRoomInvalidID       = stderrors.New("room must be numeric id")
 )
 
 // ServicesList returns a list of all available gRPC services (startup + REST-added).
@@ -338,7 +339,7 @@ func (h *RestServer) DashboardOverview(w http.ResponseWriter, r *http.Request) {
 		TotalStubs:         payload.TotalStubs,
 		UsedStubs:          payload.UsedStubs,
 		UnusedStubs:        payload.UnusedStubs,
-		TotalSessions:      payload.TotalSessions,
+		TotalRooms:         payload.TotalRooms,
 		RuntimeDescriptors: payload.RuntimeDescriptors,
 		TotalHistory:       payload.TotalHistory,
 		HistoryErrors:      payload.HistoryErrors,
@@ -352,16 +353,16 @@ func (h *RestServer) Dashboard(w http.ResponseWriter, r *http.Request) {
 	h.writeResponse(r.Context(), w, h.dashboardPayload(r))
 }
 
-// SessionsList returns distinct non-empty session IDs for UI selectors.
-func (h *RestServer) SessionsList(w http.ResponseWriter, r *http.Request) {
-	h.writeResponse(r.Context(), w, rest.Sessions{Sessions: h.sessionsForResponse()})
+// RoomsList returns distinct non-empty room IDs for UI selectors.
+func (h *RestServer) RoomsList(w http.ResponseWriter, r *http.Request) {
+	h.writeResponse(r.Context(), w, rest.Rooms{Rooms: h.roomsForResponse()})
 }
 
-// SessionsCreate creates a session row and returns generated id.
-func (h *RestServer) SessionsCreate(w http.ResponseWriter, r *http.Request) {
-	if h.sessionsRepo == nil {
+// RoomsCreate creates a room row and returns generated id.
+func (h *RestServer) RoomsCreate(w http.ResponseWriter, r *http.Request) {
+	if h.roomsRepo == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		h.writeResponseError(r.Context(), w, errors.New("sessions repository is not configured"))
+		h.writeResponseError(r.Context(), w, errors.New("rooms repository is not configured"))
 		return
 	}
 
@@ -375,27 +376,55 @@ func (h *RestServer) SessionsCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = json.Unmarshal(byt, &payload); err != nil {
-		h.validationError(r.Context(), w, errors.Wrap(err, "invalid sessions payload"))
+		h.validationError(r.Context(), w, errors.Wrap(err, "invalid rooms payload"))
 		return
 	}
 
-	row, createErr := h.sessionsRepo.Create(r.Context(), payload.Name, muxmiddleware.OwnerFromContext(r.Context()))
+	row, createErr := h.roomsRepo.Create(r.Context(), payload.Name, muxmiddleware.OwnerFromContext(r.Context()))
 	if createErr != nil {
 		h.validationError(r.Context(), w, createErr)
 		return
 	}
 
-	h.writeResponse(r.Context(), w, rest.Session{
+	roominfra.TouchWithOwner(strconv.FormatInt(row.ID, 10), muxmiddleware.OwnerFromContext(r.Context()))
+
+	h.writeResponse(r.Context(), w, rest.Room{
 		Id:   strconv.FormatInt(row.ID, 10),
 		Name: nilIfEmpty(row.Name),
 	})
 }
 
-// SessionsAssignPeer binds a stable peer identifier to a session for gRPC calls without explicit session header.
-func (h *RestServer) SessionsAssignPeer(w http.ResponseWriter, r *http.Request) {
+// RoomsDelete removes room-scoped stubs, history, clients and room metadata row.
+func (h *RestServer) RoomsDelete(w http.ResponseWriter, r *http.Request) {
+	roomID := strings.TrimSpace(mux.Vars(r)["roomID"])
+	if roomID == "" {
+		h.validationError(r.Context(), w, errors.New("room id is required"))
+		return
+	}
+
+	result, err := h.purgeRoomData(r.Context(), roomID, muxmiddleware.OwnerFromContext(r.Context()))
+	if err != nil {
+		switch {
+		case stderrors.Is(err, errRoomForbiddenDelete):
+			w.WriteHeader(http.StatusForbidden)
+			h.writeResponseError(r.Context(), w, err)
+		case stderrors.Is(err, errRoomInvalidID):
+			h.validationError(r.Context(), w, err)
+		default:
+			h.responseError(r.Context(), w, err)
+		}
+
+		return
+	}
+
+	h.writeResponse(r.Context(), w, result)
+}
+
+// RoomsAssignPeer binds a stable peer identifier to a room for gRPC calls without explicit room header.
+func (h *RestServer) RoomsAssignPeer(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		Peer        string `json:"peer"`
-		Session     string `json:"session"`
+		Room        string `json:"room"`
 		UserAgent   string `json:"userAgent"`
 		Fingerprint string `json:"fingerprint"`
 	}
@@ -406,16 +435,16 @@ func (h *RestServer) SessionsAssignPeer(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err = json.Unmarshal(byt, &payload); err != nil {
-		h.validationError(r.Context(), w, errors.Wrap(err, "invalid sessions peer assignment payload"))
+		h.validationError(r.Context(), w, errors.Wrap(err, "invalid rooms peer assignment payload"))
 		return
 	}
 
 	peerID := strings.TrimSpace(payload.Peer)
-	sessionID := strings.TrimSpace(payload.Session)
+	roomID := strings.TrimSpace(payload.Room)
 	userAgent := strings.TrimSpace(payload.UserAgent)
 	fingerprint := strings.TrimSpace(payload.Fingerprint)
-	if peerID == "" || sessionID == "" {
-		h.validationError(r.Context(), w, errors.New("peer and session are required"))
+	if peerID == "" || roomID == "" {
+		h.validationError(r.Context(), w, errors.New("peer and room are required"))
 		return
 	}
 	if fingerprint == "" {
@@ -426,7 +455,7 @@ func (h *RestServer) SessionsAssignPeer(w http.ResponseWriter, r *http.Request) 
 		if err := h.clientsRepo.Upsert(
 			r.Context(),
 			peerID,
-			sessionID,
+			roomID,
 			muxmiddleware.OwnerFromContext(r.Context()),
 			peerID,
 			userAgent,
@@ -437,49 +466,49 @@ func (h *RestServer) SessionsAssignPeer(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	if !sessioninfra.AssignClient(peerID, sessionID) {
-		h.validationError(r.Context(), w, errors.New("failed to assign peer to session"))
+	if !roominfra.AssignClient(peerID, roomID) {
+		h.validationError(r.Context(), w, errors.New("failed to assign peer to room"))
 		return
 	}
 
 	h.writeResponse(r.Context(), w, rest.MessageOK{
-		Message: "peer assigned to session",
+		Message: "peer assigned to room",
 		Time:    time.Now(),
 	})
 }
 
-// SessionsPeerStatus returns session mapping for a peer (if any).
-func (h *RestServer) SessionsPeerStatus(w http.ResponseWriter, r *http.Request) {
+// RoomsPeerStatus returns room mapping for a peer (if any).
+func (h *RestServer) RoomsPeerStatus(w http.ResponseWriter, r *http.Request) {
 	peerID := strings.TrimSpace(r.URL.Query().Get("peer"))
 	if peerID == "" {
 		h.validationError(r.Context(), w, errors.New("peer is required"))
 		return
 	}
 
-	sessionID := ""
+	roomID := ""
 	if h.clientsRepo != nil {
-		dbSessionID, err := h.clientsRepo.SessionByClient(r.Context(), peerID)
+		dbRoomID, err := h.clientsRepo.RoomByClient(r.Context(), peerID)
 		if err != nil {
 			h.validationError(r.Context(), w, err)
 			return
 		}
-		sessionID = strings.TrimSpace(dbSessionID)
-		if sessionID == "" {
-			sessioninfra.UnassignClient(peerID)
+		roomID = strings.TrimSpace(dbRoomID)
+		if roomID == "" {
+			roominfra.UnassignClient(peerID)
 		} else {
-			sessioninfra.AssignClient(peerID, sessionID)
+			roominfra.AssignClient(peerID, roomID)
 		}
 	} else {
-		sessionID = strings.TrimSpace(sessioninfra.SessionByClient(peerID))
+		roomID = strings.TrimSpace(roominfra.RoomByClient(peerID))
 	}
 	h.writeResponse(r.Context(), w, map[string]any{
-		"peer":    peerID,
-		"session": sessionID,
-		"bound":   sessionID != "",
+		"peer":  peerID,
+		"room":  roomID,
+		"bound": roomID != "",
 	})
 }
 
-// ClientsList returns peer-to-session mappings persisted for routing.
+// ClientsList returns peer-to-room mappings persisted for routing.
 func (h *RestServer) ClientsList(w http.ResponseWriter, r *http.Request) {
 	if h.clientsRepo == nil {
 		h.writeResponse(r.Context(), w, []map[string]any{})
@@ -495,15 +524,15 @@ func (h *RestServer) ClientsList(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0, len(routes))
 	for _, route := range routes {
 		clientID := strings.TrimSpace(route.ClientID)
-		sessionID := strings.TrimSpace(route.SessionID)
-		if clientID == "" || sessionID == "" {
+		roomID := strings.TrimSpace(route.RoomID)
+		if clientID == "" || roomID == "" {
 			continue
 		}
 
 		items = append(items, map[string]any{
 			"id":          clientID,
 			"client":      clientID,
-			"session":     sessionID,
+			"room":        roomID,
 			"user":        route.UserID,
 			"peerHost":    route.PeerHost,
 			"userAgent":   route.UserAgent,
@@ -674,7 +703,7 @@ func (h *RestServer) DashboardInfo(w http.ResponseWriter, r *http.Request) {
 		HistoryEnabled:     payload.HistoryEnabled,
 		TotalServices:      payload.TotalServices,
 		TotalStubs:         payload.TotalStubs,
-		TotalSessions:      payload.TotalSessions,
+		TotalRooms:         payload.TotalRooms,
 		RuntimeDescriptors: payload.RuntimeDescriptors,
 	})
 }
@@ -730,7 +759,7 @@ func newMCPToolHandler(h *RestServer, name string) mcp.ToolHandler {
 			}
 		}
 
-		args = mcpusecase.ApplySession(name, args, mcpSessionFromContext(ctx, req))
+		args = mcpusecase.ApplyRoom(name, args, mcpRoomFromContext(ctx, req))
 		args = mcpApplyOwner(name, args, mcpOwnerFromContext(ctx, req))
 
 		result, err := callMCPToolDispatch(h, name, args)
@@ -745,9 +774,9 @@ func newMCPToolHandler(h *RestServer, name string) mcp.ToolHandler {
 	}
 }
 
-func mcpSessionFromContext(ctx context.Context, req *mcp.CallToolRequest) string {
-	if sessionID := muxmiddleware.FromContext(ctx); sessionID != "" {
-		return sessionID
+func mcpRoomFromContext(ctx context.Context, req *mcp.CallToolRequest) string {
+	if roomID := muxmiddleware.FromContext(ctx); roomID != "" {
+		return roomID
 	}
 
 	if req == nil || req.Extra == nil {
@@ -833,7 +862,7 @@ func mcpGeneralToolHandlers(h *RestServer) map[string]mcpusecase.ToolHandler {
 		mcpusecase.ToolDashboard:       func(toolArgs map[string]any) (map[string]any, error) { return mcpDashboard(h, toolArgs) },
 		mcpusecase.ToolOverview:        func(toolArgs map[string]any) (map[string]any, error) { return mcpDashboardOverview(h, toolArgs) },
 		mcpusecase.ToolInfo:            func(toolArgs map[string]any) (map[string]any, error) { return mcpDashboardInfo(h, toolArgs) },
-		mcpusecase.ToolSessionsList:    func(toolArgs map[string]any) (map[string]any, error) { return mcpSessionsList(h, toolArgs) },
+		mcpusecase.ToolRoomsList:       func(toolArgs map[string]any) (map[string]any, error) { return mcpRoomsList(h, toolArgs) },
 		mcpusecase.ToolGripmockInfo:    func(toolArgs map[string]any) (map[string]any, error) { return mcpGripmockInfo(h, toolArgs) },
 		mcpusecase.ToolReflectInfo:     func(toolArgs map[string]any) (map[string]any, error) { return mcpReflectInfo(h, toolArgs) },
 		mcpusecase.ToolReflectSources:  func(toolArgs map[string]any) (map[string]any, error) { return mcpReflectSources(h, toolArgs) },
@@ -912,18 +941,18 @@ func mcpHealthStatus(h *RestServer, _ map[string]any) (map[string]any, error) {
 }
 
 func mcpDashboard(h *RestServer, args map[string]any) (map[string]any, error) {
-	return map[string]any{"dashboard": h.dashboardPayload(mcpSessionRequest(args))}, nil
+	return map[string]any{"dashboard": h.dashboardPayload(mcpRoomRequest(args))}, nil
 }
 
 func mcpDashboardOverview(h *RestServer, args map[string]any) (map[string]any, error) {
-	payload := h.dashboardPayload(mcpSessionRequest(args))
+	payload := h.dashboardPayload(mcpRoomRequest(args))
 
 	return map[string]any{"overview": rest.DashboardOverview{
 		TotalServices:      payload.TotalServices,
 		TotalStubs:         payload.TotalStubs,
 		UsedStubs:          payload.UsedStubs,
 		UnusedStubs:        payload.UnusedStubs,
-		TotalSessions:      payload.TotalSessions,
+		TotalRooms:         payload.TotalRooms,
 		RuntimeDescriptors: payload.RuntimeDescriptors,
 		TotalHistory:       payload.TotalHistory,
 		HistoryErrors:      payload.HistoryErrors,
@@ -931,7 +960,7 @@ func mcpDashboardOverview(h *RestServer, args map[string]any) (map[string]any, e
 }
 
 func mcpDashboardInfo(h *RestServer, args map[string]any) (map[string]any, error) {
-	payload := h.dashboardPayload(mcpSessionRequest(args))
+	payload := h.dashboardPayload(mcpRoomRequest(args))
 
 	return map[string]any{"info": rest.DashboardInfo{
 		AppName:            payload.AppName,
@@ -947,13 +976,13 @@ func mcpDashboardInfo(h *RestServer, args map[string]any) (map[string]any, error
 		HistoryEnabled:     payload.HistoryEnabled,
 		TotalServices:      payload.TotalServices,
 		TotalStubs:         payload.TotalStubs,
-		TotalSessions:      payload.TotalSessions,
+		TotalRooms:         payload.TotalRooms,
 		RuntimeDescriptors: payload.RuntimeDescriptors,
 	}}, nil
 }
 
-func mcpSessionsList(h *RestServer, _ map[string]any) (map[string]any, error) {
-	return map[string]any{"sessions": h.sessionsForResponse()}, nil
+func mcpRoomsList(h *RestServer, _ map[string]any) (map[string]any, error) {
+	return map[string]any{"rooms": h.roomsForResponse()}, nil
 }
 
 func mcpGripmockInfo(h *RestServer, _ map[string]any) (map[string]any, error) {
@@ -967,7 +996,7 @@ func mcpGripmockInfo(h *RestServer, _ map[string]any) (map[string]any, error) {
 		"ready":              overview.Ready,
 		"totalServices":      overview.TotalServices,
 		"totalStubs":         overview.TotalStubs,
-		"totalSessions":      overview.TotalSessions,
+		"totalRooms":         overview.TotalRooms,
 		"runtimeDescriptors": overview.RuntimeDescriptors,
 		"tools":              mcpusecase.ListRuntimeTools(),
 	}, nil
@@ -1096,10 +1125,10 @@ func paginateStringSlice(items []string, offset int, limit int) []string {
 	return items
 }
 
-func mcpSessionRequest(args map[string]any) *http.Request {
+func mcpRoomRequest(args map[string]any) *http.Request {
 	req := &http.Request{Header: make(http.Header)}
-	if sessionID, _ := args["session"].(string); sessionID != "" {
-		req.Header.Set(muxmiddleware.HeaderName, sessionID)
+	if roomID, _ := args["room"].(string); roomID != "" {
+		req.Header.Set(muxmiddleware.HeaderName, roomID)
 	}
 
 	return req
@@ -1199,7 +1228,7 @@ func mcpServicesMethod(h *RestServer, args map[string]any) (map[string]any, erro
 func mcpHistoryList(h *RestServer, args map[string]any) (map[string]any, error) {
 	service, _ := args["service"].(string)
 	method, _ := args["method"].(string)
-	session, _ := args["session"].(string)
+	room, _ := args["room"].(string)
 
 	limit, err := mcpIntArg(args, "limit", 0)
 	if err != nil {
@@ -1209,21 +1238,21 @@ func mcpHistoryList(h *RestServer, args map[string]any) (map[string]any, error) 
 	records := filterHistory(h, history.FilterOpts{
 		Service: service,
 		Method:  method,
-		Session: session,
+		Room:    room,
 	}, limit)
 
 	return map[string]any{"records": records}, nil
 }
 
 func mcpHistoryErrors(h *RestServer, args map[string]any) (map[string]any, error) {
-	session, _ := args["session"].(string)
+	room, _ := args["room"].(string)
 
 	limit, err := mcpIntArg(args, "limit", 0)
 	if err != nil {
 		return nil, err
 	}
 
-	errorsOnly := extractErrorRecords(filterHistory(h, history.FilterOpts{Session: session}, 0))
+	errorsOnly := extractErrorRecords(filterHistory(h, history.FilterOpts{Room: room}, 0))
 	if limit > 0 && len(errorsOnly) > limit {
 		errorsOnly = errorsOnly[len(errorsOnly)-limit:]
 	}
@@ -1255,8 +1284,8 @@ func mcpVerifyCalls(h *RestServer, args map[string]any) (map[string]any, error) 
 		return map[string]any{"verified": false, "message": "history is disabled", "expected": expectedCount, "actual": 0}, nil
 	}
 
-	session, _ := args["session"].(string)
-	calls := h.history.Filter(history.FilterOpts{Service: service, Method: method, Session: session})
+	room, _ := args["room"].(string)
+	calls := h.history.Filter(history.FilterOpts{Service: service, Method: method, Room: room})
 	actual := len(calls)
 
 	if actual != expectedCount {
@@ -1278,7 +1307,7 @@ func mcpDebugCall(h *RestServer, args map[string]any) (map[string]any, error) {
 	}
 
 	method, _ := args["method"].(string)
-	session, _ := args["session"].(string)
+	room, _ := args["room"].(string)
 
 	limit, err := mcpIntArg(args, "limit", debugCallDefaultLimit)
 	if err != nil {
@@ -1290,7 +1319,7 @@ func mcpDebugCall(h *RestServer, args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	return debugCall(h, service, method, session, limit, stubsLimit), nil
+	return debugCall(h, service, method, room, limit, stubsLimit), nil
 }
 
 func mcpStubsUpsert(h *RestServer, args map[string]any) (map[string]any, error) {
@@ -1304,14 +1333,14 @@ func mcpStubsUpsert(h *RestServer, args map[string]any) (map[string]any, error) 
 		return nil, err
 	}
 
-	sessionID, _ := args["session"].(string)
-	if sessionID != "" {
+	roomID, _ := args["room"].(string)
+	if roomID != "" {
 		ownerID, _ := args["_owner"].(string)
-		sessioninfra.TouchWithOwner(sessionID, ownerID)
+		roominfra.TouchWithOwner(roomID, ownerID)
 	}
 
 	for _, stub := range stubs {
-		stub.Session = sessionID
+		stub.Room = roomID
 		stub.Source = stuber.SourceMCP
 
 		if err = h.validateStub(stub); err != nil {
@@ -1413,53 +1442,104 @@ func mcpStubsBatchDelete(h *RestServer, args map[string]any) (map[string]any, er
 }
 
 func mcpStubsPurge(h *RestServer, args map[string]any) (map[string]any, error) {
-	sessionID, _ := args["session"].(string)
-	if sessionID != "" {
+	roomID, _ := args["room"].(string)
+	if roomID != "" {
 		ownerID, _ := args["_owner"].(string)
-		if !sessioninfra.CanDelete(sessionID, ownerID) {
-			return nil, mcpInvalidArgError(errSessionForbiddenDelete.Error())
+		result, err := h.purgeRoomData(context.Background(), roomID, ownerID)
+		if err != nil {
+			if stderrors.Is(err, errRoomForbiddenDelete) || stderrors.Is(err, errRoomInvalidID) {
+				return nil, mcpInvalidArgError(err.Error())
+			}
+
+			return nil, err
 		}
 
-		deletedCount := h.budgerigar.DeleteSession(sessionID)
-		deletedHistoryCount := 0
-		if cleaner, ok := h.history.(history.SessionCleaner); ok {
-			deletedHistoryCount = cleaner.DeleteSession(sessionID)
-		}
-		deletedSessionRows := 0
-		if h.sessionsRepo != nil {
-			parsedSessionID, parseErr := strconv.ParseInt(strings.TrimSpace(sessionID), 10, 64)
-			if parseErr != nil {
-				return nil, mcpInvalidArgError("session must be numeric id")
-			}
-			rows, deleteErr := h.sessionsRepo.DeleteByID(context.Background(), parsedSessionID)
-			if deleteErr != nil {
-				return nil, errors.Wrap(deleteErr, "failed to delete session metadata")
-			}
-			deletedSessionRows = rows
-		}
-		deletedClientRows := 0
-		if h.clientsRepo != nil {
-			rows, deleteErr := h.clientsRepo.DeleteBySession(context.Background(), sessionID)
-			if deleteErr != nil {
-				return nil, errors.Wrap(deleteErr, "failed to delete clients metadata")
-			}
-			deletedClientRows = rows
-		}
-		sessioninfra.Forget(sessionID)
-
-		return map[string]any{
-			"deletedCount":        deletedCount,
-			"deletedHistoryCount": deletedHistoryCount,
-			"deletedSessionRows":  deletedSessionRows,
-			"deletedClientRows":   deletedClientRows,
-			"session":             sessionID,
-		}, nil
+		return result, nil
 	}
 
 	deletedCount := len(h.budgerigar.All())
 	h.budgerigar.Clear()
 
 	return map[string]any{"deletedCount": deletedCount}, nil
+}
+
+func (h *RestServer) purgeRoomData(ctx context.Context, roomID string, ownerID string) (map[string]any, error) {
+	roomID = strings.TrimSpace(roomID)
+	if roomID == "" {
+		return nil, errors.New("room id is required")
+	}
+
+	canDelete, canDeleteErr := h.canDeleteRoom(ctx, roomID, ownerID)
+	if canDeleteErr != nil {
+		return nil, canDeleteErr
+	}
+	if !canDelete {
+		return nil, errRoomForbiddenDelete
+	}
+
+	deletedCount := h.budgerigar.DeleteRoom(roomID)
+	deletedHistoryCount := 0
+	if cleaner, ok := h.history.(history.RoomCleaner); ok {
+		deletedHistoryCount = cleaner.DeleteRoom(roomID)
+	}
+
+	deletedRoomRows := 0
+	if h.roomsRepo != nil {
+		parsedRoomID, err := strconv.ParseInt(roomID, 10, 64)
+		if err != nil {
+			return nil, errRoomInvalidID
+		}
+
+		rows, deleteErr := h.roomsRepo.DeleteByID(ctx, parsedRoomID)
+		if deleteErr != nil {
+			return nil, errors.Wrap(deleteErr, "failed to delete room metadata")
+		}
+		deletedRoomRows = rows
+	}
+
+	deletedClientRows := 0
+	if h.clientsRepo != nil {
+		rows, deleteErr := h.clientsRepo.DeleteByRoom(ctx, roomID)
+		if deleteErr != nil {
+			return nil, errors.Wrap(deleteErr, "failed to delete clients metadata")
+		}
+		deletedClientRows = rows
+	}
+
+	roominfra.Forget(roomID)
+
+	return map[string]any{
+		"deletedCount":        deletedCount,
+		"deletedHistoryCount": deletedHistoryCount,
+		"deletedRoomRows":     deletedRoomRows,
+		"deletedClientRows":   deletedClientRows,
+		"room":                roomID,
+	}, nil
+}
+
+func (h *RestServer) canDeleteRoom(ctx context.Context, roomID string, ownerID string) (bool, error) {
+	if roominfra.CanDelete(roomID, ownerID) {
+		return true, nil
+	}
+
+	if h.roomsRepo == nil {
+		return false, nil
+	}
+
+	parsedRoomID, err := strconv.ParseInt(strings.TrimSpace(roomID), 10, 64)
+	if err != nil {
+		return false, nil
+	}
+
+	creator, err := h.roomsRepo.CreatorByID(ctx, parsedRoomID)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to resolve room creator")
+	}
+	if creator == "" {
+		return false, nil
+	}
+
+	return creator == strings.TrimSpace(ownerID), nil
 }
 
 func mcpStubsSearch(h *RestServer, args map[string]any) (map[string]any, error) {
@@ -1483,12 +1563,12 @@ func mcpStubsSearch(h *RestServer, args map[string]any) (map[string]any, error) 
 		return nil, err
 	}
 
-	sessionID, _ := args["session"].(string)
+	roomID, _ := args["room"].(string)
 
 	result, searchErr := h.budgerigar.FindByQuery(stuber.Query{
 		Service: service,
 		Method:  method,
-		Session: sessionID,
+		Room:    roomID,
 		Headers: headers,
 		Input:   input,
 	})
@@ -1560,8 +1640,8 @@ func mcpInspectQueryOptions(args map[string]any, query *stuber.Query) error {
 		query.ID = &id
 	}
 
-	if sessionID, _ := args["session"].(string); sessionID != "" {
-		query.Session = sessionID
+	if roomID, _ := args["room"].(string); roomID != "" {
+		query.Room = roomID
 	}
 
 	headers, err := mcpHeadersArg(args)
@@ -1605,7 +1685,7 @@ func listMCPStubs(stubs []*stuber.Stub, args map[string]any) ([]*stuber.Stub, er
 	name, _ := args["name"].(string)
 	service, _ := args["service"].(string)
 	method, _ := args["method"].(string)
-	sessionID, _ := args["session"].(string)
+	roomID, _ := args["room"].(string)
 
 	limit, err := mcpIntArg(args, "limit", 0)
 	if err != nil {
@@ -1617,7 +1697,7 @@ func listMCPStubs(stubs []*stuber.Stub, args map[string]any) ([]*stuber.Stub, er
 		return nil, err
 	}
 
-	filtered := filterMCPStubs(stubs, name, service, method, sessionID)
+	filtered := filterMCPStubs(stubs, name, service, method, roomID)
 
 	if offset >= len(filtered) {
 		return []*stuber.Stub{}, nil
@@ -1693,11 +1773,11 @@ func mcpSearchNotMatchedResponse(searchErr error) map[string]any {
 	return map[string]any{"matched": false, "error": searchErr.Error()}
 }
 
-func filterMCPStubs(stubs []*stuber.Stub, name, service, method, sessionID string) []*stuber.Stub {
+func filterMCPStubs(stubs []*stuber.Stub, name, service, method, roomID string) []*stuber.Stub {
 	filtered := make([]*stuber.Stub, 0, len(stubs))
 
 	for _, stub := range stubs {
-		if !mcpStubMatchesFilters(stub, name, service, method, sessionID) {
+		if !mcpStubMatchesFilters(stub, name, service, method, roomID) {
 			continue
 		}
 
@@ -1707,7 +1787,7 @@ func filterMCPStubs(stubs []*stuber.Stub, name, service, method, sessionID strin
 	return filtered
 }
 
-func mcpStubMatchesFilters(stub *stuber.Stub, name, service, method, sessionID string) bool {
+func mcpStubMatchesFilters(stub *stuber.Stub, name, service, method, roomID string) bool {
 	if name != "" && stub.Name != name {
 		return false
 	}
@@ -1720,7 +1800,7 @@ func mcpStubMatchesFilters(stub *stuber.Stub, name, service, method, sessionID s
 		return false
 	}
 
-	return stubVisibleForSession(stub.Session, sessionID)
+	return stubVisibleForRoom(stub.Room, roomID)
 }
 
 func validateMCPStringSlice(values []string, key string) ([]string, error) {
@@ -1796,18 +1876,18 @@ func uuidListToStringSlice(ids []uuid.UUID) []string {
 	return out
 }
 
-func debugCall(h *RestServer, service, method, session string, historyLimit, stubsLimit int) map[string]any {
+func debugCall(h *RestServer, service, method, room string, historyLimit, stubsLimit int) map[string]any {
 	serviceFound, methodFound := lookupServiceAndMethod(h, service, method)
 	dynamic := slices.Contains(h.restDescriptors.ServiceIDs(), service)
-	stubCount, stubRecords := collectDebugStubs(h, service, method, session, stubsLimit)
-	historyRecords := filterHistory(h, history.FilterOpts{Service: service, Method: method, Session: session}, historyLimit)
+	stubCount, stubRecords := collectDebugStubs(h, service, method, room, stubsLimit)
+	historyRecords := filterHistory(h, history.FilterOpts{Service: service, Method: method, Room: room}, historyLimit)
 	errorRecords := extractErrorRecords(historyRecords)
 	hints := buildDebugHints(h, serviceFound, methodFound, method, stubCount)
 
 	return map[string]any{
 		"service":           service,
 		"method":            method,
-		"session":           session,
+		"room":              room,
 		"serviceRegistered": serviceFound,
 		"methodRegistered":  methodFound,
 		"dynamicService":    dynamic,
@@ -1843,7 +1923,7 @@ func lookupServiceAndMethod(h *RestServer, service, method string) (bool, bool) 
 	return false, false
 }
 
-func collectDebugStubs(h *RestServer, service, method, session string, stubsLimit int) (int, []map[string]any) {
+func collectDebugStubs(h *RestServer, service, method, room string, stubsLimit int) (int, []map[string]any) {
 	stubRecords := make([]map[string]any, 0)
 	stubCount := 0
 
@@ -1852,7 +1932,7 @@ func collectDebugStubs(h *RestServer, service, method, session string, stubsLimi
 			continue
 		}
 
-		if !stubVisibleForSession(stub.Session, session) {
+		if !stubVisibleForRoom(stub.Room, room) {
 			continue
 		}
 
@@ -1870,7 +1950,7 @@ func collectDebugStubs(h *RestServer, service, method, session string, stubsLimi
 			"id":      stub.ID.String(),
 			"service": stub.Service,
 			"method":  stub.Method,
-			"session": stub.Session,
+			"room":    stub.Room,
 			"enabled": stub.IsEnabled(),
 		})
 	}
@@ -1878,12 +1958,12 @@ func collectDebugStubs(h *RestServer, service, method, session string, stubsLimi
 	return stubCount, stubRecords
 }
 
-func stubVisibleForSession(stubSession, querySession string) bool {
-	if querySession == "" {
-		return stubSession == ""
+func stubVisibleForRoom(stubRoom, queryRoom string) bool {
+	if queryRoom == "" {
+		return stubRoom == ""
 	}
 
-	return stubSession == "" || stubSession == querySession
+	return stubRoom == "" || stubRoom == queryRoom
 }
 
 func extractErrorRecords(records []rest.CallRecord) []rest.CallRecord {
@@ -1940,9 +2020,9 @@ func filterHistory(h *RestServer, opts history.FilterOpts, limit int) []rest.Cal
 
 func historyFilterFromRequest(r *http.Request) (history.FilterOpts, int) {
 	query := r.URL.Query()
-	sessionID := strings.TrimSpace(query.Get("session"))
-	if sessionID == "" {
-		sessionID = strings.TrimSpace(muxmiddleware.FromRequest(r))
+	roomID := strings.TrimSpace(query.Get("room"))
+	if roomID == "" {
+		roomID = strings.TrimSpace(muxmiddleware.FromRequest(r))
 	}
 
 	limit := 0
@@ -1955,7 +2035,7 @@ func historyFilterFromRequest(r *http.Request) (history.FilterOpts, int) {
 	return history.FilterOpts{
 		Service: strings.TrimSpace(query.Get("service")),
 		Method:  strings.TrimSpace(query.Get("method")),
-		Session: sessionID,
+		Room:    roomID,
 	}, limit
 }
 
@@ -2018,15 +2098,15 @@ func (h *RestServer) StreamHistory(w http.ResponseWriter, r *http.Request, param
 		return
 	}
 
-	sessionID := strings.TrimSpace(muxmiddleware.FromRequest(r))
-	if params.Session != nil && strings.TrimSpace(*params.Session) != "" {
-		sessionID = strings.TrimSpace(*params.Session)
+	roomID := strings.TrimSpace(muxmiddleware.FromRequest(r))
+	if params.Room != nil && strings.TrimSpace(*params.Room) != "" {
+		roomID = strings.TrimSpace(*params.Room)
 	}
 
 	opts := history.FilterOpts{
 		Service: strings.TrimSpace(stringFromPtr(params.Service)),
 		Method:  strings.TrimSpace(stringFromPtr(params.Method)),
-		Session: sessionID,
+		Room:    roomID,
 	}
 	calls, unsubscribe := subscriber.Subscribe(128)
 	defer unsubscribe()
@@ -2088,7 +2168,7 @@ func historyCallMatchesFilter(call history.CallRecord, opts history.FilterOpts) 
 	if opts.Method != "" && call.Method != opts.Method {
 		return false
 	}
-	if opts.Session != "" && call.Session != "" && call.Session != opts.Session {
+	if opts.Room != "" && call.Room != "" && call.Room != opts.Room {
 		return false
 	}
 
@@ -2151,9 +2231,9 @@ func (h *RestServer) historyCallRecordToRest(c history.CallRecord) rest.CallReco
 		r.Timestamp = &c.Timestamp
 	}
 
-	if c.Session != "" {
-		session := c.Session
-		r.Session = &session
+	if c.Room != "" {
+		room := c.Room
+		r.Room = &room
 	}
 
 	return r
@@ -2180,7 +2260,7 @@ func (h *RestServer) VerifyCalls(w http.ResponseWriter, r *http.Request) {
 	calls := h.history.Filter(history.FilterOpts{
 		Service: req.Service,
 		Method:  req.Method,
-		Session: muxmiddleware.FromRequest(r),
+		Room:    muxmiddleware.FromRequest(r),
 	})
 
 	actual := len(calls)
@@ -2219,7 +2299,7 @@ func (h *RestServer) AddStub(w http.ResponseWriter, r *http.Request) {
 	inputs := make([]*stuber.Stub, 0, len(payload))
 	sess := strings.TrimSpace(muxmiddleware.FromRequest(r))
 	if sess == "" {
-		sess = strings.TrimSpace(r.URL.Query().Get("session"))
+		sess = strings.TrimSpace(r.URL.Query().Get("room"))
 	}
 	for _, item := range payload {
 		stub, convertErr := h.toDomainStub(item)
@@ -2230,7 +2310,7 @@ func (h *RestServer) AddStub(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if sess != "" {
-			stub.Session = sess
+			stub.Room = sess
 		}
 		stub.Source = stuber.SourceRest
 
@@ -2540,15 +2620,15 @@ func (h *RestServer) PatchStubByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	selectedSession := strings.TrimSpace(muxmiddleware.FromRequest(r))
-	if selectedSession == "" {
-		selectedSession = strings.TrimSpace(r.URL.Query().Get("session"))
+	selectedRoom := strings.TrimSpace(muxmiddleware.FromRequest(r))
+	if selectedRoom == "" {
+		selectedRoom = strings.TrimSpace(r.URL.Query().Get("room"))
 	}
-	targetSession := strings.TrimSpace(target.Session)
-	if targetSession != "" && targetSession != selectedSession {
+	targetRoom := strings.TrimSpace(target.Room)
+	if targetRoom != "" && targetRoom != selectedRoom {
 		w.WriteHeader(http.StatusNotFound)
 		h.writeResponse(r.Context(), w, map[string]string{
-			"error": fmt.Sprintf("Stub with ID '%d' not found in selected session", publicID),
+			"error": fmt.Sprintf("Stub with ID '%d' not found in selected room", publicID),
 		})
 		return
 	}
@@ -2595,8 +2675,8 @@ func (h *RestServer) PatchStubByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updated.ID = target.ID
-	if strings.TrimSpace(updated.Session) == "" {
-		updated.Session = target.Session
+	if strings.TrimSpace(updated.Room) == "" {
+		updated.Room = target.Room
 	}
 
 	if err := h.validateStub(&updated); err != nil {
@@ -2660,10 +2740,10 @@ func (h *RestServer) BatchStubsDelete(w http.ResponseWriter, r *http.Request) {
 
 // ListUsedStubs returns stubs that have been matched.
 func (h *RestServer) ListUsedStubs(w http.ResponseWriter, r *http.Request) {
-	sessionID := strings.TrimSpace(muxmiddleware.FromRequest(r))
+	roomID := strings.TrimSpace(muxmiddleware.FromRequest(r))
 	visible := make([]*stuber.Stub, 0)
 	for _, stub := range h.budgerigar.Used() {
-		if stubVisibleForSession(stub.Session, sessionID) {
+		if stubVisibleForRoom(stub.Room, roomID) {
 			visible = append(visible, stub)
 		}
 	}
@@ -2673,10 +2753,10 @@ func (h *RestServer) ListUsedStubs(w http.ResponseWriter, r *http.Request) {
 
 // ListUnusedStubs returns stubs that have never been matched.
 func (h *RestServer) ListUnusedStubs(w http.ResponseWriter, r *http.Request) {
-	sessionID := strings.TrimSpace(muxmiddleware.FromRequest(r))
+	roomID := strings.TrimSpace(muxmiddleware.FromRequest(r))
 	visible := make([]*stuber.Stub, 0)
 	for _, stub := range h.budgerigar.Unused() {
-		if stubVisibleForSession(stub.Session, sessionID) {
+		if stubVisibleForRoom(stub.Room, roomID) {
 			visible = append(visible, stub)
 		}
 	}
@@ -2687,10 +2767,10 @@ func (h *RestServer) ListUnusedStubs(w http.ResponseWriter, r *http.Request) {
 // ListStubs returns all stubs, optionally filtered by source.
 func (h *RestServer) ListStubs(w http.ResponseWriter, r *http.Request, params rest.ListStubsParams) {
 	options := listOptionsFromParams(params)
-	if !options.SessionSet {
-		if sessionID := strings.TrimSpace(muxmiddleware.FromRequest(r)); sessionID != "" {
-			options.Session = sessionID
-			options.SessionSet = true
+	if !options.RoomSet {
+		if roomID := strings.TrimSpace(muxmiddleware.FromRequest(r)); roomID != "" {
+			options.Room = roomID
+			options.RoomSet = true
 		}
 	}
 
@@ -2711,9 +2791,9 @@ func listOptionsFromParams(params rest.ListStubsParams) stuber.ListOptions {
 		Offset:  intFromPtr(params.Offset),
 	}
 
-	if params.Session != nil {
-		options.Session = *params.Session
-		options.SessionSet = true
+	if params.Room != nil {
+		options.Room = *params.Room
+		options.RoomSet = true
 	}
 
 	return options
@@ -2766,7 +2846,7 @@ func (h *RestServer) SearchStubs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if sess := muxmiddleware.FromRequest(r); sess != "" {
-		query.Session = sess
+		query.Room = sess
 	}
 
 	result, err := h.budgerigar.FindByQuery(query)
@@ -2815,8 +2895,8 @@ func (h *RestServer) InspectStubs(w http.ResponseWriter, r *http.Request) {
 		query.ID = &privateID
 	}
 
-	if req.Session != nil {
-		query.Session = *req.Session
+	if req.Room != nil {
+		query.Room = *req.Room
 	}
 
 	report := h.budgerigar.InspectQuery(query)
@@ -2847,31 +2927,31 @@ func toRestInspectReport(report stuber.InspectReport) rest.InspectReport {
 		}
 
 		candidates[i] = rest.InspectCandidate{
-			Id:               candidate.ID.String(),
-			Name:             nilIfEmpty(candidate.Name),
-			Service:          candidate.Service,
-			Method:           candidate.Method,
-			Session:          candidate.Session,
-			Priority:         candidate.Priority,
-			Enabled:          boolPtr(candidate.Enabled),
-			Times:            candidate.Times,
-			Used:             candidate.Used,
-			Specificity:      candidate.Specificity,
-			Score:            candidate.Score,
-			VisibleBySession: candidate.VisibleBySession,
-			WithinTimes:      candidate.WithinTimes,
-			HeadersMatched:   candidate.HeadersMatched,
-			InputMatched:     candidate.InputMatched,
-			Matched:          candidate.Matched,
-			ExcludedBy:       candidate.ExcludedBy,
-			Events:           events,
+			Id:             candidate.ID.String(),
+			Name:           nilIfEmpty(candidate.Name),
+			Service:        candidate.Service,
+			Method:         candidate.Method,
+			Room:           candidate.Room,
+			Priority:       candidate.Priority,
+			Enabled:        boolPtr(candidate.Enabled),
+			Times:          candidate.Times,
+			Used:           candidate.Used,
+			Specificity:    candidate.Specificity,
+			Score:          candidate.Score,
+			VisibleByRoom:  candidate.VisibleByRoom,
+			WithinTimes:    candidate.WithinTimes,
+			HeadersMatched: candidate.HeadersMatched,
+			InputMatched:   candidate.InputMatched,
+			Matched:        candidate.Matched,
+			ExcludedBy:     candidate.ExcludedBy,
+			Events:         events,
 		}
 	}
 
 	return rest.InspectReport{
 		Service:          report.Service,
 		Method:           report.Method,
-		Session:          report.Session,
+		Room:             report.Room,
 		MatchedStubId:    stringFromUUIDPtr(report.MatchedStubID),
 		SimilarStubId:    stringFromUUIDPtr(report.SimilarStubID),
 		FallbackToMethod: report.FallbackToMethod,
@@ -2951,12 +3031,12 @@ func (h *RestServer) toDomainStub(input rest.Stub) (*stuber.Stub, error) {
 
 		out.ID = privateID
 
-		// REST update payloads do not carry session field.
-		// Keep existing session scope when updating by ID to avoid moving scoped stubs to global.
-		if out.Session == "" {
+		// REST update payloads do not carry room field.
+		// Keep existing room scope when updating by ID to avoid moving scoped stubs to global.
+		if out.Room == "" {
 			existing := h.budgerigar.FindByID(privateID)
 			if existing != nil {
-				out.Session = existing.Session
+				out.Room = existing.Room
 			}
 		}
 	}
@@ -3312,7 +3392,7 @@ func (h *RestServer) validateStub(stub *stuber.Stub) error {
 func (h *RestServer) dashboardPayload(r *http.Request) rest.Dashboard {
 	all := h.budgerigar.All()
 	used := h.budgerigar.Used()
-	sessions := h.sessions()
+	rooms := h.rooms()
 
 	payload := rest.Dashboard{
 		AppName:            "gripmock",
@@ -3330,7 +3410,7 @@ func (h *RestServer) dashboardPayload(r *http.Request) rest.Dashboard {
 		TotalStubs:         len(all),
 		UsedStubs:          len(used),
 		UnusedStubs:        max(len(all)-len(used), 0),
-		TotalSessions:      len(sessions),
+		TotalRooms:         len(rooms),
 		RuntimeDescriptors: len(h.restDescriptors.ServiceIDs()),
 		TotalHistory:       0,
 		HistoryErrors:      0,
@@ -3340,7 +3420,7 @@ func (h *RestServer) dashboardPayload(r *http.Request) rest.Dashboard {
 		return payload
 	}
 
-	records := h.history.Filter(history.FilterOpts{Session: muxmiddleware.FromRequest(r)})
+	records := h.history.Filter(history.FilterOpts{Room: muxmiddleware.FromRequest(r)})
 	payload.TotalHistory = len(records)
 
 	for _, record := range records {
@@ -3352,32 +3432,32 @@ func (h *RestServer) dashboardPayload(r *http.Request) rest.Dashboard {
 	return payload
 }
 
-func (h *RestServer) sessions() []string {
-	if h.sessionsRepo == nil {
+func (h *RestServer) rooms() []string {
+	if h.roomsRepo == nil {
 		return []string{}
 	}
 
-	sessions, err := h.sessionsRepo.List(context.Background())
+	rooms, err := h.roomsRepo.List(context.Background())
 	if err != nil {
 		return []string{}
 	}
 
-	return sessions
+	return rooms
 }
 
-func (h *RestServer) sessionsForResponse() []rest.Session {
-	if h.sessionsRepo == nil {
-		return []rest.Session{}
+func (h *RestServer) roomsForResponse() []rest.Room {
+	if h.roomsRepo == nil {
+		return []rest.Room{}
 	}
 
-	rows, err := h.sessionsRepo.ListRows(context.Background())
+	rows, err := h.roomsRepo.ListRows(context.Background())
 	if err != nil {
-		return []rest.Session{}
+		return []rest.Room{}
 	}
 
-	result := make([]rest.Session, 0, len(rows))
+	result := make([]rest.Room, 0, len(rows))
 	for _, item := range rows {
-		result = append(result, rest.Session{
+		result = append(result, rest.Room{
 			Id:   strconv.FormatInt(item.ID, 10),
 			Name: nilIfEmpty(item.Name),
 		})

@@ -158,8 +158,8 @@ mock, err := sdk.Run(t, sdk.WithDescriptors(fds))
 | `WithListenAddr(network, addr)` | Listen on a real port (e.g. `"tcp", ":0"`) |
 | `WithRemote(grpcAddr, restURL)` | Connect to an external GripMock (gRPC + REST) |
 | `Remote(grpcAddr)` | Deprecated alias; derives REST URL automatically |
-| `WithSession(id)` | Session isolation for parallel tests (remote only) |
-| `WithSessionTTL(d)` | Automatic cleanup window for session resources (remote only) |
+| `WithRoom(id)` | Room isolation for parallel tests (remote only) |
+| `WithRoomTTL(d)` | Automatic cleanup window for room resources (remote only) |
 | `WithGRPCTimeout(d)` | Default per-RPC timeout for remote gRPC calls |
 
 ## Remote mode
@@ -173,7 +173,7 @@ Descriptors remain required for embedded mode.
 ```go
 mock, err := sdk.Run(t,
     sdk.WithRemote("localhost:4770", "http://localhost:4771"),
-    sdk.WithSession("suite-A"),
+    sdk.WithRoom("suite-A"),
 )
 require.NoError(t, err)
 

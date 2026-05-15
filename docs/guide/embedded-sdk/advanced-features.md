@@ -228,7 +228,7 @@ func TestAuthService_LoginWithHeaders(t *testing.T) {
     mock.Stub(sdk.By(AuthService_Login_FullMethodName)).
         When(sdk.Equals("username", "test-user")).
         Reply(sdk.Data("token", "jwt-token")).
-        ReplyHeaderPairs("x-session-id", "session-123", "x-permissions", "read,write").
+        ReplyHeaderPairs("x-room-id", "room-123", "x-permissions", "read,write").
         Commit()
 
     client := NewAuthServiceClient(mock.Conn())
@@ -244,7 +244,7 @@ func TestAuthService_LoginWithHeaders(t *testing.T) {
     // Check response headers
     trailer := metadata.MD{}
     require.NoError(t, grpc.GetTrailer(ctx, &trailer))
-    require.Equal(t, []string{"session-123"}, trailer["x-session-id"])
+    require.Equal(t, []string{"room-123"}, trailer["x-room-id"])
     require.Equal(t, []string{"read,write"}, trailer["x-permissions"])
 }
 ```

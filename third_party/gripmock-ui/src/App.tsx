@@ -18,7 +18,7 @@ import dataProvider from "./gripmock";
 import { CustomLayout } from "./components/Layout/CustomLayout";
 import { customDarkTheme } from "./theme";
 import { getAuthorizedPhone, setAuthorizedPhone, subscribeAuthChanges } from "./utils/auth";
-import { SessionEntryGate } from "./features/session/components/SessionEntryGate";
+import { RoomEntryGate } from "./features/room/components/RoomEntryGate";
 
 const Loader = () => (
   <Box p={1.5} display="flex" alignItems="center" justifyContent="center">
@@ -91,10 +91,10 @@ const HistoryList = wrapLazy(
     return { default: module.HistoryList };
   }),
 );
-const SessionScopePage = wrapLazy(
+const RoomScopePage = wrapLazy(
   lazy(async () => {
-    const module = await import("./session");
-    return { default: module.SessionScopePage };
+    const module = await import("./room");
+    return { default: module.RoomScopePage };
   }),
 );
 const SnifferPage = wrapLazy(
@@ -136,12 +136,12 @@ export const App = () => {
     return (
       <ThemeProvider theme={customDarkTheme}>
         <CssBaseline />
-        <SessionEntryGate
+        <RoomEntryGate
           onActivate={(phone) => {
             setAuthorizedPhone(phone);
             setAuthorizedPhoneState(phone);
             if (typeof window !== "undefined") {
-              window.history.replaceState(window.history.state, "", "/session");
+              window.history.replaceState(window.history.state, "", "/room");
             }
           }}
         />
@@ -164,9 +164,9 @@ export const App = () => {
       />
       <Resource
         icon={HubIcon}
-        name="session"
-        list={SessionScopePage}
-        options={{ label: "Session Scope" }}
+        name="room"
+        list={RoomScopePage}
+        options={{ label: "Room Scope" }}
       />
       <Resource
         icon={PrivacyTipIcon}

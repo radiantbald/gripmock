@@ -1,4 +1,6 @@
-import { Alert, Box, Button } from "@mui/material";
+import { Box, Button } from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
+import InboxOutlinedIcon from "@mui/icons-material/InboxOutlined";
 import {
   List,
   TextField,
@@ -23,12 +25,13 @@ import {
   useDataProvider,
   useNotify,
   useRecordContext,
+  useCreatePath,
 } from "react-admin";
 import { JsonField } from "./components/json/JsonField";
 import { JsonTextAreaInput } from "./components/json/JsonTextAreaInput";
 import { KeyValueTableInput } from "./components/json/KeyValueTableInput";
 import { StubMatcherInput } from "./components/json/StubMatcherInput";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ReactElement } from "react";
 import { useFormContext } from "react-hook-form";
 
@@ -38,9 +41,8 @@ import { listContentSx } from "./components/table/listStyles";
 import { ActiveFiltersSummary } from "./components/table/ActiveFiltersSummary";
 import type { StubRecord } from "./types/entities";
 import { StubsDatagrid } from "./features/stubs/components/StubsDatagrid";
-import { getCurrentSession, subscribeSessionChanges } from "./utils/session";
-import type { SessionRow } from "./features/session/model";
 import { setStubEditedSignal } from "./utils/stubEditSignal";
+import { EntityEmptyState } from "./components/empty/EntityEmptyState";
 
 const RADIUS_PX = "10px";
 const stubsListSx = {
@@ -167,39 +169,6 @@ const OUTPUT_PLACEHOLDER_TEMPLATE = `{
     }
   ]
 }`;
-
-const useActiveSession = (): string => {
-  const [session, setSession] = useState(() => getCurrentSession());
-
-  useEffect(() => subscribeSessionChanges(() => setSession(getCurrentSession())), []);
-
-  return session.trim();
-};
-
-const useSessionFromDatabase = (activeSession: string): boolean => {
-  const { data: sessions = [], refetch: refetchSessions } = useGetList<SessionRow>(
-    "sessions",
-    { pagination: { page: 1, perPage: 1000 } },
-    { retry: false, staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: true },
-  );
-
-  useEffect(() => {
-    if (!activeSession) {
-      return;
-    }
-
-    void refetchSessions();
-  }, [activeSession, refetchSessions]);
-
-  if (!activeSession) {
-    return false;
-  }
-
-  return sessions.some((row) => {
-    const value = String(row?.id || row?.session || row?.name || "").trim();
-    return value !== "" && value === activeSession;
-  });
-};
 
 // Service Autocomplete Filter
 const NameFilter = (props: Record<string, unknown>) => {
@@ -402,9 +371,11 @@ const EditStubToolbarImpl = () => {
 const StubsListPage = ({
   actions,
   allowClone,
+  empty,
 }: {
   actions: ReactElement;
   allowClone?: boolean;
+  empty?: ReactElement;
 }) => {
   const gridSize = "small";
 
@@ -415,6 +386,7 @@ const StubsListPage = ({
       exporter={exportStubs}
       perPage={1000}
       pagination={false}
+      empty={empty}
       sx={stubsListSx}
     >
       <ActiveFiltersSummary />
@@ -426,44 +398,42 @@ const StubsListPage = ({
   );
 };
 
+const StubsEmptyState = () => {
+  const createPath = useCreatePath();
+  const redirect = useRedirect();
+
+  return (
+    <EntityEmptyState
+      icon={<InboxOutlinedIcon />}
+      title="No Stubs yet."
+      description="Do you want to add one?"
+      actionLabel="Create"
+      actionStartIcon={<AddIcon />}
+      onAction={() =>
+        redirect(
+          createPath({
+            resource: "stubs",
+            type: "create",
+          }),
+        )
+      }
+    />
+  );
+};
+
 // Stub List component
 export const StubList = () => {
-  const session = useActiveSession();
-  const sessionExistsInDb = useSessionFromDatabase(session);
-
-  if (!session || !sessionExistsInDb) {
-    return (
-      <Box p={1.5}>
-        <Alert severity="info">
-          Select an active session from the database in Session Scope to access the Stubs list.
-        </Alert>
-      </Box>
-    );
-  }
-
   return (
     <StubsListPage
       actions={<StubListActions />}
       allowClone
+      empty={<StubsEmptyState />}
     />
   );
 };
 
 // Used Stubs List component
 export const UsedStubList = () => {
-  const session = useActiveSession();
-  const sessionExistsInDb = useSessionFromDatabase(session);
-
-  if (!session || !sessionExistsInDb) {
-    return (
-      <Box p={1.5}>
-        <Alert severity="info">
-          Select an active session from the database in Session Scope to access the Stubs list.
-        </Alert>
-      </Box>
-    );
-  }
-
   return (
     <StubsListPage
       actions={<UsedUnusedStubListActions />}
@@ -473,19 +443,6 @@ export const UsedStubList = () => {
 
 // Unused Stubs List component
 export const UnusedStubList = () => {
-  const session = useActiveSession();
-  const sessionExistsInDb = useSessionFromDatabase(session);
-
-  if (!session || !sessionExistsInDb) {
-    return (
-      <Box p={1.5}>
-        <Alert severity="info">
-          Select an active session from the database in Session Scope to access the Stubs list.
-        </Alert>
-      </Box>
-    );
-  }
-
   return (
     <StubsListPage
       actions={<UsedUnusedStubListActions />}

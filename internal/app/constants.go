@@ -32,7 +32,7 @@ const (
 	ErrMsgFailedToSetHeaders       = "failed to set headers"
 	ErrMsgFailedToConvertResponse  = "failed to convert response to dynamic message"
 	ErrMsgFailedToProcessMessage   = "failed to process bidirectional message"
-	ErrMsgFailedToInitializeStream = "failed to initialize bidirectional streaming session"
+	ErrMsgFailedToInitializeStream = "failed to initialize bidirectional streaming room"
 	ErrMsgFailedToBuildDescriptors = "failed to build descriptors"
 	ErrMsgFailedToFindStub         = "failed to find stub"
 	ErrMsgFailedToMarshalData      = "failed to marshal expect data"

@@ -87,19 +87,19 @@ func TestMockableHealthServerCheckFallbackToRealHealthServer(t *testing.T) {
 	require.Equal(t, codes.NotFound, status.Code(err))
 }
 
-func TestMockableHealthServerCheckRespectsSessionMetadata(t *testing.T) {
+func TestMockableHealthServerCheckRespectsRoomMetadata(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
 	handler := newHealthTestEnv(&stuber.Stub{
 		Service: HealthServiceFullName,
 		Method:  "Check",
-		Session: "s-42",
+		Room: "s-42",
 		Input:   stuber.InputData{Equals: map[string]any{"service": "billing.v1.BillingService"}},
 		Output:  stuber.Output{Data: map[string]any{"status": "NOT_SERVING"}},
 	})
 
-	ctx := metadata.NewIncomingContext(t.Context(), metadata.New(map[string]string{"x-gripmock-session": "s-42"}))
+	ctx := metadata.NewIncomingContext(t.Context(), metadata.New(map[string]string{"x-gripmock-room": "s-42"}))
 
 	// Act
 	resp, err := handler.Check(ctx, &healthgrpc.HealthCheckRequest{Service: "billing.v1.BillingService"})

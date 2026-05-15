@@ -22,8 +22,8 @@ type ListOptions struct {
 	Service string
 	Method  string
 
-	Session    string
-	SessionSet bool
+	Room    string
+	RoomSet bool
 
 	Limit  int
 	Offset int
@@ -73,10 +73,10 @@ func filterStubs(stubs iter.Seq[*Stub], options ListOptions) []*Stub {
 		})
 	}
 
-	if options.SessionSet {
-		session := options.Session
+	if options.RoomSet {
+		room := options.Room
 		seq = whereStubs(seq, func(stub *Stub) bool {
-			return stub.Session == session
+			return stub.Room == room
 		})
 	}
 

@@ -2,7 +2,7 @@ package stuber
 
 func addIDLookupStages(collector traceCollector, allCount int) {
 	collector.addStage(traceStageID, allCount, 1)
-	collector.addStage(traceStageSession, 1, 1)
+	collector.addStage(traceStageRoom, 1, 1)
 	collector.addStage(traceStageTimes, 1, 1)
 	collector.addStage(traceStageHeaders, 1, 1)
 	collector.addStage(traceStageInput, 1, 1)
@@ -11,8 +11,8 @@ func addIDLookupStages(collector traceCollector, allCount int) {
 func (s *searcher) addRegularLookupStages(query Query, collector traceCollector, all []*Stub) {
 	view := s.buildRegularLookupView(query, all)
 	collector.addStage(traceStageServiceMethod, len(all), len(view.serviceMethod))
-	collector.addStage(traceStageSession, len(view.serviceMethod), len(view.sessionFiltered))
-	collector.addStage(traceStageTimes, len(view.sessionFiltered), len(view.timesFiltered))
+	collector.addStage(traceStageRoom, len(view.serviceMethod), len(view.roomFiltered))
+	collector.addStage(traceStageTimes, len(view.roomFiltered), len(view.timesFiltered))
 
 	headersCount, inputCount := countHeadersAndInputMatches(s, query, view.timesFiltered)
 	collector.addStage(traceStageHeaders, len(view.timesFiltered), headersCount)
@@ -26,7 +26,7 @@ func (s *searcher) addRegularLookupStages(query Query, collector traceCollector,
 
 func (s *searcher) countFallbackMethodCandidates(query Query) int {
 	count := 0
-	for range s.lookup(query.Session).LookupMethodAvailable(query.Method) {
+	for range s.lookup(query.Room).LookupMethodAvailable(query.Method) {
 		count++
 	}
 

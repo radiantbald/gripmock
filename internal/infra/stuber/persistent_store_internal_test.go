@@ -46,7 +46,7 @@ func (f *fakePersistentStore) DeleteByID(_ context.Context, _ ...uuid.UUID) (int
 	return 0, nil
 }
 
-func (f *fakePersistentStore) DeleteSession(_ context.Context, _ string) (int, error) {
+func (f *fakePersistentStore) DeleteRoom(_ context.Context, _ string) (int, error) {
 	return 0, nil
 }
 

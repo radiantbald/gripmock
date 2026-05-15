@@ -742,11 +742,11 @@ func TestRunVerifyStubTimesErrNoErrorWhenMatch(t *testing.T) {
 	require.NoError(t, err) // Should be no error since calls match expected times
 }
 
-func TestRunWithSessionEmbeddedNop(t *testing.T) {
+func TestRunWithRoomEmbeddedNop(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	mock, reg := mustRunWithProtoAndReg(t, sdkProtoPath("greeter"), WithSession("test-session"))
+	mock, reg := mustRunWithProtoAndReg(t, sdkProtoPath("greeter"), WithRoom("test-room"))
 
 	mock.Stub(By("/helloworld.Greeter/SayHello")).
 		When(Equals("name", "x")).

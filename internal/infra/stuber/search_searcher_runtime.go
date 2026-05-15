@@ -82,8 +82,8 @@ func (s *searcher) all() []*Stub {
 	return collectStubs(s.storage.values())
 }
 
-func (s *searcher) sessions() []string {
-	return s.storage.sessionsList()
+func (s *searcher) rooms() []string {
+	return s.storage.roomsList()
 }
 
 // used returns all Stub values that have been used by the searcher.
@@ -107,7 +107,7 @@ func (s *searcher) used() []*Stub {
 	return collectStubs(s.storage.findByIDs(seq))
 }
 
-// unused returns all Stub values that have not been used by the searcher (in any session).
+// unused returns all Stub values that have not been used by the searcher (in any room).
 func (s *searcher) unused() []*Stub {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -148,7 +148,7 @@ func (s *searcher) searchByID(query Query) (*Result, error) {
 		return nil, err
 	}
 
-	_, found := s.lookupVisibleByID(query.Session, *query.ID)
+	_, found := s.lookupVisibleByID(query.Room, *query.ID)
 	if found != nil && found.IsEnabled() && s.tryReserve(query, found) {
 		return &Result{found: found}, nil
 	}
@@ -157,7 +157,7 @@ func (s *searcher) searchByID(query Query) (*Result, error) {
 }
 
 // tryReserve atomically checks if the stub can be used (under Times limit) and increments the count.
-// When query.Session is set, the count is per-session (parallel test isolation).
+// When query.Room is set, the count is per-room (parallel test isolation).
 // Returns true if the reservation succeeded, false if the stub is exhausted.
 func (s *searcher) tryReserve(query Query, stub *Stub) bool {
 	if !stub.IsEnabled() {
@@ -171,7 +171,7 @@ func (s *searcher) tryReserve(query Query, stub *Stub) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	key := callCountKey{id: stub.ID, session: query.Session}
+	key := callCountKey{id: stub.ID, room: query.Room}
 
 	times := stub.EffectiveTimes()
 	if times > 0 && s.stubCallCount[key] >= times {

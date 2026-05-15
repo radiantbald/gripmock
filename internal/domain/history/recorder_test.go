@@ -43,11 +43,11 @@ func TestMemoryStoreFIlterCombined(t *testing.T) {
 	t.Parallel()
 
 	store := &history.MemoryStore{}
-	store.Record(history.CallRecord{Service: "a", Method: "M1", Session: ""})
-	store.Record(history.CallRecord{Service: "a", Method: "M2", Session: ""})
-	store.Record(history.CallRecord{Service: "b", Method: "M1", Session: "s1"})
-	store.Record(history.CallRecord{Service: "a", Method: "M1", Session: "s1"})
-	store.Record(history.CallRecord{Service: "a", Method: "M1", Session: "s2"})
+	store.Record(history.CallRecord{Service: "a", Method: "M1", Room: ""})
+	store.Record(history.CallRecord{Service: "a", Method: "M2", Room: ""})
+	store.Record(history.CallRecord{Service: "b", Method: "M1", Room: "s1"})
+	store.Record(history.CallRecord{Service: "a", Method: "M1", Room: "s1"})
+	store.Record(history.CallRecord{Service: "a", Method: "M1", Room: "s2"})
 
 	got := store.Filter(history.FilterOpts{Service: "a", Method: "M1"})
 	require.Len(t, got, 3)
@@ -57,11 +57,11 @@ func TestMemoryStoreFIlterCombined(t *testing.T) {
 		require.Equal(t, "M1", c.Method)
 	}
 
-	got = store.Filter(history.FilterOpts{Service: "a", Method: "M1", Session: "s1"})
+	got = store.Filter(history.FilterOpts{Service: "a", Method: "M1", Room: "s1"})
 	require.Len(t, got, 2)
 
 	for _, c := range got {
-		require.True(t, c.Session == "" || c.Session == "s1")
+		require.True(t, c.Room == "" || c.Room == "s1")
 	}
 }
 

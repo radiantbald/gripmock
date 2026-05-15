@@ -13,8 +13,8 @@ Connect to a remote GripMock instance instead of running embedded. When using re
 Use `sdk.WithRemote(grpcAddr, restURL)` for remote mode.
 
 ::: warning
-Remote mode works without `sdk.WithSession(...)`, but this is not recommended for tests.
-Without sessions, stubs and history can leak between tests and cause flaky behavior.
+Remote mode works without `sdk.WithRoom(...)`, but this is not recommended for tests.
+Without rooms, stubs and history can leak between tests and cause flaky behavior.
 :::
 
 ## Connecting to Remote GripMock
@@ -48,22 +48,22 @@ func TestMyService_Remote(t *testing.T) {
 }
 ```
 
-## Session Isolation
+## Room Isolation
 
 ```go
-func TestMyService_SessionIsolation(t *testing.T) {
-    t.Parallel() // Safe with sessions
+func TestMyService_RoomIsolation(t *testing.T) {
+    t.Parallel() // Safe with rooms
 
     // ARRANGE
-    // Use a unique session for this test
+    // Use a unique room for this test
     mock, err := sdk.Run(t,
         sdk.WithRemote("localhost:4770", "http://localhost:4771"),
         sdk.WithFileDescriptor(service.File_service_proto),
-        sdk.WithSession(t.Name()), // Use test name as session ID
+        sdk.WithRoom(t.Name()), // Use test name as room ID
     )
     require.NoError(t, err)
 
-    // Stubs in this session are isolated from other tests
+    // Stubs in this room are isolated from other tests
     mock.Stub(sdk.By(MyService_MyMethod_FullMethodName)).
         When(sdk.Equals("id", "isolated")).
         Reply(sdk.Data("result", "isolated_result")).
@@ -137,7 +137,7 @@ func TestMyService_RemoteWithError(t *testing.T) {
 }
 ```
 
-## Parallel Tests with Remote Sessions
+## Parallel Tests with Remote Rooms
 
 ```go
 func TestMyService_ParallelExecution(t *testing.T) {
@@ -147,7 +147,7 @@ func TestMyService_ParallelExecution(t *testing.T) {
     mock, err := sdk.Run(t,
         sdk.WithRemote("localhost:4770", "http://localhost:4771"),
         sdk.WithFileDescriptor(service.File_service_proto),
-        sdk.WithSession(t.Name()),
+        sdk.WithRoom(t.Name()),
     )
     require.NoError(t, err)
 
@@ -175,7 +175,7 @@ func TestMyService_RemoteVerification(t *testing.T) {
     mock, err := sdk.Run(t,
         sdk.WithRemote("localhost:4770", "http://localhost:4771"),
         sdk.WithFileDescriptor(service.File_service_proto),
-        sdk.WithSession(t.Name()),
+        sdk.WithRoom(t.Name()),
     )
     require.NoError(t, err)
 
@@ -210,7 +210,7 @@ func TestMyService_RemoteWithCustomHTTPClient(t *testing.T) {
         sdk.WithRemote("localhost:4770", "http://localhost:4771"),
         sdk.WithHTTPClient(httpClient),
         sdk.WithFileDescriptor(service.File_service_proto),
-        sdk.WithSession(t.Name()),
+        sdk.WithRoom(t.Name()),
     )
     require.NoError(t, err)
 
@@ -245,7 +245,7 @@ Remote mode uses HTTP management APIs (`/api/stubs`, `/api/history`, `/api/verif
 func TestMyService_RemoteContextCancel(t *testing.T) {
     mock, err := sdk.Run(t,
         sdk.WithRemote("localhost:4770", "http://localhost:4771"),
-        sdk.WithSession(t.Name()),
+        sdk.WithRoom(t.Name()),
     )
     require.NoError(t, err)
 
@@ -269,7 +269,7 @@ func TestMyService_RemoteWithGRPCTimeout(t *testing.T) {
     // ARRANGE
     mock, err := sdk.Run(t,
         sdk.WithRemote("localhost:4770", "http://localhost:4771"),
-        sdk.WithSession(t.Name()),
+        sdk.WithRoom(t.Name()),
         sdk.WithGRPCTimeout(250*time.Millisecond),
         sdk.WithFileDescriptor(service.File_service_proto),
     )
@@ -301,7 +301,7 @@ func TestMyService_RemoteWithGRPCTimeout(t *testing.T) {
 ## Disadvantages of Remote Mode
 
 - Network overhead
-- Potential for test interference without proper session isolation
+- Potential for test interference without proper room isolation
 - Dependency on external process
 - Slower startup compared to embedded mode
 
