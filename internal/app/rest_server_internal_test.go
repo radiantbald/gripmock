@@ -325,15 +325,15 @@ func (s *RestServerTestSuite) TestListStubs() {
 // TestListStubsParams tests filtering, sorting and pagination params.
 func (s *RestServerTestSuite) TestListStubsParams() {
 	s.budgerigar.PutMany(
-		&stuber.Stub{Service: "svc.A", Method: "Ping", Priority: 10, Source: "proxy", Input: stuber.InputData{}, Output: stuber.Output{}},
-		&stuber.Stub{Service: "svc.A", Method: "Pong", Priority: 5, Source: "rest", Input: stuber.InputData{}, Output: stuber.Output{}},
-		&stuber.Stub{Service: "svc.B", Method: "Ping", Priority: 1, Source: "file", Input: stuber.InputData{}, Output: stuber.Output{}},
+		&stuber.Stub{Service: "svc.A", Method: "Ping", Source: "proxy", Input: stuber.InputData{}, Output: stuber.Output{}},
+		&stuber.Stub{Service: "svc.A", Method: "Pong", Source: "rest", Input: stuber.InputData{}, Output: stuber.Output{}},
+		&stuber.Stub{Service: "svc.B", Method: "Ping", Source: "file", Input: stuber.InputData{}, Output: stuber.Output{}},
 	)
 
 	w := httptest.NewRecorder()
 	limit := 1
 	offset := 0
-	sortBy := "priority_desc"
+	sortBy := "enabled_desc"
 	source := "proxy"
 	service := "svc.A"
 

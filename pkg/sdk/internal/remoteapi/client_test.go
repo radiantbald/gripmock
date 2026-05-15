@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
@@ -57,7 +56,7 @@ func TestClientAddStub(t *testing.T) {
 	c := newTestClient(ts, "A")
 
 	// Act
-	err := c.AddStub(&stuber.Stub{ID: uuid.New(), Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"ok": true}}})
+	err := c.AddStub(&stuber.Stub{ID: 1, Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"ok": true}}})
 
 	// Assert
 	require.NoError(t, err)
@@ -87,7 +86,7 @@ func TestClientBatchDeleteAcceptsNotFoundOrGone(t *testing.T) {
 			c := newTestClient(ts, "")
 
 			// Act
-			err := c.BatchDelete([]uuid.UUID{uuid.New()})
+			err := c.BatchDelete([]uint64{1})
 
 			// Assert
 			require.NoError(t, err)
@@ -138,7 +137,7 @@ func TestClientFetchHistory(t *testing.T) {
 		require.Equal(t, http.MethodGet, r.Method)
 		require.Equal(t, "A", r.Header.Get("X-Gripmock-Room"))
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte("[{\"service\":\"svc\",\"method\":\"M\",\"request\":{\"x\":1},\"response\":{\"ok\":true},\"stubId\":\"550e8400-e29b-41d4-a716-446655440000\",\"timestamp\":\"" + now + "\"}]"))
+		_, _ = w.Write([]byte("[{\"service\":\"svc\",\"method\":\"M\",\"request\":{\"x\":1},\"response\":{\"ok\":true},\"stubId\":123,\"timestamp\":\"" + now + "\"}]"))
 	})
 
 	c := newTestClient(ts, "A")
@@ -151,7 +150,7 @@ func TestClientFetchHistory(t *testing.T) {
 	require.Len(t, history, 1)
 	require.Equal(t, "svc", history[0].Service)
 	require.Equal(t, "M", history[0].Method)
-	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", history[0].StubID.String())
+	require.Equal(t, uint64(123), history[0].StubID)
 	require.Equal(t, float64(1), history[0].Request["x"])
 }
 
@@ -193,7 +192,7 @@ func TestClientAddStubUsesDefaultHTTPClientWhenNil(t *testing.T) {
 	c := Client{BaseURL: ts.URL}
 
 	// Act
-	err := c.AddStub(&stuber.Stub{ID: uuid.New(), Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"ok": true}}})
+	err := c.AddStub(&stuber.Stub{ID: 1, Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"ok": true}}})
 
 	// Assert
 	require.NoError(t, err)
@@ -217,8 +216,8 @@ func TestClientAddStubsBatchPayload(t *testing.T) {
 
 	c := newTestClient(ts, "")
 	err := c.AddStubs([]*stuber.Stub{
-		{ID: uuid.New(), Service: "svc", Method: "M1", Output: stuber.Output{Data: map[string]any{"ok": true}}},
-		{ID: uuid.New(), Service: "svc", Method: "M2", Output: stuber.Output{Data: map[string]any{"ok": true}}},
+		{ID: 1, Service: "svc", Method: "M1", Output: stuber.Output{Data: map[string]any{"ok": true}}},
+		{ID: 2, Service: "svc", Method: "M2", Output: stuber.Output{Data: map[string]any{"ok": true}}},
 	})
 	require.NoError(t, err)
 	require.Equal(t, 2, gotLen)
@@ -257,7 +256,7 @@ func TestClientAddStubErrorStatus(t *testing.T) {
 	})
 
 	c := newTestClient(ts, "")
-	err := c.AddStub(&stuber.Stub{ID: uuid.New(), Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"ok": true}}})
+	err := c.AddStub(&stuber.Stub{ID: 1, Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"ok": true}}})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "add stubs failed with status 500")
 }
@@ -266,7 +265,7 @@ func TestClientAddStubMarshalError(t *testing.T) {
 	t.Parallel()
 
 	c := Client{BaseURL: "http://127.0.0.1"}
-	err := c.AddStub(&stuber.Stub{ID: uuid.New(), Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"bad": make(chan int)}}})
+	err := c.AddStub(&stuber.Stub{ID: 1, Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"bad": make(chan int)}}})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to marshal stubs")
 }
@@ -280,7 +279,7 @@ func TestClientBatchDeleteErrorStatus(t *testing.T) {
 	})
 
 	c := newTestClient(ts, "")
-	err := c.BatchDelete([]uuid.UUID{uuid.New()})
+	err := c.BatchDelete([]uint64{1})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "batch delete stubs failed with status 500")
 }
@@ -432,13 +431,13 @@ func TestClientURLBuildErrors(t *testing.T) {
 		{
 			name: "add-stub",
 			call: func() error {
-				return c.AddStub(&stuber.Stub{ID: uuid.New(), Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"ok": true}}})
+				return c.AddStub(&stuber.Stub{ID: 1, Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"ok": true}}})
 			},
 			errContain: "failed to build request URL",
 		},
 		{
 			name:       "batch-delete",
-			call:       func() error { return c.BatchDelete([]uuid.UUID{uuid.New()}) },
+			call:       func() error { return c.BatchDelete([]uint64{1}) },
 			errContain: "failed to build request URL",
 		},
 		{
@@ -488,13 +487,13 @@ func TestClientTransportErrors(t *testing.T) {
 		{
 			name: "add-stub",
 			call: func() error {
-				return c.AddStub(&stuber.Stub{ID: uuid.New(), Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"ok": true}}})
+				return c.AddStub(&stuber.Stub{ID: 1, Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"ok": true}}})
 			},
 			errContain: "failed to execute request",
 		},
 		{
 			name:       "batch-delete",
-			call:       func() error { return c.BatchDelete([]uuid.UUID{uuid.New()}) },
+			call:       func() error { return c.BatchDelete([]uint64{1}) },
 			errContain: "failed to execute request",
 		},
 		{
@@ -537,7 +536,7 @@ func TestClientUsesRequestContext(t *testing.T) {
 	cancel()
 
 	c := Client{BaseURL: "http://127.0.0.1", Context: ctx}
-	err := c.AddStub(&stuber.Stub{ID: uuid.New(), Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"ok": true}}})
+	err := c.AddStub(&stuber.Stub{ID: 1, Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"ok": true}}})
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.Canceled)
 }

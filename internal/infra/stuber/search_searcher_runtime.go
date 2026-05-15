@@ -1,25 +1,23 @@
 package stuber
 
-import "github.com/google/uuid"
-
 // upsert inserts the given stub values into the searcher. If a stub value
 // already exists with the same key, it is updated.
 //
-// The function returns a slice of UUIDs representing the keys of the
+// The function returns a slice of IDs representing the keys of the
 // inserted or updated values.
-func (s *searcher) upsert(values ...*Stub) []uuid.UUID {
+func (s *searcher) upsert(values ...*Stub) []uint64 {
 	return s.storage.upsert(values...)
 }
 
-// del deletes the stub values with the given UUIDs from the searcher.
+// del deletes the stub values with the given IDs from the searcher.
 //
 // Returns the number of stub values that were successfully deleted.
-func (s *searcher) del(ids ...uuid.UUID) int {
+func (s *searcher) del(ids ...uint64) int {
 	if len(ids) == 0 {
 		return 0
 	}
 
-	idSet := make(map[uuid.UUID]struct{}, len(ids))
+	idSet := make(map[uint64]struct{}, len(ids))
 	for _, id := range ids {
 		idSet[id] = struct{}{}
 	}
@@ -40,7 +38,7 @@ func (s *searcher) del(ids ...uuid.UUID) int {
 //
 // Returns a pointer to the Stub struct associated with the given ID, or nil
 // if not found.
-func (s *searcher) findByID(id uuid.UUID) *Stub {
+func (s *searcher) findByID(id uint64) *Stub {
 	return s.storage.findByID(id)
 }
 
@@ -96,7 +94,7 @@ func (s *searcher) used() []*Stub {
 
 	usedIDs := s.collectUsedIDs()
 
-	seq := func(yield func(uuid.UUID) bool) {
+	seq := func(yield func(uint64) bool) {
 		for id := range usedIDs {
 			if !yield(id) {
 				return
@@ -149,7 +147,7 @@ func (s *searcher) searchByID(query Query) (*Result, error) {
 	}
 
 	_, found := s.lookupVisibleByID(query.Room, *query.ID)
-	if found != nil && found.IsEnabled() && s.tryReserve(query, found) {
+	if found != nil && s.isEnabledForRoom(found, query.Room) && s.tryReserve(query, found) {
 		return &Result{found: found}, nil
 	}
 
@@ -160,7 +158,7 @@ func (s *searcher) searchByID(query Query) (*Result, error) {
 // When query.Room is set, the count is per-room (parallel test isolation).
 // Returns true if the reservation succeeded, false if the stub is exhausted.
 func (s *searcher) tryReserve(query Query, stub *Stub) bool {
-	if !stub.IsEnabled() {
+	if !s.isEnabledForRoom(stub, query.Room) {
 		return false
 	}
 

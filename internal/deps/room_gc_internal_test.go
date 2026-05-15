@@ -1,6 +1,7 @@
 package deps
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,12 +14,14 @@ import (
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
 )
 
+var roomGCTestID atomic.Uint64
+
 func putStub(b *Builder, roomID, message string) {
 	b.Budgerigar().PutMany(&stuber.Stub{
-		ID:      uuid.New(),
+		ID:      roomGCTestID.Add(1),
 		Service: "svc.Greeter",
 		Method:  "SayHello",
-		Room: roomID,
+		Room:    roomID,
 		Output:  stuber.Output{Data: map[string]any{"message": message}},
 	})
 }
@@ -27,7 +30,7 @@ func putHistory(b *Builder, roomID string) {
 	b.HistoryStore().Record(history.CallRecord{
 		Service: "svc.Greeter",
 		Method:  "SayHello",
-		Room: roomID,
+		Room:    roomID,
 	})
 }
 

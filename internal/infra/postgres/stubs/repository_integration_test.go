@@ -54,7 +54,6 @@ func TestRepositoryRoundTripAndHydrate(t *testing.T) {
 	// Update through Budgerigar.
 	initial.Name = "postgres-roundtrip-updated"
 	initial.Output.Data["message"] = "v2"
-	initial.SetEnabled(false)
 
 	updated := creator.UpdateMany(initial)
 	require.Len(t, updated, 1)
@@ -64,7 +63,6 @@ func TestRepositoryRoundTripAndHydrate(t *testing.T) {
 	require.Len(t, fromDB, 1)
 	require.Equal(t, "postgres-roundtrip-updated", fromDB[0].Name)
 	require.Equal(t, "v2", fromDB[0].Output.Data["message"])
-	require.False(t, fromDB[0].IsEnabled())
 
 	// Simulate process restart: fresh in-memory index must rehydrate from DB.
 	afterRestart := stuber.NewBudgerigar()
@@ -77,7 +75,6 @@ func TestRepositoryRoundTripAndHydrate(t *testing.T) {
 	require.Equal(t, "Ping", rehydrated[0].Method)
 	require.Equal(t, "postgres-roundtrip-updated", rehydrated[0].Name)
 	require.Equal(t, "v2", rehydrated[0].Output.Data["message"])
-	require.False(t, rehydrated[0].IsEnabled())
 
 	// Delete and confirm removal in DB.
 	deleted := afterRestart.DeleteByID(ids[0])

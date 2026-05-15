@@ -1,9 +1,9 @@
 package stuber
 
 type regularLookupView struct {
-	serviceMethod   []*Stub
-	roomFiltered []*Stub
-	timesFiltered   []*Stub
+	serviceMethod []*Stub
+	roomFiltered  []*Stub
+	timesFiltered []*Stub
 }
 
 func (s *searcher) buildRegularLookupView(query Query, all []*Stub) regularLookupView {
@@ -13,9 +13,9 @@ func (s *searcher) buildRegularLookupView(query Query, all []*Stub) regularLooku
 	timesFiltered := s.filterExhaustedStubs(roomFiltered, query.Room)
 
 	return regularLookupView{
-		serviceMethod:   serviceMethod,
-		roomFiltered: roomFiltered,
-		timesFiltered:   timesFiltered,
+		serviceMethod: serviceMethod,
+		roomFiltered:  roomFiltered,
+		timesFiltered: timesFiltered,
 	}
 }
 

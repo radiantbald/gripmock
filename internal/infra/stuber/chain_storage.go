@@ -3,8 +3,6 @@ package stuber
 import (
 	"errors"
 	"iter"
-
-	"github.com/google/uuid"
 )
 
 // storageWithInternal wraps external storage and dedicated internal storage.
@@ -123,7 +121,7 @@ func (s *storageWithInternal) hasMethodAvailable(method, room string) bool {
 
 // findByID returns stub by ID from external storage only.
 // Internal stubs are hidden from direct ID lookup to prevent collisions with user stubs.
-func (s *storageWithInternal) findByID(id uuid.UUID) *Stub {
+func (s *storageWithInternal) findByID(id uint64) *Stub {
 	return s.storage.findByID(id)
 }
 
@@ -144,7 +142,7 @@ func (s *storageWithInternal) clear() {
 }
 
 // findByIDs returns stubs by IDs from storage.
-func (s *storageWithInternal) findByIDs(ids iter.Seq[uuid.UUID]) iter.Seq[*Stub] {
+func (s *storageWithInternal) findByIDs(ids iter.Seq[uint64]) iter.Seq[*Stub] {
 	return s.storage.findByIDs(ids)
 }
 

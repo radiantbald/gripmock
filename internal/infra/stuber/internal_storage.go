@@ -2,8 +2,6 @@ package stuber
 
 import (
 	"iter"
-
-	"github.com/google/uuid"
 )
 
 // stubStorage defines the interface for stub storage operations.
@@ -11,10 +9,10 @@ import (
 //
 //nolint:interfacebloat
 type stubStorage interface {
-	upsert(stubs ...*Stub) []uuid.UUID
-	del(ids ...uuid.UUID) int
-	findByID(id uuid.UUID) *Stub
-	findByIDs(ids iter.Seq[uuid.UUID]) iter.Seq[*Stub]
+	upsert(stubs ...*Stub) []uint64
+	del(ids ...uint64) int
+	findByID(id uint64) *Stub
+	findByIDs(ids iter.Seq[uint64]) iter.Seq[*Stub]
 	findAll(service, method string) (iter.Seq[*Stub], error)
 	findByMethodAvailable(method, room string) iter.Seq[*Stub]
 	hasMethodAvailable(method, room string) bool
@@ -31,10 +29,10 @@ type stubStorage interface {
 type InternalStubStorage interface {
 	// PutInternal adds stubs to the internal storage (hidden from users).
 	// This is the ONLY way to add internal stubs.
-	PutInternal(stubs ...*Stub) []uuid.UUID
+	PutInternal(stubs ...*Stub) []uint64
 
 	// FindByIDInternal finds a stub by ID in internal storage.
-	FindByIDInternal(id uuid.UUID) *Stub
+	FindByIDInternal(id uint64) *Stub
 
 	// FindAllAvailable finds stubs by service/method in internal storage.
 	FindAllAvailable(service, method, room string) (iter.Seq[*Stub], error)
@@ -56,11 +54,11 @@ func newInternalStorageAdapter(s *storage) *internalStorageAdapter {
 	return &internalStorageAdapter{storage: s}
 }
 
-func (a *internalStorageAdapter) PutInternal(stubs ...*Stub) []uuid.UUID {
+func (a *internalStorageAdapter) PutInternal(stubs ...*Stub) []uint64 {
 	return a.storage.upsert(stubs...)
 }
 
-func (a *internalStorageAdapter) FindByIDInternal(id uuid.UUID) *Stub {
+func (a *internalStorageAdapter) FindByIDInternal(id uint64) *Stub {
 	return a.storage.findByID(id)
 }
 

@@ -3,7 +3,6 @@ package errors_test
 import (
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/bavix/gripmock/v3/internal/infra/errors"
@@ -87,9 +86,8 @@ func TestFormatter_SimilarUnary_WithAnyOf(t *testing.T) {
 
 	msg := formatError(t, stuber.Query{Service: "svc", Method: "m", Input: []map[string]any{{"k": "v"}}}, &mockResult{
 		similar: &stuber.Stub{
-			ID:       uuid.New(),
-			Priority: 7,
-			Options:  stuber.StubOptions{Times: 2},
+			ID:      7,
+			Options: stuber.StubOptions{Times: 2},
 			Input: stuber.InputData{
 				Equals: map[string]any{"k": "expected"},
 				AnyOf: []stuber.AnyOfElement{
@@ -102,7 +100,6 @@ func TestFormatter_SimilarUnary_WithAnyOf(t *testing.T) {
 	})
 
 	require.Contains(t, msg, "Closest match:")
-	require.Contains(t, msg, "priority: 7")
 	require.Contains(t, msg, "times: 2")
 	require.Contains(t, msg, "input rules:")
 	require.Contains(t, msg, "input.equals:")
@@ -118,7 +115,6 @@ func TestFormatter_SimilarHeaders_WithAnyOf(t *testing.T) {
 
 	msg := formatError(t, stuber.Query{Service: "svc", Method: "m"}, &mockResult{
 		similar: &stuber.Stub{
-			Priority: 3,
 			Headers: stuber.InputHeader{
 				Equals: map[string]any{"x-env": "prod"},
 				AnyOf: []stuber.AnyOfHeaderElement{
@@ -145,7 +141,6 @@ func TestFormatter_SimilarClientStream(t *testing.T) {
 		Input:   []map[string]any{{"step": 1}, {"step": 2}},
 	}, &mockResult{
 		similar: &stuber.Stub{
-			Priority: 5,
 			Inputs: []stuber.InputData{
 				{Equals: map[string]any{"step": 1}},
 				{AnyOf: []stuber.AnyOfElement{{Matches: map[string]any{"step": "^2$"}}}},

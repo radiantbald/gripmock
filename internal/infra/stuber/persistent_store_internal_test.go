@@ -3,25 +3,25 @@ package stuber
 import (
 	"context"
 	"errors"
-	"testing"
-
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"strconv"
+	"testing"
 )
 
 type fakePersistentStore struct {
-	upsertErr error
+	upsertErr   error
 	upsertCalls int
-	items     []*Stub
+	items       []*Stub
+	roomState   []RoomEnabledState
 }
 
-func (f *fakePersistentStore) UpsertMany(_ context.Context, stubs ...*Stub) ([]uuid.UUID, error) {
+func (f *fakePersistentStore) UpsertMany(_ context.Context, stubs ...*Stub) ([]uint64, error) {
 	f.upsertCalls++
 	if f.upsertErr != nil {
 		return nil, f.upsertErr
 	}
 
-	byID := make(map[uuid.UUID]*Stub, len(f.items))
+	byID := make(map[uint64]*Stub, len(f.items))
 	for _, item := range f.items {
 		byID[item.ID] = item
 	}
@@ -34,7 +34,7 @@ func (f *fakePersistentStore) UpsertMany(_ context.Context, stubs ...*Stub) ([]u
 	}
 	f.items = next
 
-	ids := make([]uuid.UUID, len(stubs))
+	ids := make([]uint64, len(stubs))
 	for i, item := range stubs {
 		ids[i] = item.ID
 	}
@@ -42,8 +42,44 @@ func (f *fakePersistentStore) UpsertMany(_ context.Context, stubs ...*Stub) ([]u
 	return ids, nil
 }
 
-func (f *fakePersistentStore) DeleteByID(_ context.Context, _ ...uuid.UUID) (int, error) {
+func (f *fakePersistentStore) DeleteByID(_ context.Context, _ ...uint64) (int, error) {
 	return 0, nil
+}
+
+func (f *fakePersistentStore) UpsertRoomState(_ context.Context, updates ...RoomEnabledState) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	idx := make(map[string]int, len(f.roomState))
+	for i, item := range f.roomState {
+		idx[item.Room+"|"+strconv.FormatUint(item.StubID, 10)] = i
+	}
+	for _, item := range updates {
+		key := item.Room + "|" + strconv.FormatUint(item.StubID, 10)
+		if !item.Enabled {
+			if pos, ok := idx[key]; ok {
+				f.roomState = append(f.roomState[:pos], f.roomState[pos+1:]...)
+				idx = make(map[string]int, len(f.roomState))
+				for i, state := range f.roomState {
+					idx[state.Room+"|"+strconv.FormatUint(state.StubID, 10)] = i
+				}
+			}
+			continue
+		}
+		if pos, ok := idx[key]; ok {
+			f.roomState[pos] = item
+			continue
+		}
+		idx[key] = len(f.roomState)
+		f.roomState = append(f.roomState, item)
+	}
+
+	return nil
+}
+
+func (f *fakePersistentStore) LoadRoomState(_ context.Context) ([]RoomEnabledState, error) {
+	return append([]RoomEnabledState(nil), f.roomState...), nil
 }
 
 func (f *fakePersistentStore) DeleteRoom(_ context.Context, _ string) (int, error) {
@@ -64,7 +100,7 @@ func TestBudgerigarPutManyFailsClosedOnPersistentError(t *testing.T) {
 	b.SetPersistentStore(store)
 
 	ids := b.PutMany(&Stub{
-		ID:      uuid.New(),
+		ID:      1,
 		Service: "svc",
 		Method:  "method",
 		Output:  Output{Data: map[string]any{"ok": true}},
@@ -78,7 +114,7 @@ func TestBudgerigarHydrateFromPersistent(t *testing.T) {
 	store := &fakePersistentStore{
 		items: []*Stub{
 			{
-				ID:      uuid.New(),
+				ID:      10,
 				Service: "svc",
 				Method:  "method",
 				Output:  Output{Data: map[string]any{"ok": true}},
@@ -95,16 +131,16 @@ func TestBudgerigarHydrateFromPersistent(t *testing.T) {
 	require.Equal(t, "svc", b.All()[0].Service)
 }
 
-func TestBudgerigarHydrateFromPersistentNormalizesEnabledRoute(t *testing.T) {
+func TestBudgerigarHydrateFromPersistentKeepsEnabledFlags(t *testing.T) {
 	enabled := true
 	first := &Stub{
-		ID:      uuid.New(),
+		ID:      11,
 		Service: "svc",
 		Method:  "method",
 		Enabled: &enabled,
 	}
 	second := &Stub{
-		ID:      uuid.New(),
+		ID:      12,
 		Service: "svc",
 		Method:  "method",
 		Enabled: &enabled,
@@ -119,7 +155,7 @@ func TestBudgerigarHydrateFromPersistentNormalizesEnabledRoute(t *testing.T) {
 
 	err := b.HydrateFromPersistent(t.Context())
 	require.NoError(t, err)
-	require.Equal(t, 1, store.upsertCalls, "normalized state should be written back to persistent store")
+	require.Equal(t, 0, store.upsertCalls, "hydration should not rewrite unchanged enabled flags")
 
 	all := b.All()
 	require.Len(t, all, 2)
@@ -129,7 +165,7 @@ func TestBudgerigarHydrateFromPersistentNormalizesEnabledRoute(t *testing.T) {
 			enabledCount++
 		}
 	}
-	require.Equal(t, 1, enabledCount, "only one enabled stub is allowed per service/method route after hydration")
-	require.False(t, b.FindByID(first.ID).IsEnabled())
+	require.Equal(t, 2, enabledCount, "hydration keeps persisted enabled state as-is")
+	require.True(t, b.FindByID(first.ID).IsEnabled())
 	require.True(t, b.FindByID(second.ID).IsEnabled())
 }

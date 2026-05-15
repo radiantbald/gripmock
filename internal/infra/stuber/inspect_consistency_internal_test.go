@@ -3,7 +3,6 @@ package stuber_test
 import (
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
@@ -14,7 +13,7 @@ type inspectConsistencyCase struct {
 	stubs            []*stuber.Stub
 	query            stuber.Query
 	beforeInspect    func(s *stuber.Budgerigar)
-	expectedMatched  uuid.UUID
+	expectedMatched  uint64
 	expectedFallback bool
 }
 
@@ -24,7 +23,7 @@ func TestInspectConsistencyWithFindByQuery(t *testing.T) {
 
 	newStub := func(service, method, marker string) *stuber.Stub {
 		return &stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: service,
 			Method:  method,
 			Input:   stuber.InputData{Equals: map[string]any{"name": "Alex"}},
@@ -66,7 +65,7 @@ func TestInspectConsistencyWithFindByQuery(t *testing.T) {
 				Method:  "Hello",
 				Headers: map[string]any{"x-env": "prod"},
 				Input:   []map[string]any{{"name": "Alex"}},
-				Room: "s1",
+				Room:    "s1",
 			},
 			expectedMatched: prod.ID,
 		}
@@ -88,7 +87,7 @@ func TestInspectConsistencyWithFindByQuery(t *testing.T) {
 			query: stuber.Query{
 				Service: "s.demo",
 				Method:  "Hello",
-				Room: "s1",
+				Room:    "s1",
 				Input:   []map[string]any{{"name": "Alex"}},
 				Headers: nil,
 			},
@@ -104,7 +103,6 @@ func TestInspectConsistencyWithFindByQuery(t *testing.T) {
 		once := newStub("s.demo", "Hello", "once")
 		once.Room = "s1"
 		once.Options = stuber.StubOptions{Times: 1}
-		once.Priority = 10
 		fallback := newStub("s.demo", "Hello", "fallback")
 
 		tc := inspectConsistencyCase{
@@ -220,7 +218,7 @@ func TestInspectTraceStagesEdgeCases(t *testing.T) {
 
 		s := stuber.NewBudgerigar()
 		candidate := &stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "other.service",
 			Method:  "Hello",
 			Input:   stuber.InputData{Equals: map[string]any{"name": "Alex"}},
@@ -271,7 +269,7 @@ func TestInspectTraceStagesEdgeCases(t *testing.T) {
 
 		s := stuber.NewBudgerigar()
 		stub := &stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "s.demo",
 			Method:  "Hello",
 			Input:   stuber.InputData{Equals: map[string]any{"name": "Alex"}},
@@ -297,7 +295,7 @@ func TestInspectTraceStagesEdgeCases(t *testing.T) {
 
 		s := stuber.NewBudgerigar()
 		stub := &stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "s.demo",
 			Method:  "Hello",
 			Headers: stuber.InputHeader{Equals: map[string]any{"x-env": "prod"}},
@@ -356,7 +354,7 @@ func TestInspectDoesNotConsumeTimes(t *testing.T) {
 
 	s := stuber.NewBudgerigar()
 	oneShot := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "s.demo",
 		Method:  "Hello",
 		Input:   stuber.InputData{Equals: map[string]any{"name": "Alex"}},
@@ -429,7 +427,7 @@ func TestInspectCandidateEventFlagConsistency(t *testing.T) {
 		}
 	}
 
-	findCandidateInReport := func(report *stuber.InspectReport, id uuid.UUID) *stuber.InspectCandidate {
+	findCandidateInReport := func(report *stuber.InspectReport, id uint64) *stuber.InspectCandidate {
 		for i := range report.Candidates {
 			if report.Candidates[i].ID == id {
 				return &report.Candidates[i]
@@ -452,17 +450,17 @@ func TestInspectCandidateEventFlagConsistency(t *testing.T) {
 		{
 			name: "roomMismatch",
 			stub: &stuber.Stub{
-				ID:      uuid.New(),
+				ID:      newStubID(),
 				Service: "s.demo",
 				Method:  "Hello",
-				Room: "s1",
+				Room:    "s1",
 				Input:   stuber.InputData{Equals: map[string]any{"name": "Alex"}},
 				Output:  stuber.Output{Data: map[string]any{"ok": true}},
 			},
 			query: stuber.Query{
 				Service: "s.demo",
 				Method:  "Hello",
-				Room: "s2",
+				Room:    "s2",
 				Input:   []map[string]any{{"name": "Alex"}},
 			},
 			expectFailed: map[string]struct{}{"room": {}},
@@ -470,7 +468,7 @@ func TestInspectCandidateEventFlagConsistency(t *testing.T) {
 		{
 			name: "headersRequiredButMissing",
 			stub: &stuber.Stub{
-				ID:      uuid.New(),
+				ID:      newStubID(),
 				Service: "s.demo",
 				Method:  "Hello",
 				Headers: stuber.InputHeader{Equals: map[string]any{"x-env": "prod"}},
@@ -487,7 +485,7 @@ func TestInspectCandidateEventFlagConsistency(t *testing.T) {
 		{
 			name: "emptyInputArray",
 			stub: &stuber.Stub{
-				ID:      uuid.New(),
+				ID:      newStubID(),
 				Service: "s.demo",
 				Method:  "Hello",
 				Input:   stuber.InputData{Equals: map[string]any{"name": "Alex"}},

@@ -9,8 +9,6 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/google/uuid"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
 
@@ -20,7 +18,7 @@ import (
 type Client struct {
 	BaseURL    string
 	HTTPClient *http.Client
-	Room    string
+	Room       string
 	Context    context.Context
 }
 
@@ -33,7 +31,7 @@ type HistoryCall struct {
 	Responses []map[string]any
 	Error     string
 	Code      uint32
-	StubID    uuid.UUID
+	StubID    uint64
 	Timestamp time.Time
 }
 
@@ -142,7 +140,7 @@ func (c Client) AddStubs(stubs []*stuber.Stub) error {
 	return nil
 }
 
-func (c Client) BatchDelete(ids []uuid.UUID) error {
+func (c Client) BatchDelete(ids []uint64) error {
 	body, err := json.Marshal(ids)
 	if err != nil {
 		return fmt.Errorf("sdk: failed to marshal stub IDs: %w", err)
@@ -213,16 +211,16 @@ func (c Client) FetchHistory() ([]HistoryCall, error) {
 	}
 
 	var list []struct {
-		Service   *string             `json:"service"`
-		Method    *string             `json:"method"`
-		Request   *map[string]any     `json:"request"`
-		Requests  *[]map[string]any   `json:"requests"`
-		Response  *map[string]any     `json:"response"`
-		Responses *[]map[string]any   `json:"responses"`
-		Code      *uint32             `json:"code"`
-		Error     *string             `json:"error"`
-		StubID    *openapi_types.UUID `json:"stubId"`
-		Timestamp *time.Time          `json:"timestamp"`
+		Service   *string           `json:"service"`
+		Method    *string           `json:"method"`
+		Request   *map[string]any   `json:"request"`
+		Requests  *[]map[string]any `json:"requests"`
+		Response  *map[string]any   `json:"response"`
+		Responses *[]map[string]any `json:"responses"`
+		Code      *uint32           `json:"code"`
+		Error     *string           `json:"error"`
+		StubID    *uint64           `json:"stubId"`
+		Timestamp *time.Time        `json:"timestamp"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
 		return nil, fmt.Errorf("sdk: failed to decode history: %w", err)
@@ -239,7 +237,7 @@ func (c Client) FetchHistory() ([]HistoryCall, error) {
 			Responses: ptrOrZero(call.Responses),
 			Code:      ptrOrZero(call.Code),
 			Error:     ptrOrZero(call.Error),
-			StubID:    uuid.UUID(ptrOrZero(call.StubID)),
+			StubID:    ptrOrZero(call.StubID),
 			Timestamp: ptrOrZero(call.Timestamp),
 		}
 	}

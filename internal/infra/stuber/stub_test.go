@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 
@@ -16,18 +15,16 @@ import (
 func TestStubMethods(t *testing.T) {
 	t.Parallel()
 
-	id := uuid.New()
+	id := newStubID()
 	stub := &stuber.Stub{
-		ID:       id,
-		Service:  "TestService",
-		Method:   "TestMethod",
-		Priority: 10,
+		ID:      id,
+		Service: "TestService",
+		Method:  "TestMethod",
 	}
 
 	require.Equal(t, id, stub.Key())
 	require.Equal(t, "TestService", stub.Left())
 	require.Equal(t, "TestMethod", stub.Right())
-	require.Equal(t, 10, stub.Score())
 }
 
 func TestInputDataMethods(t *testing.T) {

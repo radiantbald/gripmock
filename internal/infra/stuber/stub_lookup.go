@@ -2,12 +2,10 @@ package stuber
 
 import (
 	"iter"
-
-	"github.com/google/uuid"
 )
 
 type idLookup interface {
-	LookupID(id uuid.UUID) *Stub
+	LookupID(id uint64) *Stub
 }
 
 type serviceLookup interface {
@@ -31,12 +29,12 @@ type searcherIDLookup struct {
 
 type searcherRoomFallbackServiceLookup struct {
 	searcher *searcher
-	room  string
+	room     string
 }
 
 type searcherRoomFallbackMethodLookup struct {
 	searcher *searcher
-	room  string
+	room     string
 }
 
 type searcherLookupProvider interface {
@@ -92,13 +90,13 @@ func defaultSearcherLookupFactory() searcherLookupFactory {
 		newService: func(s *searcher, room string) serviceLookup {
 			return &searcherRoomFallbackServiceLookup{
 				searcher: s,
-				room:  room,
+				room:     room,
 			}
 		},
 		newMethod: func(s *searcher, room string) methodLookup {
 			return &searcherRoomFallbackMethodLookup{
 				searcher: s,
-				room:  room,
+				room:     room,
 			}
 		},
 	}
@@ -112,7 +110,7 @@ func (f searcherLookupFactory) build(s *searcher, room string) *searcherLookup {
 	}
 }
 
-func (l *searcherIDLookup) LookupID(id uuid.UUID) *Stub {
+func (l *searcherIDLookup) LookupID(id uint64) *Stub {
 	return l.searcher.findByID(id)
 }
 
@@ -137,7 +135,7 @@ func (l *searcherRoomFallbackMethodLookup) HasMethodAvailable(method string) boo
 	return l.searcher.storage.hasMethodAvailable(method, l.room)
 }
 
-func (l *searcherLookup) LookupID(id uuid.UUID) *Stub {
+func (l *searcherLookup) LookupID(id uint64) *Stub {
 	return l.id.LookupID(id)
 }
 

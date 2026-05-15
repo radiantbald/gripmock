@@ -3,7 +3,6 @@ package stuber
 import (
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,14 +31,14 @@ func (f *fakeTraceStageBuilder) addLookupStages(query Query, _ traceCollector) {
 }
 
 type fakeTraceCollector struct {
-	matchedID *uuid.UUID
+	matchedID *uint64
 }
 
 func (f *fakeTraceCollector) addStage(_ string, _, _ int) {}
 
 func (f *fakeTraceCollector) setFallbackToMethod(_ bool) {}
 
-func (f *fakeTraceCollector) setMatchedStubID(id *uuid.UUID) {
+func (f *fakeTraceCollector) setMatchedStubID(id *uint64) {
 	f.matchedID = id
 }
 
@@ -59,7 +58,7 @@ func TestSearchWithTraceDecoratorWithoutTrace(t *testing.T) {
 func TestSearchWithTraceDecoratorAddsStagesAndMatchedID(t *testing.T) {
 	t.Parallel()
 
-	found := &Stub{ID: uuid.New()}
+	found := &Stub{ID: 1}
 	finder := &fakeQueryFinder{result: &Result{found: found}}
 	stageBuilder := &fakeTraceStageBuilder{}
 	collector := &fakeTraceCollector{}

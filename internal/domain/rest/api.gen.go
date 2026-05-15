@@ -93,7 +93,7 @@ type CallRecord struct {
 	// CallId Stable call identifier for sniffer/live UI.
 	CallId *string `json:"callId,omitempty"`
 
-	// Client Client identifier from incoming metadata (for example, user-agent).
+	// Client Stable peer identifier derived from gRPC peer address (host/IP without ephemeral port).
 	Client *string `json:"client,omitempty"`
 
 	// Code gRPC status code (e.g., 0 for OK, 5 for NotFound)
@@ -113,15 +113,15 @@ type CallRecord struct {
 	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Response *map[string]any `json:"response,omitempty"`
 
+	// ResponseTimestamps Per-response server send timestamp (same order as responses)
+	ResponseTimestamps *[]time.Time `json:"responseTimestamps,omitempty"`
+
 	// Responses Response messages for streaming calls (server stream, bidi stream)
 	Responses *[]map[string]any `json:"responses,omitempty"`
 
-	// ResponseTimestamps Per-response server send timestamp (same order as responses)
-	ResponseTimestamps *[]time.Time `json:"responseTimestamps,omitempty"`
-	Service            *string      `json:"service,omitempty"`
-
 	// Room Room ID (empty = global)
-	Room   *string    `json:"room,omitempty"`
+	Room      *string    `json:"room,omitempty"`
+	Service   *string    `json:"service,omitempty"`
 	StubId    *ID        `json:"stubId,omitempty"`
 	Timestamp *time.Time `json:"timestamp,omitempty"`
 
@@ -143,8 +143,8 @@ type Dashboard struct {
 	RuntimeDescriptors int       `json:"runtimeDescriptors"`
 	StartedAt          time.Time `json:"startedAt"`
 	TotalHistory       int       `json:"totalHistory"`
+	TotalRooms         int       `json:"totalRooms"`
 	TotalServices      int       `json:"totalServices"`
-	TotalRooms      int       `json:"totalRooms"`
 	TotalStubs         int       `json:"totalStubs"`
 	UnusedStubs        int       `json:"unusedStubs"`
 	UptimeSeconds      int       `json:"uptimeSeconds"`
@@ -164,8 +164,8 @@ type DashboardInfo struct {
 	Ready              bool      `json:"ready"`
 	RuntimeDescriptors int       `json:"runtimeDescriptors"`
 	StartedAt          time.Time `json:"startedAt"`
+	TotalRooms         int       `json:"totalRooms"`
 	TotalServices      int       `json:"totalServices"`
-	TotalRooms      int       `json:"totalRooms"`
 	TotalStubs         int       `json:"totalStubs"`
 	UptimeSeconds      int       `json:"uptimeSeconds"`
 	Version            string    `json:"version"`
@@ -176,8 +176,8 @@ type DashboardOverview struct {
 	HistoryErrors      int `json:"historyErrors"`
 	RuntimeDescriptors int `json:"runtimeDescriptors"`
 	TotalHistory       int `json:"totalHistory"`
+	TotalRooms         int `json:"totalRooms"`
 	TotalServices      int `json:"totalServices"`
-	TotalRooms      int `json:"totalRooms"`
 	TotalStubs         int `json:"totalStubs"`
 	UnusedStubs        int `json:"unusedStubs"`
 	UsedStubs          int `json:"usedStubs"`
@@ -197,24 +197,23 @@ type ID = uint64
 
 // InspectCandidate defines model for InspectCandidate.
 type InspectCandidate struct {
-	Enabled          *bool                   `json:"enabled,omitempty"`
-	Events           []InspectCandidateEvent `json:"events"`
-	ExcludedBy       []string                `json:"excludedBy"`
-	HeadersMatched   bool                    `json:"headersMatched"`
-	Id               string                  `json:"id"`
-	InputMatched     bool                    `json:"inputMatched"`
-	Matched          bool                    `json:"matched"`
-	Method           string                  `json:"method"`
-	Name             *string                 `json:"name,omitempty"`
-	Priority         int                     `json:"priority"`
-	Score            float64                 `json:"score"`
-	Service          string                  `json:"service"`
-	Room          string                  `json:"room"`
-	Specificity      int                     `json:"specificity"`
-	Times            int                     `json:"times"`
-	Used             int                     `json:"used"`
-	VisibleByRoom bool                    `json:"visibleByRoom"`
-	WithinTimes      bool                    `json:"withinTimes"`
+	Enabled        *bool                   `json:"enabled,omitempty"`
+	Events         []InspectCandidateEvent `json:"events"`
+	ExcludedBy     []string                `json:"excludedBy"`
+	HeadersMatched bool                    `json:"headersMatched"`
+	Id             string                  `json:"id"`
+	InputMatched   bool                    `json:"inputMatched"`
+	Matched        bool                    `json:"matched"`
+	Method         string                  `json:"method"`
+	Name           *string                 `json:"name,omitempty"`
+	Room           string                  `json:"room"`
+	Score          float64                 `json:"score"`
+	Service        string                  `json:"service"`
+	Specificity    int                     `json:"specificity"`
+	Times          int                     `json:"times"`
+	Used           int                     `json:"used"`
+	VisibleByRoom  bool                    `json:"visibleByRoom"`
+	WithinTimes    bool                    `json:"withinTimes"`
 }
 
 // InspectCandidateEvent defines model for InspectCandidateEvent.
@@ -231,8 +230,8 @@ type InspectReport struct {
 	FallbackToMethod bool               `json:"fallbackToMethod"`
 	MatchedStubId    string             `json:"matchedStubId"`
 	Method           string             `json:"method"`
+	Room             string             `json:"room"`
 	Service          string             `json:"service"`
-	Room          string             `json:"room"`
 	SimilarStubId    string             `json:"similarStubId"`
 	Stages           []InspectStage     `json:"stages"`
 }
@@ -244,8 +243,8 @@ type InspectRequest struct {
 	Input   []map[string]any `json:"input,omitempty"`
 	Method  string           `json:"method"`
 	Name    *string          `json:"name,omitempty"`
+	Room    *string          `json:"room,omitempty"`
 	Service string           `json:"service"`
-	Room *string          `json:"room,omitempty"`
 }
 
 // InspectStage defines model for InspectStage.
@@ -326,6 +325,17 @@ type ProtoMessageSchema struct {
 	TypeName string `json:"typeName"`
 }
 
+// Room defines model for Room.
+type Room struct {
+	Id   string  `json:"id"`
+	Name *string `json:"name,omitempty"`
+}
+
+// Rooms defines model for Rooms.
+type Rooms struct {
+	Rooms []Room `json:"rooms"`
+}
+
 // SearchRequest defines model for SearchRequest.
 type SearchRequest struct {
 	Data    any               `json:"data"`
@@ -351,24 +361,13 @@ type Service struct {
 	Package string   `json:"package"`
 }
 
-// Room defines model for Room.
-type Room struct {
-	Id   string  `json:"id"`
-	Name *string `json:"name,omitempty"`
-}
-
-// Rooms defines model for Rooms.
-type Rooms struct {
-	Rooms []Room `json:"rooms"`
-}
-
 // Stub defines model for Stub.
 type Stub struct {
 	// Effects Side effects applied after successful stub match
 	Effects []StubEffect `json:"effects,omitempty"`
 
-	// Enabled Whether the stub participates in matching.
-	Enabled *bool       `json:"enabled,omitempty"`
+	// Enabled Effective enabled status for the selected room context.
+	Enabled bool        `json:"enabled,omitempty"`
 	Headers StubHeaders `json:"headers,omitempty"`
 	Id      *ID         `json:"id,omitempty"`
 	Input   StubInput   `json:"input"`
@@ -383,10 +382,7 @@ type Stub struct {
 	// Options Optional behavior settings for a stub
 	Options *StubOptions `json:"options,omitempty,omitzero"`
 	Output  StubOutput   `json:"output"`
-
-	// Priority Deprecated: kept for backward compatibility and ignored by matcher.
-	Priority int    `json:"priority,omitempty"`
-	Service  string `json:"service"`
+	Service string       `json:"service"`
 
 	// Source Source of the stub (file, rest, mcp, proxy)
 	Source *string `json:"source,omitempty,omitzero"`
@@ -489,7 +485,7 @@ type VerifyRequest struct {
 type StreamHistoryParams struct {
 	Service *string `form:"service,omitempty" json:"service,omitempty"`
 	Method  *string `form:"method,omitempty" json:"method,omitempty"`
-	Room *string `form:"room,omitempty" json:"room,omitempty"`
+	Room    *string `form:"room,omitempty" json:"room,omitempty"`
 }
 
 // ListStubsParams defines parameters for ListStubs.
@@ -506,7 +502,7 @@ type ListStubsParams struct {
 	// Method Filter by method name (exact match)
 	Method *string `form:"method,omitempty" json:"method,omitempty"`
 
-	// Room Filter by room ID (empty means global stubs)
+	// Room Resolve room-specific enabled state for returned stubs (does not filter stub catalog)
 	Room *string `form:"room,omitempty" json:"room,omitempty"`
 
 	// Limit Maximum number of returned stubs
@@ -737,6 +733,9 @@ type ServerInterface interface {
 	// Stream call history
 	// (GET /history/stream)
 	StreamHistory(w http.ResponseWriter, r *http.Request, params StreamHistoryParams)
+	// Room options
+	// (GET /rooms)
+	RoomsList(w http.ResponseWriter, r *http.Request)
 	// Services
 	// (GET /services)
 	ServicesList(w http.ResponseWriter, r *http.Request)
@@ -752,9 +751,6 @@ type ServerInterface interface {
 	// Service method details
 	// (GET /services/{serviceID}/methods/{methodID})
 	ServiceMethodGet(w http.ResponseWriter, r *http.Request, serviceID string, methodID string)
-	// Room options
-	// (GET /rooms)
-	RoomsList(w http.ResponseWriter, r *http.Request)
 	// Remove all stubs
 	// (DELETE /stubs)
 	PurgeStubs(w http.ResponseWriter, r *http.Request)
@@ -970,6 +966,20 @@ func (siw *ServerInterfaceWrapper) StreamHistory(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// RoomsList operation middleware
+func (siw *ServerInterfaceWrapper) RoomsList(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RoomsList(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ServicesList operation middleware
 func (siw *ServerInterfaceWrapper) ServicesList(w http.ResponseWriter, r *http.Request) {
 
@@ -1088,20 +1098,6 @@ func (siw *ServerInterfaceWrapper) ServiceMethodGet(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ServiceMethodGet(w, r, serviceID, methodID)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// RoomsList operation middleware
-func (siw *ServerInterfaceWrapper) RoomsList(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.RoomsList(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1530,6 +1526,8 @@ func HandlerWithOptions(si ServerInterface, options GorillaServerOptions) http.H
 
 	r.HandleFunc(options.BaseURL+"/history/stream", wrapper.StreamHistory).Methods(http.MethodGet)
 
+	r.HandleFunc(options.BaseURL+"/rooms", wrapper.RoomsList).Methods(http.MethodGet)
+
 	r.HandleFunc(options.BaseURL+"/services", wrapper.ServicesList).Methods(http.MethodGet)
 
 	r.HandleFunc(options.BaseURL+"/services/{serviceID}", wrapper.DeleteService).Methods(http.MethodDelete)
@@ -1539,8 +1537,6 @@ func HandlerWithOptions(si ServerInterface, options GorillaServerOptions) http.H
 	r.HandleFunc(options.BaseURL+"/services/{serviceID}/methods", wrapper.ServiceMethodsList).Methods(http.MethodGet)
 
 	r.HandleFunc(options.BaseURL+"/services/{serviceID}/methods/{methodID}", wrapper.ServiceMethodGet).Methods(http.MethodGet)
-
-	r.HandleFunc(options.BaseURL+"/rooms", wrapper.RoomsList).Methods(http.MethodGet)
 
 	r.HandleFunc(options.BaseURL+"/stubs", wrapper.PurgeStubs).Methods(http.MethodDelete)
 

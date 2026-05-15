@@ -4,7 +4,6 @@ import (
 	"iter"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,7 +29,7 @@ type instrumentedIDLookup struct {
 	provider *instrumentedLookupProvider
 }
 
-func (l *instrumentedIDLookup) LookupID(id uuid.UUID) *Stub {
+func (l *instrumentedIDLookup) LookupID(id uint64) *Stub {
 	l.provider.idCalls++
 
 	return l.searcher.findByID(id)
@@ -39,7 +38,7 @@ func (l *instrumentedIDLookup) LookupID(id uuid.UUID) *Stub {
 type instrumentedServiceLookup struct {
 	searcher *searcher
 	provider *instrumentedLookupProvider
-	room  string
+	room     string
 }
 
 func (l *instrumentedServiceLookup) LookupServiceAvailable(service, method string) (iter.Seq[*Stub], error) {
@@ -56,7 +55,7 @@ func (l *instrumentedServiceLookup) LookupServiceAvailable(service, method strin
 type instrumentedMethodLookup struct {
 	searcher *searcher
 	provider *instrumentedLookupProvider
-	room  string
+	room     string
 }
 
 func (l *instrumentedMethodLookup) HasMethodAvailable(method string) bool {
@@ -86,7 +85,7 @@ func newInspectTestEnv() inspectTestEnv {
 
 func (e *inspectTestEnv) addCandidate(service, method string) *Stub {
 	candidate := &Stub{
-		ID:      uuid.New(),
+		ID:      nextTestID(),
 		Service: service,
 		Method:  method,
 		Input:   InputData{Equals: map[string]any{"name": "Alex"}},

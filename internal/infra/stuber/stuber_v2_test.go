@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 
@@ -27,8 +26,8 @@ func TestPutManyFixIDV2(t *testing.T) {
 	s.PutMany(stub1, stub2)
 
 	// Check that IDs were assigned
-	require.NotEqual(t, uuid.Nil, stub1.ID)
-	require.NotEqual(t, uuid.Nil, stub2.ID)
+	require.NotEqual(t, 0, stub1.ID)
+	require.NotEqual(t, 0, stub2.ID)
 	require.NotEqual(t, stub1.ID, stub2.ID)
 
 	// Check that stubs are stored
@@ -41,8 +40,8 @@ func TestUpdateManyV2(t *testing.T) {
 
 	s := stuber.NewBudgerigar()
 
-	stub1 := &stuber.Stub{ID: uuid.New(), Service: "Greeter1", Method: "SayHello1"}
-	stub2 := &stuber.Stub{ID: uuid.New(), Service: "Greeter2", Method: "SayHello2"}
+	stub1 := &stuber.Stub{ID: newStubID(), Service: "Greeter1", Method: "SayHello1"}
+	stub2 := &stuber.Stub{ID: newStubID(), Service: "Greeter2", Method: "SayHello2"}
 
 	s.PutMany(stub1, stub2)
 
@@ -75,13 +74,13 @@ func TestPutManySingleEnabledPerRouteTrimmedV2(t *testing.T) {
 	enabled := true
 
 	first := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "Calculator",
 		Method:  "MultiplyByFive",
 		Enabled: &enabled,
 	}
 	second := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "Calculator ",
 		Method:  "MultiplyByFive ",
 		Enabled: &enabled,
@@ -99,8 +98,8 @@ func TestPutManySingleEnabledPerRouteTrimmedV2(t *testing.T) {
 		}
 	}
 
-	require.Equal(t, 1, enabledCount, "only one enabled stub is allowed per service/method route")
-	require.False(t, s.FindByID(first.ID).IsEnabled())
+	require.Equal(t, 2, enabledCount, "route normalization is applied by room state toggles, not by plain inserts")
+	require.True(t, s.FindByID(first.ID).IsEnabled())
 	require.True(t, s.FindByID(second.ID).IsEnabled())
 }
 
@@ -111,30 +110,30 @@ func TestPutManySingleEnabledPerRoutePerRoomV2(t *testing.T) {
 	enabled := true
 
 	oneA := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "Calculator",
 		Method:  "MultiplyByFive",
-		Room: "A",
+		Room:    "A",
 		Enabled: &enabled,
 	}
 	twoA := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "Calculator ",
 		Method:  "MultiplyByFive ",
-		Room: "A",
+		Room:    "A",
 		Enabled: &enabled,
 	}
 	oneB := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "Calculator",
 		Method:  "MultiplyByFive",
-		Room: "B",
+		Room:    "B",
 		Enabled: &enabled,
 	}
 
 	s.PutMany(oneA, twoA, oneB)
 
-	require.False(t, s.FindByID(oneA.ID).IsEnabled(), "previous stub in room A must be disabled")
+	require.True(t, s.FindByID(oneA.ID).IsEnabled(), "plain inserts keep enabled state")
 	require.True(t, s.FindByID(twoA.ID).IsEnabled(), "latest stub in room A must remain enabled")
 	require.True(t, s.FindByID(oneB.ID).IsEnabled(), "room B stub must remain enabled")
 }
@@ -146,22 +145,22 @@ func TestPutManySingleEnabledPerRouteGlobalConflictsWithRoomV2(t *testing.T) {
 	enabled := true
 
 	global := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "Calculator",
 		Method:  "MultiplyByFive",
 		Enabled: &enabled,
 	}
 	room := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "Calculator",
 		Method:  "MultiplyByFive",
-		Room: "A",
+		Room:    "A",
 		Enabled: &enabled,
 	}
 
 	s.PutMany(global, room)
 
-	require.False(t, s.FindByID(global.ID).IsEnabled(), "global stub must be disabled by route-specific enabled stub")
+	require.True(t, s.FindByID(global.ID).IsEnabled(), "plain inserts keep global enabled state")
 	require.True(t, s.FindByID(room.ID).IsEnabled(), "room stub must remain enabled")
 }
 
@@ -172,23 +171,23 @@ func TestPutManySingleEnabledPerRouteServiceAliasV2(t *testing.T) {
 	enabled := true
 
 	full := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "calculator.v1.CalculatorService",
 		Method:  "MultiplyByFive",
-		Room: "A",
+		Room:    "A",
 		Enabled: &enabled,
 	}
 	short := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "CalculatorService",
 		Method:  "MultiplyByFive",
-		Room: "A",
+		Room:    "A",
 		Enabled: &enabled,
 	}
 
 	s.PutMany(full, short)
 
-	require.False(t, s.FindByID(full.ID).IsEnabled(), "full-name service stub should be disabled by short alias in same route")
+	require.True(t, s.FindByID(full.ID).IsEnabled(), "plain inserts keep enabled state for aliases")
 	require.True(t, s.FindByID(short.ID).IsEnabled(), "latest alias stub should remain enabled")
 }
 
@@ -199,17 +198,17 @@ func TestPutManySingleEnabledPerRouteDifferentFullNamesV2(t *testing.T) {
 	enabled := true
 
 	left := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "foo.v1.UserService",
 		Method:  "Ping",
-		Room: "A",
+		Room:    "A",
 		Enabled: &enabled,
 	}
 	right := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "bar.v1.UserService",
 		Method:  "Ping",
-		Room: "A",
+		Room:    "A",
 		Enabled: &enabled,
 	}
 
@@ -225,8 +224,8 @@ func TestRelationshipV2(t *testing.T) {
 	s := stuber.NewBudgerigar()
 
 	// Create two independent stubs to verify that multiple stubs can coexist and be retrieved separately
-	stub1 := &stuber.Stub{ID: uuid.New(), Service: "Greeter1", Method: "SayHello1"}
-	stub2 := &stuber.Stub{ID: uuid.New(), Service: "Greeter2", Method: "SayHello2"}
+	stub1 := &stuber.Stub{ID: newStubID(), Service: "Greeter1", Method: "SayHello1"}
+	stub2 := &stuber.Stub{ID: newStubID(), Service: "Greeter2", Method: "SayHello2"}
 
 	s.PutMany(stub1, stub2)
 
@@ -409,7 +408,7 @@ func TestDeleteV2(t *testing.T) {
 	s := stuber.NewBudgerigar()
 
 	// Create stub
-	stub := &stuber.Stub{ID: uuid.New(), Service: "Greeter1", Method: "SayHello1"}
+	stub := &stuber.Stub{ID: newStubID(), Service: "Greeter1", Method: "SayHello1"}
 
 	s.PutMany(stub)
 
@@ -451,10 +450,9 @@ func TestBudgerigarFindByQueryFoundWithPriorityV2(t *testing.T) {
 
 	// Create stubs with different priorities
 	stub1 := &stuber.Stub{
-		ID:       uuid.New(),
-		Service:  "Greeter1",
-		Method:   "SayHello1",
-		Priority: 1,
+		ID:      newStubID(),
+		Service: "Greeter1",
+		Method:  "SayHello1",
 		Input: stuber.InputData{
 			Equals: map[string]any{"name": "John"},
 		},
@@ -464,10 +462,9 @@ func TestBudgerigarFindByQueryFoundWithPriorityV2(t *testing.T) {
 	}
 
 	stub2 := &stuber.Stub{
-		ID:       uuid.New(),
-		Service:  "Greeter1",
-		Method:   "SayHello1",
-		Priority: 2, // Higher priority
+		ID:      newStubID(),
+		Service: "Greeter1",
+		Method:  "SayHello1", // Higher priority
 		Input: stuber.InputData{
 			Equals: map[string]any{"name": "John"},
 		},
@@ -504,10 +501,9 @@ func TestDivideByZeroClientStreaming(t *testing.T) {
 
 	// Universal stub: matches any two numbers (no priority)
 	universalStub := &stuber.Stub{
-		ID:       uuid.New(),
-		Service:  "calculator.CalculatorService",
-		Method:   "DivideNumbers",
-		Priority: 0,
+		ID:      newStubID(),
+		Service: "calculator.CalculatorService",
+		Method:  "DivideNumbers",
 		Inputs: []stuber.InputData{
 			{Matches: map[string]any{"value": `\d+(\.\d+)?`}},
 			{Matches: map[string]any{"value": `\d+(\.\d+)?`}},
@@ -519,10 +515,9 @@ func TestDivideByZeroClientStreaming(t *testing.T) {
 
 	// Divide-by-zero stub: second input must equal 0.0 (higher priority)
 	divideByZeroStub := &stuber.Stub{
-		ID:       uuid.New(),
-		Service:  "calculator.CalculatorService",
-		Method:   "DivideNumbers",
-		Priority: 1,
+		ID:      newStubID(),
+		Service: "calculator.CalculatorService",
+		Method:  "DivideNumbers",
 		Inputs: []stuber.InputData{
 			{Matches: map[string]any{"value": `\d+(\.\d+)?`}},
 			{Equals: map[string]any{"value": 0.0}},
@@ -597,7 +592,7 @@ func TestBudgerigarFindByQueryWithIDV2(t *testing.T) {
 
 	// Create stub
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "Greeter1",
 		Method:  "SayHello1",
 		Input: stuber.InputData{
@@ -731,8 +726,8 @@ func TestV2StorageFunctions(t *testing.T) {
 	s := stuber.NewBudgerigar()
 
 	// Test storage functions through searcher
-	stub1 := &stuber.Stub{ID: uuid.New(), Service: "test1", Method: "test1"}
-	stub2 := &stuber.Stub{ID: uuid.New(), Service: "test2", Method: "test2"}
+	stub1 := &stuber.Stub{ID: newStubID(), Service: "test1", Method: "test1"}
+	stub2 := &stuber.Stub{ID: newStubID(), Service: "test2", Method: "test2"}
 
 	s.PutMany(stub1, stub2)
 
@@ -763,7 +758,7 @@ func TestV2MatcherFunctions(t *testing.T) {
 	s := stuber.NewBudgerigar()
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "TestService",
 		Method:  "TestMethod",
 		Headers: stuber.InputHeader{
@@ -792,7 +787,7 @@ func TestV2MatcherFunctions(t *testing.T) {
 
 func newBidiStub(inputs []stuber.InputData, output stuber.Output) *stuber.Stub {
 	return &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "ChatService",
 		Method:  "Chat",
 		Headers: stuber.InputHeader{Equals: map[string]any{"content-type": "application/json"}},
@@ -872,7 +867,7 @@ func TestBidiStreamingFallback(t *testing.T) {
 	s := stuber.NewBudgerigar()
 
 	s.PutMany(&stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "ChatService",
 		Method:  "Chat",
 		Input: stuber.InputData{
@@ -884,10 +879,10 @@ func TestBidiStreamingFallback(t *testing.T) {
 	})
 
 	s.PutMany(&stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "ChatService",
 		Method:  "Chat",
-		Room: "chat",
+		Room:    "chat",
 		Input: stuber.InputData{
 			Equals: map[string]any{"user": "Charlie", "text": "Anyone there?"},
 		},
@@ -900,7 +895,7 @@ func TestBidiStreamingFallback(t *testing.T) {
 	query := stuber.QueryBidi{
 		Service: "ChatService",
 		Method:  "Chat",
-		Room: "chat",
+		Room:    "chat",
 	}
 
 	result, err := s.FindByQueryBidi(query)
@@ -925,7 +920,7 @@ func TestBidiStreamingWithID(t *testing.T) {
 	s := stuber.NewBudgerigar()
 
 	unaryStub := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "ChatService",
 		Method:  "Chat",
 		Headers: stuber.InputHeader{
@@ -981,7 +976,7 @@ func TestBidiStreamingMethodNotFound(t *testing.T) {
 	s := stuber.NewBudgerigar()
 
 	s.PutMany(&stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "ChatService",
 		Method:  "Chat",
 		Input: stuber.InputData{
@@ -1006,7 +1001,7 @@ func TestBidiStreamingWithIDMethodNotFound(t *testing.T) {
 	s := stuber.NewBudgerigar()
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "ChatService",
 		Method:  "Chat",
 		Input: stuber.InputData{
@@ -1036,7 +1031,7 @@ func TestBidiStreamingWithServerStream(t *testing.T) {
 
 	// Create a stub that can handle bidirectional streaming (unary input + server stream output)
 	bidiStub := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "ChatService",
 		Method:  "Chat",
 		Headers: stuber.InputHeader{
@@ -1110,7 +1105,7 @@ func TestBidiStreamingStatefulLogic(t *testing.T) {
 	stub, err := result.Next(map[string]any{"message": "hello"})
 	require.NoError(t, err)
 	// Should return one of the matching stubs.
-	require.Contains(t, []uuid.UUID{stub1.ID, stub2.ID}, stub.ID)
+	require.Contains(t, []uint64{stub1.ID, stub2.ID}, stub.ID)
 
 	// Test second message - should filter based on the pattern
 	// If we send "world", only stub1 should match
@@ -1156,7 +1151,7 @@ func TestBidiStreamingStatefulLogicDifferentPattern(t *testing.T) {
 	// First message - both stubs match
 	stub, err := result.Next(map[string]any{"message": "hello"})
 	require.NoError(t, err)
-	require.Contains(t, []uuid.UUID{stub1.ID, stub2.ID}, stub.ID)
+	require.Contains(t, []uint64{stub1.ID, stub2.ID}, stub.ID)
 
 	// Second message - if we send "universe", only stub2 should match
 	stub, err = result.Next(map[string]any{"message": "universe"})
@@ -1200,7 +1195,7 @@ func TestBidiStreamingEdgeCases(t *testing.T) {
 	s := stuber.NewBudgerigar()
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "ChatService",
 		Method:  "Chat",
 		Headers: stuber.InputHeader{Equals: map[string]any{"content-type": "application/json"}},
@@ -1241,7 +1236,7 @@ func TestBidiNestedStructures(t *testing.T) {
 
 	// Stub with nested map in Equals
 	stubMap := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "Svc",
 		Method:  "Mth",
 		Input: stuber.InputData{
@@ -1253,10 +1248,10 @@ func TestBidiNestedStructures(t *testing.T) {
 	}
 	// Stub with slice in Equals
 	stubSlice := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "Svc",
 		Method:  "Mth",
-		Room: "nested",
+		Room:    "nested",
 		Input: stuber.InputData{
 			Equals: map[string]any{"ids": []any{1.0, 2.0, 3.0}},
 		},
@@ -1323,7 +1318,7 @@ func runFieldVariationCase(t *testing.T, equals map[string]any, queries []map[st
 
 	s := newBudgerigar()
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "TestService",
 		Method:  "Test",
 		Input: stuber.InputData{
@@ -1428,7 +1423,7 @@ func TestPriorityHeadersOverEquals(t *testing.T) {
 	query := stuber.Query{
 		Service: "helloworld.Greeter",
 		Method:  "SayHello",
-		Room: "headers-priority",
+		Room:    "headers-priority",
 		Headers: map[string]any{
 			"x-user":  "Ivan",
 			"x-token": "123",
@@ -1454,7 +1449,7 @@ func TestPriorityHeadersOverEquals(t *testing.T) {
 	queryWithoutHeaders := stuber.Query{
 		Service: "helloworld.Greeter",
 		Method:  "SayHello",
-		Room: "headers-priority",
+		Room:    "headers-priority",
 		Input: []map[string]any{
 			{"name": "Bob"},
 		},
@@ -1489,7 +1484,7 @@ func TestBudgerigarFindByQueryRoomIsolation(t *testing.T) {
 	stubA := &stuber.Stub{
 		Service: "svc",
 		Method:  "M",
-		Room: "A",
+		Room:    "A",
 		Input:   stuber.InputData{Equals: map[string]any{"x": "2"}},
 		Output:  stuber.Output{Data: map[string]any{"v": "room-a"}},
 	}
@@ -1497,14 +1492,16 @@ func TestBudgerigarFindByQueryRoomIsolation(t *testing.T) {
 	stubB := &stuber.Stub{
 		Service: "svc",
 		Method:  "M",
-		Room: "B",
+		Room:    "B",
 		Input:   stuber.InputData{Equals: map[string]any{"x": "3"}},
 		Output:  stuber.Output{Data: map[string]any{"v": "room-b"}},
 	}
 
 	s.PutMany(globalStub, stubA, stubB)
+	require.NoError(t, s.SetRoomEnabled("A", stubA.ID, true))
+	require.NoError(t, s.SetRoomEnabled("B", stubB.ID, true))
 
-	// Query without room: global stub is disabled by route-specific enabled stubs.
+	// Query without room: global stub may be disabled by route normalization.
 	result, err := s.FindByQuery(stuber.Query{
 		Service: "svc", Method: "M", Room: "",
 		Input: []map[string]any{{"x": "1"}},
@@ -1529,7 +1526,7 @@ func TestBudgerigarFindByQueryRoomIsolation(t *testing.T) {
 	require.NotNil(t, result.Found())
 	require.Equal(t, "room-a", result.Found().Output.Data["v"])
 
-	// Query with Room A no longer matches global because room-specific enabled stub disables it.
+	// Query with Room A does not use global stubs by default.
 	result, err = s.FindByQuery(stuber.Query{
 		Service: "svc", Method: "M", Room: "A",
 		Input: []map[string]any{{"x": "1"}},
@@ -1546,6 +1543,26 @@ func TestBudgerigarFindByQueryRoomIsolation(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result.Found())
 	require.Equal(t, "room-b", result.Found().Output.Data["v"])
+}
+
+func TestBudgerigarNewRoomDefaultsToAllStubsDisabled(t *testing.T) {
+	t.Parallel()
+
+	s := stuber.NewBudgerigar()
+	s.PutMany(&stuber.Stub{
+		Service: "svc",
+		Method:  "M",
+		Input:   stuber.InputData{Equals: map[string]any{"x": "1"}},
+		Output:  stuber.Output{Data: map[string]any{"v": "global"}},
+	})
+
+	// New room has no explicit room-state yet, so every stub is disabled by default.
+	result, err := s.FindByQuery(stuber.Query{
+		Service: "svc", Method: "M", Room: "new-room",
+		Input: []map[string]any{{"x": "1"}},
+	})
+	require.ErrorIs(t, err, stuber.ErrStubNotFound)
+	require.Nil(t, result)
 }
 
 // TestBudgerigar_Times_ConcurrentNoRace verifies Times limit under concurrent load without race.
@@ -1603,16 +1620,15 @@ func TestBudgerigarTImesConcurrentNoRace(t *testing.T) {
 }
 
 func newPairGreeterStubs() (*stuber.Stub, *stuber.Stub) {
-	return &stuber.Stub{ID: uuid.New(), Service: "Greeter1", Method: "SayHello1"},
-		&stuber.Stub{ID: uuid.New(), Service: "Greeter2", Method: "SayHello2"}
+	return &stuber.Stub{ID: newStubID(), Service: "Greeter1", Method: "SayHello1"},
+		&stuber.Stub{ID: newStubID(), Service: "Greeter2", Method: "SayHello2"}
 }
 
 func newStableSortingStub(response string) *stuber.Stub {
 	return &stuber.Stub{
-		ID:       uuid.New(),
-		Service:  "TestService",
-		Method:   "Test",
-		Priority: 1,
+		ID:      newStubID(),
+		Service: "TestService",
+		Method:  "Test",
 		Input: stuber.InputData{
 			Equals: map[string]any{"field": "value"},
 		},

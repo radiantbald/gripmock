@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/bavix/features"
@@ -66,9 +65,9 @@ func TestNewQueryWithBody(t *testing.T) {
 func TestNewQueryWithID(t *testing.T) {
 	t.Parallel()
 
-	id := uuid.New()
+	id := newStubID()
 	data := map[string]any{
-		"id":      id.String(),
+		"id":      id,
 		"service": "TestService",
 		"method":  "TestMethod",
 	}

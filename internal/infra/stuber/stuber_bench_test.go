@@ -17,7 +17,7 @@ func BenchmarkPutMany(b *testing.B) {
 
 	for i := range 500 {
 		values[i] = &stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "service-" + uuid.NewString(),
 			Method:  "method-" + uuid.NewString(),
 		}
@@ -41,7 +41,7 @@ func BenchmarkUpdateMany(b *testing.B) {
 	values := make([]*stuber.Stub, 500)
 	for i := range 500 {
 		values[i] = &stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "service-" + uuid.NewString(),
 			Method:  "method-" + uuid.NewString(),
 		}
@@ -64,10 +64,10 @@ func BenchmarkDeleteByID(b *testing.B) {
 	budgerigar := stuber.NewBudgerigar()
 
 	// Insert initial values and collect their IDs.
-	ids := make([]uuid.UUID, 500)
+	ids := make([]uint64, 500)
 
 	for i := range 500 {
-		id := uuid.New()
+		id := newStubID()
 		ids[i] = id
 		budgerigar.PutMany(&stuber.Stub{
 			ID:      id,
@@ -93,7 +93,7 @@ func BenchmarkFindByID(b *testing.B) {
 
 	for range 500 {
 		budgerigar.PutMany(&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "service-" + uuid.NewString(),
 			Method:  "method-" + uuid.NewString(),
 		})
@@ -104,7 +104,7 @@ func BenchmarkFindByID(b *testing.B) {
 	// Find the target value by its ID.
 	for b.Loop() {
 		for range 1000 {
-			_ = budgerigar.FindByID(uuid.Nil)
+			_ = budgerigar.FindByID(0)
 		}
 	}
 }
@@ -116,7 +116,7 @@ func BenchmarkFindByQuery(b *testing.B) {
 	// Insert initial values.
 	for range 500 {
 		budgerigar.PutMany(&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "service-" + uuid.NewString(),
 			Method:  "method-" + uuid.NewString(),
 		})
@@ -144,7 +144,7 @@ func BenchmarkFindBy(b *testing.B) {
 	// Insert initial values.
 	for range 500 {
 		budgerigar.PutMany(&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "service-" + uuid.NewString(),
 			Method:  "method-" + uuid.NewString(),
 		})
@@ -170,7 +170,7 @@ func BenchmarkAll(b *testing.B) {
 	// Insert initial values.
 	for range 500 {
 		budgerigar.PutMany(&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "service-" + uuid.NewString(),
 			Method:  "method-" + uuid.NewString(),
 		})
@@ -193,7 +193,7 @@ func BenchmarkUsed(b *testing.B) {
 	// Insert initial values.
 	for range 500 {
 		budgerigar.PutMany(&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "service-" + uuid.NewString(),
 			Method:  "method-" + uuid.NewString(),
 		})
@@ -216,7 +216,7 @@ func BenchmarkUnused(b *testing.B) {
 	// Insert initial values.
 	for range 500 {
 		budgerigar.PutMany(&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "service-" + uuid.NewString(),
 			Method:  "method-" + uuid.NewString(),
 		})
@@ -239,7 +239,7 @@ func BenchmarkFindByQueryStream(b *testing.B) {
 	stubs := make([]*stuber.Stub, 100)
 	for i := range 100 {
 		stubs[i] = &stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "service-" + uuid.NewString(),
 			Method:  "method-" + uuid.NewString(),
 			Inputs: []stuber.InputData{
@@ -271,7 +271,7 @@ func BenchmarkFindByQueryStreamBackwardCompatibility(b *testing.B) {
 	stubs := make([]*stuber.Stub, 100)
 	for i := range 100 {
 		stubs[i] = &stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "service-" + uuid.NewString(),
 			Method:  "method-" + uuid.NewString(),
 			Input: stuber.InputData{
@@ -330,7 +330,7 @@ func BenchmarkRankMatchStream(b *testing.B) {
 	stubs := make([]*stuber.Stub, 10)
 	for i := range 10 {
 		stubs[i] = &stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "test",
 			Method:  "test",
 			Inputs: []stuber.InputData{
@@ -452,10 +452,9 @@ func BenchmarkBidiStreaming(b *testing.B) {
 
 	// Create multiple stubs with different patterns
 	stub1 := &stuber.Stub{
-		ID:       uuid.New(),
-		Service:  "ChatService",
-		Method:   "Chat",
-		Priority: 1,
+		ID:      newStubID(),
+		Service: "ChatService",
+		Method:  "Chat",
 		Inputs: []stuber.InputData{
 			{Equals: map[string]any{"message": "hello"}},
 			{Equals: map[string]any{"message": "world"}},
@@ -467,10 +466,9 @@ func BenchmarkBidiStreaming(b *testing.B) {
 	}
 
 	stub2 := &stuber.Stub{
-		ID:       uuid.New(),
-		Service:  "ChatService",
-		Method:   "Chat",
-		Priority: 2,
+		ID:      newStubID(),
+		Service: "ChatService",
+		Method:  "Chat",
 		Inputs: []stuber.InputData{
 			{Equals: map[string]any{"message": "hello"}},
 			{Equals: map[string]any{"message": "universe"}},

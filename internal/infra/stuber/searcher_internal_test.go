@@ -3,11 +3,17 @@ package stuber
 import (
 	"fmt"
 	"strconv"
+	"sync/atomic"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
+
+var searcherTestIDCounter atomic.Uint64
+
+func nextTestID() uint64 {
+	return searcherTestIDCounter.Add(1)
+}
 
 func TestEmpty(t *testing.T) {
 	t.Parallel()
@@ -22,7 +28,7 @@ func TestSearchIgnoreArrayOrderAndFields(t *testing.T) {
 	s := newSearcher()
 
 	stub1 := &Stub{
-		ID:      uuid.New(),
+		ID:      0,
 		Service: "IdentifierService",
 		Method:  "ProcessUUIDs",
 		Input: InputData{
@@ -41,7 +47,7 @@ func TestSearchIgnoreArrayOrderAndFields(t *testing.T) {
 		},
 	}
 	stub2 := &Stub{
-		ID:      uuid.New(),
+		ID:      0,
 		Service: "IdentifierService",
 		Method:  "ProcessUUIDs",
 		Input: InputData{
@@ -112,7 +118,7 @@ func TestSearchIgnoreArrayOrderUserScenario(t *testing.T) {
 
 	// Stub 1: without request_timestamp
 	stub1 := &Stub{
-		ID:      uuid.New(),
+		ID:      0,
 		Service: "IdentifierService",
 		Method:  "ProcessUUIDs",
 		Input: InputData{
@@ -133,7 +139,7 @@ func TestSearchIgnoreArrayOrderUserScenario(t *testing.T) {
 
 	// Stub 2: with request_timestamp
 	stub2 := &Stub{
-		ID:      uuid.New(),
+		ID:      0,
 		Service: "IdentifierService",
 		Method:  "ProcessUUIDs",
 		Input: InputData{
@@ -218,7 +224,7 @@ func TestSearchIgnoreArrayOrderV1API(t *testing.T) {
 	s := newSearcher()
 
 	stub1 := &Stub{
-		ID:      uuid.New(),
+		ID:      0,
 		Service: "IdentifierService",
 		Method:  "ProcessUUIDs",
 		Input: InputData{
@@ -238,7 +244,7 @@ func TestSearchIgnoreArrayOrderV1API(t *testing.T) {
 	}
 
 	stub2 := &Stub{
-		ID:      uuid.New(),
+		ID:      0,
 		Service: "IdentifierService",
 		Method:  "ProcessUUIDs",
 		Input: InputData{
@@ -306,7 +312,7 @@ func TestSearchSpecificityAllCases(t *testing.T) {
 
 	// Test case 1: Unary with equals fields
 	stub1 := &Stub{
-		ID:      uuid.New(),
+		ID:      0,
 		Service: "TestService",
 		Method:  "UnaryMethod",
 		Input: InputData{
@@ -321,7 +327,7 @@ func TestSearchSpecificityAllCases(t *testing.T) {
 	}
 
 	stub2 := &Stub{
-		ID:      uuid.New(),
+		ID:      0,
 		Service: "TestService",
 		Method:  "UnaryMethod",
 		Input: InputData{
@@ -376,7 +382,7 @@ func TestSearchSpecificityStreamCase(t *testing.T) {
 
 	// Test case 2: Stream with equals fields
 	stub1 := &Stub{
-		ID:      uuid.New(),
+		ID:      0,
 		Service: "TestService",
 		Method:  "StreamMethod",
 		Inputs: []InputData{
@@ -397,7 +403,7 @@ func TestSearchSpecificityStreamCase(t *testing.T) {
 	}
 
 	stub2 := &Stub{
-		ID:      uuid.New(),
+		ID:      0,
 		Service: "TestService",
 		Method:  "StreamMethod",
 		Inputs: []InputData{
@@ -458,7 +464,7 @@ func TestSearchSpecificityWithContainsAndMatches(t *testing.T) {
 
 	// Test case 4: Mixed field types (equals, contains, matches)
 	stub1 := &Stub{
-		ID:      uuid.New(),
+		ID:      0,
 		Service: "TestService",
 		Method:  "MixedMethod",
 		Input: InputData{
@@ -475,7 +481,7 @@ func TestSearchSpecificityWithContainsAndMatches(t *testing.T) {
 	}
 
 	stub2 := &Stub{
-		ID:      uuid.New(),
+		ID:      0,
 		Service: "TestService",
 		Method:  "MixedMethod",
 		Input: InputData{
@@ -533,7 +539,7 @@ func TestSearchSpecificityWithIgnoreArrayOrder(t *testing.T) {
 
 	// Test case 5: With ignoreArrayOrder
 	stub1 := &Stub{
-		ID:      uuid.New(),
+		ID:      0,
 		Service: "TestService",
 		Method:  "ArrayMethod",
 		Input: InputData{
@@ -548,7 +554,7 @@ func TestSearchSpecificityWithIgnoreArrayOrder(t *testing.T) {
 	}
 
 	stub2 := &Stub{
-		ID:      uuid.New(),
+		ID:      0,
 		Service: "TestService",
 		Method:  "ArrayMethod",
 		Input: InputData{
@@ -602,10 +608,9 @@ func TestProcessStubsParallel(t *testing.T) {
 	stubs := make([]*Stub, 150)
 	for i := range 150 {
 		stubs[i] = &Stub{
-			ID:       uuid.New(),
-			Service:  "test.service",
-			Method:   "TestMethod",
-			Priority: i % 10,
+			ID:      0,
+			Service: "test.service",
+			Method:  "TestMethod",
 			Input: InputData{
 				Equals: map[string]any{"id": strconv.Itoa(i)},
 			},
@@ -639,10 +644,9 @@ func TestPickMostSimilar(t *testing.T) {
 	stubs := make([]*Stub, 120)
 	for i := range 120 {
 		stubs[i] = &Stub{
-			ID:       uuid.New(),
-			Service:  "Svc",
-			Method:   "Mth",
-			Priority: 1, // ensures pickMostSimilar gets totalScore > 0
+			ID:      0,
+			Service: "Svc",
+			Method:  "Mth", // ensures pickMostSimilar gets totalScore > 0
 			Input: InputData{
 				Equals: map[string]any{"x": strconv.Itoa(i)},
 			},
@@ -696,10 +700,9 @@ func TestProcessStubsModes(t *testing.T) {
 			stubs := make([]*Stub, tt.stubCnt)
 			for i := range tt.stubCnt {
 				stubs[i] = &Stub{
-					ID:       uuid.New(),
-					Service:  "test.service",
-					Method:   "TestMethod",
-					Priority: i % 10,
+					ID:      0,
+					Service: "test.service",
+					Method:  "TestMethod",
 					Input: InputData{
 						Equals: map[string]any{"id": strconv.Itoa(i)},
 					},
@@ -734,10 +737,9 @@ func TestProcessStubsParallelVsSequential(t *testing.T) {
 	stubs := make([]*Stub, 200)
 	for i := range 200 {
 		stubs[i] = &Stub{
-			ID:       uuid.New(),
-			Service:  "test.service",
-			Method:   "TestMethod",
-			Priority: i % 10,
+			ID:      0,
+			Service: "test.service",
+			Method:  "TestMethod",
 			Input: InputData{
 				Equals: map[string]any{"id": strconv.Itoa(i)},
 			},
@@ -781,10 +783,9 @@ func BenchmarkProcessStubs_ParallelVsSequential(b *testing.B) {
 		stubs := make([]*Stub, size)
 		for i := range size {
 			stubs[i] = &Stub{
-				ID:       uuid.New(),
-				Service:  "test.service",
-				Method:   "TestMethod",
-				Priority: i % 10,
+				ID:      0,
+				Service: "test.service",
+				Method:  "TestMethod",
 				Input: InputData{
 					Equals: map[string]any{"id": strconv.Itoa(i)},
 				},
@@ -830,10 +831,9 @@ func BenchmarkProcessStubs_ChunkSizes(b *testing.B) {
 	stubs := make([]*Stub, 1000)
 	for i := range 1000 {
 		stubs[i] = &Stub{
-			ID:       uuid.New(),
-			Service:  "test.service",
-			Method:   "TestMethod",
-			Priority: i % 10,
+			ID:      0,
+			Service: "test.service",
+			Method:  "TestMethod",
 			Input: InputData{
 				Equals: map[string]any{"id": strconv.Itoa(i)},
 			},

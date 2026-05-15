@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/goccy/go-json"
-	"github.com/google/uuid"
 
 	"github.com/bavix/features"
 )
@@ -16,7 +15,7 @@ const (
 
 // queryJSON is used for JSON unmarshaling to support both "data" (legacy) and "input" formats.
 type queryJSON struct {
-	ID      *uuid.UUID       `json:"id,omitempty"`
+	ID      *uint64          `json:"id,omitempty"`
 	Service string           `json:"service"`
 	Method  string           `json:"method"`
 	Room    string           `json:"room,omitempty"`
@@ -29,7 +28,7 @@ type queryJSON struct {
 // Supports both unary (Input with one element) and streaming (Input with multiple elements).
 // JSON accepts "data" (legacy, maps to Input[0]) or "input" (array). Prefer "input".
 type Query struct {
-	ID            *uuid.UUID       `json:"id,omitempty"`   // The unique identifier of the stub (optional).
+	ID            *uint64          `json:"id,omitempty"`   // The unique identifier of the stub (optional).
 	Service       string           `json:"service"`        // The service name to search for.
 	Method        string           `json:"method"`         // The method name to search for.
 	Room          string           `json:"room,omitempty"` // Room ID (empty = global only).
@@ -117,7 +116,7 @@ func (q *Query) Data() map[string]any {
 // In bidirectional streaming, each message is treated as a separate unary request.
 // The server can respond with multiple messages for each request.
 type QueryBidi struct {
-	ID            *uuid.UUID     `json:"id,omitempty"`   // The unique identifier of the stub (optional).
+	ID            *uint64        `json:"id,omitempty"`   // The unique identifier of the stub (optional).
 	Service       string         `json:"service"`        // The service name to search for.
 	Method        string         `json:"method"`         // The method name to search for.
 	Room          string         `json:"room,omitempty"` // Room ID (empty = global only).

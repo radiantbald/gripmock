@@ -2,12 +2,12 @@ package stuber
 
 import (
 	"context"
+	"errors"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"log"
 	"strings"
 	"sync"
-
-	"github.com/google/uuid"
-	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+	"sync/atomic"
 )
 
 type Aliveness interface {
@@ -18,12 +18,20 @@ type Budgerigar struct {
 	searcher       *searcher
 	persistent     PersistentStore
 	persistentLock sync.Mutex
+	stateLock      sync.RWMutex
+	nextID         atomic.Uint64
+	roomEnabled    map[string]map[uint64]bool
 }
 
 func NewBudgerigar() *Budgerigar {
-	return &Budgerigar{
-		searcher: newSearcher(),
+	b := &Budgerigar{
+		roomEnabled: make(map[string]map[uint64]bool),
 	}
+	b.searcher = newSearcherWithOptions(searcherOptions{
+		enabledForRoom: b.isEnabledForRoom,
+	})
+
+	return b
 }
 
 // SetPersistentStore attaches durable storage backend.
@@ -48,6 +56,12 @@ func (b *Budgerigar) HydrateFromPersistent(ctx context.Context) error {
 		return err
 	}
 
+	roomState, err := b.persistent.LoadRoomState(ctx)
+	if err != nil {
+		return err
+	}
+	b.replaceRoomState(roomState)
+
 	related := b.ensureSingleEnabledByRoute(all...)
 	candidates := dedupeStubsByID(append(all, related...))
 
@@ -59,6 +73,7 @@ func (b *Budgerigar) HydrateFromPersistent(ctx context.Context) error {
 
 	b.searcher.clear()
 	if len(candidates) > 0 {
+		b.refreshNextID(candidates...)
 		b.searcher.upsert(candidates...)
 	}
 
@@ -78,11 +93,13 @@ func (b *Budgerigar) SetAlive() {
 	UpdateGripmockHealthStatus(b.searcher.internalStorage, healthgrpc.HealthCheckResponse_SERVING)
 }
 
-// PutMany inserts the given Stub values. Assigns UUIDs to stubs without IDs.
-func (b *Budgerigar) PutMany(values ...*Stub) []uuid.UUID {
+// PutMany inserts the given Stub values. Assigns numeric IDs to stubs without IDs.
+func (b *Budgerigar) PutMany(values ...*Stub) []uint64 {
+	b.refreshNextID(values...)
+
 	for _, value := range values {
-		if value.ID == uuid.Nil {
-			value.ID = uuid.New()
+		if value.ID == 0 {
+			value.ID = b.nextID.Add(1)
 		}
 	}
 
@@ -91,18 +108,19 @@ func (b *Budgerigar) PutMany(values ...*Stub) []uuid.UUID {
 
 	related := b.ensureSingleEnabledByRoute(values...)
 	candidates := dedupeStubsByID(append(values, related...))
+	b.refreshNextID(candidates...)
 
 	if b.persistent != nil {
 		if _, err := b.persistent.UpsertMany(context.Background(), candidates...); err != nil {
 			log.Printf("[gripmock] failed to persist stubs: %v", err)
 
-			return []uuid.UUID{}
+			return []uint64{}
 		}
 	}
 
 	b.searcher.upsert(candidates...)
 
-	ids := make([]uuid.UUID, len(values))
+	ids := make([]uint64, len(values))
 	for i, value := range values {
 		ids[i] = value.ID
 	}
@@ -111,11 +129,11 @@ func (b *Budgerigar) PutMany(values ...*Stub) []uuid.UUID {
 }
 
 // UpdateMany updates stubs that have non-nil IDs.
-func (b *Budgerigar) UpdateMany(values ...*Stub) []uuid.UUID {
+func (b *Budgerigar) UpdateMany(values ...*Stub) []uint64 {
 	updates := make([]*Stub, 0, len(values))
 
 	for _, value := range values {
-		if value.ID != uuid.Nil {
+		if value.ID != 0 {
 			updates = append(updates, value)
 		}
 	}
@@ -125,23 +143,71 @@ func (b *Budgerigar) UpdateMany(values ...*Stub) []uuid.UUID {
 
 	related := b.ensureSingleEnabledByRoute(updates...)
 	candidates := dedupeStubsByID(append(updates, related...))
+	b.refreshNextID(candidates...)
 
 	if b.persistent != nil {
 		if _, err := b.persistent.UpsertMany(context.Background(), candidates...); err != nil {
 			log.Printf("[gripmock] failed to persist updated stubs: %v", err)
 
-			return []uuid.UUID{}
+			return []uint64{}
 		}
 	}
 
 	b.searcher.upsert(candidates...)
 
-	ids := make([]uuid.UUID, len(updates))
+	ids := make([]uint64, len(updates))
 	for i, value := range updates {
 		ids[i] = value.ID
 	}
 
 	return ids
+}
+
+func (b *Budgerigar) SetRoomEnabled(room string, id uint64, enabled bool) error {
+	room = strings.TrimSpace(room)
+	if room == "" {
+		return errors.New("room is required")
+	}
+
+	target := b.searcher.findByID(id)
+	if target == nil {
+		return ErrStubNotFound
+	}
+
+	updates := []RoomEnabledState{{
+		StubID:  id,
+		Room:    room,
+		Enabled: enabled,
+	}}
+
+	if enabled {
+		for _, existing := range b.searcher.all() {
+			if existing.ID == target.ID || !sameEnabledRoute(existing, target) {
+				continue
+			}
+			if !b.stubEnabledForSpecificRoom(existing.ID, room) {
+				continue
+			}
+
+			updates = append(updates, RoomEnabledState{
+				StubID:  existing.ID,
+				Room:    room,
+				Enabled: false,
+			})
+		}
+	}
+
+	b.applyRoomState(updates)
+
+	b.persistentLock.Lock()
+	defer b.persistentLock.Unlock()
+	if b.persistent != nil {
+		if err := b.persistent.UpsertRoomState(context.Background(), updates...); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (b *Budgerigar) ensureSingleEnabledByRoute(values ...*Stub) []*Stub {
@@ -205,6 +271,107 @@ func sameEnabledRoute(left, right *Stub) bool {
 	return sameServiceAlias(left.Service, right.Service)
 }
 
+func (b *Budgerigar) isEnabledForRoom(stub *Stub, room string) bool {
+	room = strings.TrimSpace(room)
+	if room == "" {
+		if enabled, ok := b.stubEnabledForAnyRoom(stub.ID); ok {
+			return enabled
+		}
+
+		return stub.IsEnabled()
+	}
+
+	if enabled, ok := b.stubEnabledForRoomState(stub.ID, room); ok {
+		return enabled
+	}
+
+	// New room defaults to "all stubs disabled" until explicitly enabled per-room.
+	return false
+}
+
+func (b *Budgerigar) stubEnabledForSpecificRoom(stubID uint64, room string) bool {
+	enabled, ok := b.stubEnabledForRoomState(stubID, room)
+	if !ok {
+		return false
+	}
+
+	return enabled
+}
+
+func (b *Budgerigar) stubEnabledForRoomState(stubID uint64, room string) (bool, bool) {
+	b.stateLock.RLock()
+	defer b.stateLock.RUnlock()
+
+	byRoom, ok := b.roomEnabled[room]
+	if !ok {
+		return false, false
+	}
+
+	enabled, ok := byRoom[stubID]
+	return enabled, ok
+}
+
+func (b *Budgerigar) stubEnabledForAnyRoom(stubID uint64) (bool, bool) {
+	b.stateLock.RLock()
+	defer b.stateLock.RUnlock()
+
+	seen := false
+	for _, byRoom := range b.roomEnabled {
+		enabled, ok := byRoom[stubID]
+		if !ok {
+			continue
+		}
+		seen = true
+		if enabled {
+			return true, true
+		}
+	}
+
+	return false, seen
+}
+
+func (b *Budgerigar) replaceRoomState(values []RoomEnabledState) {
+	next := make(map[string]map[uint64]bool)
+	for _, item := range values {
+		room := strings.TrimSpace(item.Room)
+		if room == "" || !item.Enabled {
+			continue
+		}
+		if next[room] == nil {
+			next[room] = make(map[uint64]bool)
+		}
+		next[room][item.StubID] = true
+	}
+
+	b.stateLock.Lock()
+	b.roomEnabled = next
+	b.stateLock.Unlock()
+}
+
+func (b *Budgerigar) applyRoomState(values []RoomEnabledState) {
+	b.stateLock.Lock()
+	defer b.stateLock.Unlock()
+
+	for _, item := range values {
+		room := strings.TrimSpace(item.Room)
+		if room == "" {
+			continue
+		}
+		if b.roomEnabled[room] == nil {
+			b.roomEnabled[room] = make(map[uint64]bool)
+		}
+		if item.Enabled {
+			b.roomEnabled[room][item.StubID] = true
+			continue
+		}
+
+		delete(b.roomEnabled[room], item.StubID)
+		if len(b.roomEnabled[room]) == 0 {
+			delete(b.roomEnabled, room)
+		}
+	}
+}
+
 func sameServiceAlias(left, right string) bool {
 	left = strings.TrimSpace(left)
 	right = strings.TrimSpace(right)
@@ -234,7 +401,7 @@ func shortServiceName(service string) (string, bool) {
 }
 
 // DeleteByID deletes the Stub values with the given IDs from the Budgerigar's searcher.
-func (b *Budgerigar) DeleteByID(ids ...uuid.UUID) int {
+func (b *Budgerigar) DeleteByID(ids ...uint64) int {
 	b.persistentLock.Lock()
 	defer b.persistentLock.Unlock()
 
@@ -267,24 +434,25 @@ func (b *Budgerigar) DeleteRoom(room string) int {
 		}
 	}
 
-	all := b.searcher.all()
-	ids := make([]uuid.UUID, 0, len(all))
+	b.stateLock.Lock()
+	idsByRoom := b.roomEnabled[room]
+	delete(b.roomEnabled, room)
+	b.stateLock.Unlock()
 
-	for _, stub := range all {
-		if stub.Room == room {
-			ids = append(ids, stub.ID)
-		}
+	if len(idsByRoom) == 0 {
+		return 0
 	}
 
-	if len(ids) == 0 {
-		return 0
+	ids := make([]uint64, 0, len(idsByRoom))
+	for id := range idsByRoom {
+		ids = append(ids, id)
 	}
 
 	return b.searcher.del(ids...)
 }
 
 // FindByID retrieves the Stub value associated with the given ID.
-func (b *Budgerigar) FindByID(id uuid.UUID) *Stub {
+func (b *Budgerigar) FindByID(id uint64) *Stub {
 	return b.searcher.findByID(id)
 }
 
@@ -352,6 +520,10 @@ func (b *Budgerigar) Clear() {
 		}
 	}
 
+	b.stateLock.Lock()
+	b.roomEnabled = make(map[string]map[uint64]bool)
+	b.stateLock.Unlock()
+
 	b.searcher.clear()
 }
 
@@ -361,7 +533,7 @@ func dedupeStubsByID(values []*Stub) []*Stub {
 	}
 
 	ordered := make([]*Stub, 0, len(values))
-	seen := make(map[uuid.UUID]int, len(values))
+	seen := make(map[uint64]int, len(values))
 
 	for _, value := range values {
 		idx, ok := seen[value.ID]
@@ -376,4 +548,23 @@ func dedupeStubsByID(values []*Stub) []*Stub {
 	}
 
 	return ordered
+}
+
+func (b *Budgerigar) refreshNextID(values ...*Stub) {
+	var maxID uint64
+	for _, value := range values {
+		if value != nil && value.ID > maxID {
+			maxID = value.ID
+		}
+	}
+
+	for {
+		current := b.nextID.Load()
+		if maxID <= current {
+			return
+		}
+		if b.nextID.CompareAndSwap(current, maxID) {
+			return
+		}
+	}
 }

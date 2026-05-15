@@ -3,8 +3,6 @@ package stuber
 import (
 	"errors"
 	"sync"
-
-	"github.com/google/uuid"
 )
 
 // parallelProcessingThreshold is the threshold for using parallel processing.
@@ -21,7 +19,7 @@ var ErrStubNotFound = errors.New("stub not found")
 
 // callCountKey identifies a stub's match count per room. Room empty = global count.
 type callCountKey struct {
-	id      uuid.UUID
+	id   uint64
 	room string
 }
 
@@ -40,6 +38,7 @@ type searcher struct {
 	processStrategy processStubsStrategy
 	matcher         matchStrategy
 	ranker          rankStrategy
+	enabledForRoom  func(*Stub, string) bool
 }
 
 // Result holds the search result: exact match (Found) or best similar (Similar).

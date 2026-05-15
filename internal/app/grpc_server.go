@@ -72,7 +72,7 @@ var excludedHeaders = map[string]struct{}{
 }
 
 const (
-	roomHeaderKey        = "x-gripmock-room" // gRPC metadata keys are lowercase
+	roomHeaderKey           = "x-gripmock-room" // gRPC metadata keys are lowercase
 	unknownValue            = "unknown"
 	descriptorSourceStartup = "startup"
 
@@ -210,7 +210,7 @@ type bidiRecordingStream struct {
 	requests           []map[string]any
 	responses          []map[string]any
 	responseTimestamps []time.Time
-	stubID             uuid.UUID
+	stubID             uint64
 	maxItems           int
 }
 
@@ -247,13 +247,13 @@ func (s *bidiRecordingStream) getResponses() []map[string]any { return s.respons
 
 func (s *bidiRecordingStream) getResponseTimestamps() []time.Time { return s.responseTimestamps }
 
-func (s *bidiRecordingStream) setStubID(id uuid.UUID) { s.stubID = id }
+func (s *bidiRecordingStream) setStubID(id uint64) { s.stubID = id }
 
-func (s *bidiRecordingStream) getStubID() uuid.UUID { return s.stubID }
+func (s *bidiRecordingStream) getStubID() uint64 { return s.stubID }
 
 func (m *grpcMocker) recordCall(
 	ctx context.Context,
-	stubID uuid.UUID,
+	stubID uint64,
 	code uint32,
 	timestamp time.Time,
 	requests []map[string]any,
@@ -272,7 +272,7 @@ func (m *grpcMocker) recordCall(
 	rec := history.CallRecord{
 		Service:            m.fullServiceName,
 		Method:             m.methodName,
-		Room:            roomFromContext(ctx),
+		Room:               roomFromContext(ctx),
 		Client:             clientFromContext(ctx),
 		Requests:           requests,
 		Responses:          responses,
@@ -331,20 +331,20 @@ func receiveStreamMessage(stream grpc.ServerStream, msg *dynamicpb.Message) erro
 const serviceReflection = "grpc.reflection.v1.ServerReflection"
 
 type GRPCServer struct {
-	network       string
-	address       string
-	params        *protoloc.Arguments
-	budgerigar    *stuber.Budgerigar
-	healthState   stuber.Aliveness
-	waiter        Extender
-	recorder      history.Recorder
-	descriptors   *descriptors.Registry
-	remoteClient  protosetdom.RemoteClient
-	tlsConfig     *tls.Config
-	proxies       *proxyroutes.Registry
-	otelEnabled   bool
-	validator     *validator.Validate
-	protoMetadata ProtoMetadataWriter
+	network                          string
+	address                          string
+	params                           *protoloc.Arguments
+	budgerigar                       *stuber.Budgerigar
+	healthState                      stuber.Aliveness
+	waiter                           Extender
+	recorder                         history.Recorder
+	descriptors                      *descriptors.Registry
+	remoteClient                     protosetdom.RemoteClient
+	tlsConfig                        *tls.Config
+	proxies                          *proxyroutes.Registry
+	otelEnabled                      bool
+	validator                        *validator.Validate
+	protoMetadata                    ProtoMetadataWriter
 	strictPersistedDescriptorStartup bool
 }
 
@@ -628,7 +628,7 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 	if err := m.ensureServiceMethodAvailable(stream.Context()); err != nil {
 		m.recordCall(
 			stream.Context(),
-			uuid.Nil,
+			0,
 			uint32(codes.Unimplemented),
 			requestTime,
 			[]map[string]any{convertToMap(inputMsg)},
@@ -650,7 +650,7 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 			// Record stub misses for known methods so sniffer still shows failed calls.
 			m.recordCall(
 				stream.Context(),
-				uuid.Nil,
+				0,
 				uint32(codes.NotFound),
 				requestTime,
 				[]map[string]any{convertToMap(inputMsg)},
@@ -687,8 +687,8 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 		Timestamp:    requestTime,
 		State:        make(map[string]any),
 		Requests:     []any{requestData},
-		StubID:       found.ID.String(),
-		RequestID:    found.ID.String(),
+		StubID:       strconv.FormatUint(found.ID, 10),
+		RequestID:    strconv.FormatUint(found.ID, 10),
 	}
 
 	if template.HasTemplatesInHeaders(outputToUse.Headers) {
@@ -831,8 +831,8 @@ func (m *grpcMocker) handleArrayStreamData(
 			Timestamp:    requestTime,
 			State:        make(map[string]any),
 			Requests:     []any{requestData},
-			StubID:       found.ID.String(),
-			RequestID:    found.ID.String(),
+			StubID:       strconv.FormatUint(found.ID, 10),
+			RequestID:    strconv.FormatUint(found.ID, 10),
 		}
 		if err := m.templateEngine.ProcessMap(outputDataCopy, templateData); err != nil {
 			return nil, nil, errors.Wrap(err, "failed to process dynamic templates")
@@ -893,8 +893,8 @@ func (m *grpcMocker) handleNonArrayStreamData(stream grpc.ServerStream, found *s
 				Timestamp:    requestTime,
 				State:        make(map[string]any),
 				Requests:     []any{requestData},
-				StubID:       found.ID.String(),
-				RequestID:    found.ID.String(),
+				StubID:       strconv.FormatUint(found.ID, 10),
+				RequestID:    strconv.FormatUint(found.ID, 10),
 			}
 			if err := m.templateEngine.ProcessMap(outputDataCopy, templateData); err != nil {
 				return errors.Wrap(err, "failed to process dynamic templates")
@@ -1108,7 +1108,7 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 	if err := m.ensureServiceMethodAvailable(ctx); err != nil {
 		m.recordCall(
 			ctx,
-			uuid.Nil,
+			0,
 			uint32(codes.Unimplemented),
 			requestTime,
 			[]map[string]any{convertToMap(req)},
@@ -1136,7 +1136,7 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 		stubMissErr := status.Error(codes.NotFound, errorFormatter.FormatStubNotFoundError(query, result).Error())
 		m.recordCall(
 			ctx,
-			uuid.Nil,
+			0,
 			uint32(codes.NotFound),
 			requestTime,
 			[]map[string]any{convertToMap(req)},
@@ -1183,8 +1183,8 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 		Timestamp:    requestTime,
 		State:        make(map[string]any),
 		Requests:     []any{requestData},
-		StubID:       found.ID.String(),
-		RequestID:    found.ID.String(),
+		StubID:       strconv.FormatUint(found.ID, 10),
+		RequestID:    strconv.FormatUint(found.ID, 10),
 	}
 
 	outputDataCopy := deepCopyMapAny(outputToUse.Data)
@@ -1308,7 +1308,7 @@ func (m *grpcMocker) applyEffects(
 		op, err := m.prepareEffect(effect, templateData, matched.Room)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).
-				Str("stub_id", matched.ID.String()).
+				Uint64("stub_id", matched.ID).
 				Int("effect_index", i).
 				Str("effect_action", effect.Action).
 				Msg("failed to prepare effect; skip all effects for request")
@@ -1322,7 +1322,7 @@ func (m *grpcMocker) applyEffects(
 	for i, op := range prepared {
 		if err := m.applyEffectOperation(op); err != nil {
 			zerolog.Ctx(ctx).Err(err).
-				Str("stub_id", matched.ID.String()).
+				Uint64("stub_id", matched.ID).
 				Int("effect_index", i).
 				Str("effect_action", op.action).
 				Msg("failed to apply prepared effect")
@@ -1331,9 +1331,9 @@ func (m *grpcMocker) applyEffects(
 }
 
 type effectOperation struct {
-	action        string
-	upsertStub    *stuber.Stub
-	deleteID      uuid.UUID
+	action     string
+	upsertStub *stuber.Stub
+	deleteID   uint64
 	parentRoom string
 }
 
@@ -1381,10 +1381,6 @@ func (m *grpcMocker) prepareUpsertEffect(
 		return nil, err
 	}
 
-	if stub.ID == uuid.Nil {
-		stub.ID = uuid.New()
-	}
-
 	stub.Room = parentRoom
 	stub.Source = stuber.SourceRest
 
@@ -1398,24 +1394,24 @@ func (m *grpcMocker) prepareUpsertEffect(
 func (m *grpcMocker) prepareDeleteEffect(
 	effect stuber.Effect,
 	templateData template.Data,
-) (uuid.UUID, error) {
+) (uint64, error) {
 	idString := effect.ID
 	if idString == "" {
-		return uuid.Nil, errors.New("delete effect requires id")
+		return 0, errors.New("delete effect requires id")
 	}
 
 	if template.IsTemplateString(idString) {
 		renderedID, err := m.templateEngine.Render(idString, templateData)
 		if err != nil {
-			return uuid.Nil, errors.Wrap(err, "failed to process effect delete id template")
+			return 0, errors.Wrap(err, "failed to process effect delete id template")
 		}
 
 		idString = renderedID
 	}
 
-	id, err := uuid.Parse(idString)
+	id, err := strconv.ParseUint(strings.TrimSpace(idString), 10, 64)
 	if err != nil {
-		return uuid.Nil, errors.Wrap(err, "invalid effect delete id")
+		return 0, errors.Wrap(err, "invalid effect delete id")
 	}
 
 	return id, nil
@@ -1494,7 +1490,7 @@ func (m *grpcMocker) handleClientStream(stream grpc.ServerStream) error {
 	if err := m.ensureServiceMethodAvailable(stream.Context()); err != nil {
 		m.recordCall(
 			stream.Context(),
-			uuid.Nil,
+			0,
 			uint32(codes.Unimplemented),
 			requestTime,
 			messages,
@@ -1511,7 +1507,7 @@ func (m *grpcMocker) handleClientStream(stream grpc.ServerStream) error {
 		if status.Code(err) == codes.NotFound {
 			m.recordCall(
 				stream.Context(),
-				uuid.Nil,
+				0,
 				uint32(codes.NotFound),
 				requestTime,
 				messages,
@@ -1631,8 +1627,8 @@ func (m *grpcMocker) sendClientStreamResponse(
 		Timestamp:    requestTime,
 		State:        make(map[string]any),
 		Requests:     requestsAny,
-		StubID:       found.ID.String(),
-		RequestID:    found.ID.String(),
+		StubID:       strconv.FormatUint(found.ID, 10),
+		RequestID:    strconv.FormatUint(found.ID, 10),
 	}
 	if err := m.templateEngine.ProcessMap(outputDataCopy, templateData); err != nil {
 		return errors.Wrap(err, "failed to process dynamic templates")
@@ -1665,7 +1661,7 @@ func (m *grpcMocker) sendClientStreamResponse(
 func (m *grpcMocker) handleBidiStream(stream grpc.ServerStream) error {
 	requestTime := time.Now()
 	if err := m.ensureServiceMethodAvailable(stream.Context()); err != nil {
-		m.recordCall(stream.Context(), uuid.Nil, uint32(codes.Unimplemented), requestTime, nil, nil, nil, err.Error())
+		m.recordCall(stream.Context(), 0, uint32(codes.Unimplemented), requestTime, nil, nil, nil, err.Error())
 
 		return err
 	}
@@ -1773,8 +1769,8 @@ func (m *grpcMocker) processBidiStreamSendResponse(
 		Timestamp:    requestTime,
 		State:        make(map[string]any),
 		Requests:     []any{requestData},
-		StubID:       stub.ID.String(),
-		RequestID:    stub.ID.String(),
+		StubID:       strconv.FormatUint(stub.ID, 10),
+		RequestID:    strconv.FormatUint(stub.ID, 10),
 	}
 
 	outputToUse, err := m.prepareBidiOutput(stub, td)
@@ -1823,7 +1819,7 @@ func (m *grpcMocker) recordBidiStream(
 	rec := history.CallRecord{
 		Service:            m.fullServiceName,
 		Method:             m.methodName,
-		Room:            roomFromContext(stream.Context()),
+		Room:               roomFromContext(stream.Context()),
 		Client:             clientFromContext(stream.Context()),
 		Requests:           requests,
 		Responses:          responses,
@@ -2330,7 +2326,7 @@ func (s *GRPCServer) recordUnknownCall(ctx context.Context, serviceName string, 
 		Transport: "mock",
 		Service:   serviceName,
 		Method:    methodName,
-		Room:   roomFromContext(ctx),
+		Room:      roomFromContext(ctx),
 		Client:    clientFromContext(ctx),
 		Code:      code,
 		Error:     errorMessage,
@@ -2906,8 +2902,8 @@ func (m *grpcMocker) sendBidiResponses(
 		Timestamp:    requestTime,
 		State:        make(map[string]any),
 		Requests:     []any{},
-		StubID:       stub.ID.String(),
-		RequestID:    stub.ID.String(),
+		StubID:       strconv.FormatUint(stub.ID, 10),
+		RequestID:    strconv.FormatUint(stub.ID, 10),
 	}
 	if err := m.templateEngine.ProcessMap(outputDataCopy, templateData); err != nil {
 		return errors.Wrap(err, "failed to process dynamic templates")
@@ -2975,8 +2971,8 @@ func (m *grpcMocker) sendStreamResponses(
 				Timestamp:    requestTime,
 				State:        make(map[string]any),
 				Requests:     []any{},
-				StubID:       stub.ID.String(),
-				RequestID:    stub.ID.String(),
+				StubID:       strconv.FormatUint(stub.ID, 10),
+				RequestID:    strconv.FormatUint(stub.ID, 10),
 			}
 			if err := m.templateEngine.ProcessMap(streamDataCopy, templateData); err != nil {
 				return errors.Wrap(err, "failed to process dynamic templates")

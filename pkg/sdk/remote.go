@@ -13,7 +13,6 @@ import (
 
 	grpcclient "github.com/bavix/gripmock/v3/internal/infra/grpcclient"
 	"github.com/cockroachdb/errors"
-	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/descriptorpb"
@@ -28,14 +27,14 @@ type remoteMock struct {
 	addr          string
 	restBaseURL   string
 	httpClient    *http.Client
-	room       string
-	roomTTL    time.Duration
+	room          string
+	roomTTL       time.Duration
 	ttlTimer      *time.Timer
 	expectedTotal atomic.Int32
 	expectedMu    sync.Mutex
 	expectedByMth map[string]int
 	stubIDsMu     sync.Mutex
-	stubIDs       []uuid.UUID
+	stubIDs       []uint64
 	opErrMu       sync.Mutex
 	opErr         error
 }
@@ -99,7 +98,7 @@ func (m *remoteMock) armRoomTTL() {
 	})
 }
 
-func (m *remoteMock) popStubIDs() []uuid.UUID {
+func (m *remoteMock) popStubIDs() []uint64 {
 	m.stubIDsMu.Lock()
 	defer m.stubIDsMu.Unlock()
 
@@ -144,12 +143,12 @@ func (m *remoteMock) apiWithContext(ctx context.Context) remoteapi.Client {
 	return remoteapi.Client{
 		BaseURL:    m.restBaseURL,
 		HTTPClient: httpClient,
-		Room:    m.room,
+		Room:       m.room,
 		Context:    requestCtx,
 	}
 }
 
-func (m *remoteMock) batchDelete(ids []uuid.UUID) error {
+func (m *remoteMock) batchDelete(ids []uint64) error {
 	return m.api().BatchDelete(ids)
 }
 
@@ -197,7 +196,7 @@ func (m *remoteMock) recordExpected(service, method string, times int) {
 	m.expectedMu.Unlock()
 }
 
-func (m *remoteMock) appendStubID(id uuid.UUID) {
+func (m *remoteMock) appendStubID(id uint64) {
 	m.stubIDsMu.Lock()
 	m.stubIDs = append(m.stubIDs, id)
 	m.stubIDsMu.Unlock()
@@ -238,8 +237,8 @@ func runRemote(ctx context.Context, o *options) (Mock, error) {
 		addr:        o.remoteAddr,
 		restBaseURL: o.remoteRestURL,
 		httpClient:  o.httpClient,
-		room:     o.room,
-		roomTTL:  o.roomTTL,
+		room:        o.room,
+		roomTTL:     o.roomTTL,
 	}
 
 	if err := rm.uploadDescriptors(o.descriptorFiles); err != nil {

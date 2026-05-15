@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
@@ -18,7 +17,7 @@ func TestFindByNotFound(t *testing.T) {
 
 	s := stuber.NewBudgerigar()
 
-	s.PutMany(&stuber.Stub{ID: uuid.New(), Service: "Greeter1", Method: "SayHello1"})
+	s.PutMany(&stuber.Stub{ID: newStubID(), Service: "Greeter1", Method: "SayHello1"})
 
 	tests := []struct {
 		service string
@@ -46,7 +45,7 @@ func TestStubNil(t *testing.T) {
 
 	s := stuber.NewBudgerigar()
 
-	require.Nil(t, s.FindByID(uuid.New()))
+	require.Nil(t, s.FindByID(newStubID()))
 }
 
 func TestInternalHealthStubsAreHiddenFromPublicCollections(t *testing.T) {
@@ -79,7 +78,7 @@ func TestFindByIDPrefersExternalWhenInternalIDCollides(t *testing.T) {
 
 	s := stuber.NewBudgerigar()
 
-	internalID := uuid.MustParse(stuber.InternalStubIDGripmockHealthCheck)
+	internalID := stuber.InternalStubIDGripmockHealthCheck
 	// Internal stubs must be hidden from direct user lookup.
 	require.Nil(t, s.FindByID(internalID))
 
@@ -188,8 +187,8 @@ func TestPutManyFixID(t *testing.T) {
 	s.PutMany(stubs...)
 
 	require.Len(t, s.All(), 2)
-	require.NotEqual(t, uuid.Nil, stubs[0].ID)
-	require.NotEqual(t, uuid.Nil, stubs[1].ID)
+	require.NotEqual(t, 0, stubs[0].ID)
+	require.NotEqual(t, 0, stubs[1].ID)
 }
 
 func TestUpdateMany(t *testing.T) {
@@ -200,7 +199,7 @@ func TestUpdateMany(t *testing.T) {
 	require.Empty(t, s.All())
 
 	stubs := []*stuber.Stub{
-		{Service: "Greeter1", Method: "SayHello1", ID: uuid.New()},
+		{Service: "Greeter1", Method: "SayHello1", ID: newStubID()},
 		{Service: "Greeter1", Method: "SayHello1"},
 		{Service: "Greeter1", Method: "SayHello1"},
 	}
@@ -216,8 +215,8 @@ func TestRelationship(t *testing.T) {
 	s := stuber.NewBudgerigar()
 
 	s.PutMany(
-		&stuber.Stub{ID: uuid.New(), Service: "Greeter1", Method: "SayHello1"},
-		&stuber.Stub{ID: uuid.New(), Service: "Greeter2", Method: "SayHello2"},
+		&stuber.Stub{ID: newStubID(), Service: "Greeter1", Method: "SayHello1"},
+		&stuber.Stub{ID: newStubID(), Service: "Greeter2", Method: "SayHello2"},
 	)
 
 	// Service exists but method doesn't - should return ErrMethodNotFound
@@ -234,7 +233,7 @@ func TestBudgerigarUnused(t *testing.T) {
 
 	s.PutMany(
 		&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "Greeter1",
 			Method:  "SayHello1",
 			Input: stuber.InputData{Contains: map[string]any{
@@ -243,7 +242,7 @@ func TestBudgerigarUnused(t *testing.T) {
 			Output: stuber.Output{Data: map[string]any{"message": "hello world"}},
 		},
 		&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "Greeter2",
 			Method:  "SayHello1",
 			Input: stuber.InputData{Contains: map[string]any{
@@ -252,10 +251,10 @@ func TestBudgerigarUnused(t *testing.T) {
 			Output: stuber.Output{Data: map[string]any{"message": "greeter2"}},
 		},
 		&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "Greeter1",
 			Method:  "SayHello1",
-			Room: "s1",
+			Room:    "s1",
 			Input: stuber.InputData{Contains: map[string]any{
 				"field1": "hello field2",
 			}},
@@ -289,7 +288,7 @@ func TestBudgerigarSearchWithHeaders(t *testing.T) {
 
 	s.PutMany(
 		&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "Gripmock",
 			Method:  "SayHello",
 			Input: stuber.InputData{Equals: map[string]any{
@@ -300,7 +299,7 @@ func TestBudgerigarSearchWithHeaders(t *testing.T) {
 			}},
 		},
 		&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "Gripmock",
 			Method:  "SayHello",
 			Headers: stuber.InputHeader{Equals: map[string]any{
@@ -347,9 +346,9 @@ func TestBudgerigarSearchWithPackageAndWithoutPackage(t *testing.T) {
 	require.Empty(t, s.Unused())
 
 	// Use fixed UUIDs to ensure stable sorting
-	id1 := uuid.MustParse("00000000-0000-0000-0000-000000000001")
-	id2 := uuid.MustParse("00000000-0000-0000-0000-000000000002")
-	id3 := uuid.MustParse("00000000-0000-0000-0000-000000000003")
+	id1 := uint64(1)
+	id2 := uint64(2)
+	id3 := uint64(3)
 
 	stubs := []*stuber.Stub{
 		{
@@ -456,7 +455,7 @@ func TestBudgerigarSearchEmpty(t *testing.T) {
 
 	s.PutMany(
 		&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "Gripmock",
 			Method:  "ApiInfo",
 			Input:   stuber.InputData{Equals: map[string]any{}},
@@ -496,7 +495,7 @@ func TestBudgerigarSearchWithHeadersSimilar(t *testing.T) {
 
 	s.PutMany(
 		&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "Gripmock",
 			Method:  "SayHello",
 			Input: stuber.InputData{Equals: map[string]any{
@@ -508,7 +507,7 @@ func TestBudgerigarSearchWithHeadersSimilar(t *testing.T) {
 			}},
 		},
 		&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "Gripmock",
 			Method:  "SayHello",
 			Headers: stuber.InputHeader{Equals: map[string]any{
@@ -555,7 +554,7 @@ func TestResultMatchesRegexInt(t *testing.T) {
 
 	s.PutMany(
 		&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "Gripmock",
 			Method:  "ApiInfo",
 			Input: stuber.InputData{Matches: map[string]any{
@@ -595,7 +594,7 @@ func TestResultSimilar(t *testing.T) {
 
 	s.PutMany(
 		&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "Greeter1",
 			Method:  "SayHello1",
 			Input: stuber.InputData{Contains: map[string]any{
@@ -627,7 +626,7 @@ func TestStuberMatchesEqualsFound(t *testing.T) {
 	// "matches": { "name": "^user_\\d+$" },
 	s.PutMany(
 		&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "Greeter1",
 			Method:  "SayHello1",
 			Input: stuber.InputData{
@@ -668,7 +667,7 @@ func TestStuberEqualsIgnoreArrayOrder(t *testing.T) {
 
 	s.PutMany(
 		&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "IdentifierService",
 			Method:  "ProcessUUIDs",
 			Input: stuber.InputData{
@@ -709,7 +708,7 @@ func TestStuberEqualsIgnoreArrayOrder(t *testing.T) {
 func TestDelete(t *testing.T) {
 	t.Parallel()
 
-	id1, id2, id3 := uuid.New(), uuid.New(), uuid.New()
+	id1, id2, id3 := newStubID(), newStubID(), newStubID()
 
 	s := stuber.NewBudgerigar()
 
@@ -733,7 +732,7 @@ func TestDelete(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, all, 1)
 
-	require.Equal(t, 0, s.DeleteByID(uuid.New())) // undefined
+	require.Equal(t, 0, s.DeleteByID(newStubID())) // undefined
 	require.Len(t, s.All(), 3)
 
 	require.Equal(t, 1, s.DeleteByID(id1))
@@ -765,14 +764,14 @@ func TestBudgerigarClear(t *testing.T) {
 
 	s.PutMany(
 		&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "Service1",
 			Method:  "Method1",
 			Input:   stuber.InputData{Equals: map[string]any{}},
 			Output:  stuber.Output{Data: map[string]any{}},
 		},
 		&stuber.Stub{
-			ID:      uuid.New(),
+			ID:      newStubID(),
 			Service: "Service2",
 			Method:  "Method2",
 			Input:   stuber.InputData{Equals: map[string]any{}},
@@ -794,47 +793,43 @@ func TestBudgerigarFindByQueryFoundWithPriority(t *testing.T) {
 
 	s.PutMany(
 		&stuber.Stub{
-			ID:       uuid.New(),
-			Service:  "Service",
-			Method:   "Method",
-			Room:  "prio",
-			Input:    stuber.InputData{Contains: map[string]any{"id": "1"}},
-			Output:   stuber.Output{Data: map[string]any{"result": "fail"}},
-			Priority: -1,
+			ID:      newStubID(),
+			Service: "Service",
+			Method:  "Method",
+			Room:    "prio",
+			Input:   stuber.InputData{Contains: map[string]any{"id": "1"}},
+			Output:  stuber.Output{Data: map[string]any{"result": "fail"}},
 		},
 		&stuber.Stub{
-			ID:       uuid.New(),
-			Service:  "Service",
-			Method:   "Method",
-			Room:  "prio",
-			Input:    stuber.InputData{Matches: map[string]any{"id": "\\d+"}},
-			Output:   stuber.Output{Data: map[string]any{"result": "fail"}},
-			Priority: 0,
+			ID:      newStubID(),
+			Service: "Service",
+			Method:  "Method",
+			Room:    "prio",
+			Input:   stuber.InputData{Matches: map[string]any{"id": "\\d+"}},
+			Output:  stuber.Output{Data: map[string]any{"result": "fail"}},
 		},
 		&stuber.Stub{
-			ID:       uuid.New(),
-			Service:  "Service",
-			Method:   "Method",
-			Room:  "prio",
-			Input:    stuber.InputData{Equals: map[string]any{"id": "1"}},
-			Output:   stuber.Output{Data: map[string]any{"result": "success"}},
-			Priority: 10,
+			ID:      newStubID(),
+			Service: "Service",
+			Method:  "Method",
+			Room:    "prio",
+			Input:   stuber.InputData{Equals: map[string]any{"id": "1"}},
+			Output:  stuber.Output{Data: map[string]any{"result": "success"}},
 		},
 		&stuber.Stub{
-			ID:       uuid.New(),
-			Service:  "Service",
-			Method:   "Method",
-			Room:  "prio",
-			Input:    stuber.InputData{Equals: map[string]any{"id": "1"}},
-			Output:   stuber.Output{Data: map[string]any{"result": "fail"}},
-			Priority: 1,
+			ID:      newStubID(),
+			Service: "Service",
+			Method:  "Method",
+			Room:    "prio",
+			Input:   stuber.InputData{Equals: map[string]any{"id": "1"}},
+			Output:  stuber.Output{Data: map[string]any{"result": "fail"}},
 		},
 	)
 
 	r, err := s.FindByQuery(stuber.Query{
 		Service: "Service",
 		Method:  "Method",
-		Room: "prio",
+		Room:    "prio",
 		Input:   []map[string]any{{"id": "1"}},
 	})
 
@@ -855,8 +850,8 @@ func TestBudgerigarUsed(t *testing.T) {
 	require.Empty(t, s.Used())
 
 	// Add some stubs
-	stub1 := &stuber.Stub{ID: uuid.New(), Service: "Service1", Method: "Method1"}
-	stub2 := &stuber.Stub{ID: uuid.New(), Service: "Service2", Method: "Method2"}
+	stub1 := &stuber.Stub{ID: newStubID(), Service: "Service1", Method: "Method1"}
+	stub2 := &stuber.Stub{ID: newStubID(), Service: "Service2", Method: "Method2"}
 	s.PutMany(stub1, stub2)
 
 	// Still no used stubs
@@ -880,7 +875,7 @@ func TestBudgerigarFindByQueryWithID(t *testing.T) {
 
 	s := stuber.NewBudgerigar()
 
-	stubID := uuid.New()
+	stubID := newStubID()
 	stub := &stuber.Stub{
 		ID:      stubID,
 		Service: "Service",
@@ -902,7 +897,7 @@ func TestBudgerigarFindByQueryWithID(t *testing.T) {
 	require.Equal(t, "success", result.Found().Output.Data["result"])
 
 	// Test finding by non-existent ID
-	nonExistentID := uuid.New()
+	nonExistentID := newStubID()
 	_, err = s.FindByQuery(stuber.Query{
 		ID:      &nonExistentID,
 		Service: "Service",
@@ -917,7 +912,7 @@ func TestBudgerigarFindByQueryInternalRequest(t *testing.T) {
 	s := stuber.NewBudgerigar()
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
+		ID:      newStubID(),
 		Service: "Service",
 		Method:  "Method",
 		Output:  stuber.Output{Data: map[string]any{"result": "success"}},

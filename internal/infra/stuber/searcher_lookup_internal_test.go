@@ -4,7 +4,6 @@ import (
 	"iter"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -13,7 +12,7 @@ type fakeIDLookup struct {
 	stub   *Stub
 }
 
-func (f *fakeIDLookup) LookupID(_ uuid.UUID) *Stub {
+func (f *fakeIDLookup) LookupID(_ uint64) *Stub {
 	f.called = true
 
 	return f.stub
@@ -92,9 +91,9 @@ func (f *fakeMatchStrategy) Match(_ Query, _ *Stub) bool {
 
 type fakeRankStrategy struct {
 	called      bool
-	scores      map[uuid.UUID]float64
-	specificity map[uuid.UUID]int
-	fieldCount  map[uuid.UUID]int
+	scores      map[uint64]float64
+	specificity map[uint64]int
+	fieldCount  map[uint64]int
 }
 
 func (f *fakeRankStrategy) Score(_ Query, stub *Stub) float64 {
@@ -119,7 +118,7 @@ func TestSearcherLookupFactoryMethodFallback(t *testing.T) {
 	t.Parallel()
 
 	candidate := &Stub{
-		ID:      uuid.New(),
+		ID:      nextTestID(),
 		Service: "other.service",
 		Method:  "Hello",
 		Input:   InputData{Equals: map[string]any{"name": "Alex"}},
@@ -163,7 +162,7 @@ func TestSearcherLookupFactoryIDPath(t *testing.T) {
 	t.Parallel()
 
 	stub := &Stub{
-		ID:      uuid.New(),
+		ID:      nextTestID(),
 		Service: "svc",
 		Method:  "M",
 		Input:   InputData{Equals: map[string]any{"name": "Alex"}},
@@ -200,7 +199,7 @@ func TestSearcherLookupProviderHasPriorityOverFactory(t *testing.T) {
 	t.Parallel()
 
 	candidate := &Stub{
-		ID:      uuid.New(),
+		ID:      nextTestID(),
 		Service: "other.service",
 		Method:  "Hello",
 		Input:   InputData{Equals: map[string]any{"name": "Alex"}},
@@ -252,7 +251,7 @@ func TestSearcherLookupFactoryUsedWhenProviderMissing(t *testing.T) {
 	t.Parallel()
 
 	candidate := &Stub{
-		ID:      uuid.New(),
+		ID:      nextTestID(),
 		Service: "other.service",
 		Method:  "Hello",
 		Input:   InputData{Equals: map[string]any{"name": "Alex"}},
@@ -302,10 +301,10 @@ func TestSearcherLookupFactoryUsedWhenProviderMissing(t *testing.T) {
 func TestSearcherUsesConfiguredProcessStrategy(t *testing.T) {
 	t.Parallel()
 
-	strategy := &fakeProcessStrategy{result: &Result{similar: &Stub{ID: uuid.New()}}}
+	strategy := &fakeProcessStrategy{result: &Result{similar: &Stub{ID: nextTestID()}}}
 
 	s := newSearcherWithOptions(searcherOptions{processStrategy: strategy})
-	s.upsert(&Stub{ID: uuid.New(), Service: "svc", Method: "M", Output: Output{Data: map[string]any{"ok": true}}})
+	s.upsert(&Stub{ID: nextTestID(), Service: "svc", Method: "M", Output: Output{Data: map[string]any{"ok": true}}})
 
 	result, err := s.find(Query{Service: "svc", Method: "M", Input: []map[string]any{{"k": "v"}}})
 
@@ -318,7 +317,7 @@ func TestSearcherUsesConfiguredMatcherForSingleStub(t *testing.T) {
 	t.Parallel()
 
 	stub := &Stub{
-		ID:      uuid.New(),
+		ID:      nextTestID(),
 		Service: "svc",
 		Method:  "M",
 		Input:   InputData{Equals: map[string]any{"name": "Alex"}},
@@ -342,14 +341,14 @@ func TestSearcherUsesConfiguredMatcherForSingleStub(t *testing.T) {
 func TestSearcherUsesConfiguredRankerForCandidateOrdering(t *testing.T) {
 	t.Parallel()
 
-	first := &Stub{ID: uuid.New(), Service: "svc", Method: "M", Output: Output{Data: map[string]any{"n": 1}}}
-	second := &Stub{ID: uuid.New(), Service: "svc", Method: "M", Output: Output{Data: map[string]any{"n": 2}}}
+	first := &Stub{ID: nextTestID(), Service: "svc", Method: "M", Output: Output{Data: map[string]any{"n": 1}}}
+	second := &Stub{ID: nextTestID(), Service: "svc", Method: "M", Output: Output{Data: map[string]any{"n": 2}}}
 
 	matcher := &fakeMatchStrategy{match: true}
 	ranker := &fakeRankStrategy{
-		scores:      map[uuid.UUID]float64{first.ID: 1, second.ID: 1},
-		specificity: map[uuid.UUID]int{first.ID: 1, second.ID: 10},
-		fieldCount:  map[uuid.UUID]int{first.ID: 1, second.ID: 1},
+		scores:      map[uint64]float64{first.ID: 1, second.ID: 1},
+		specificity: map[uint64]int{first.ID: 1, second.ID: 10},
+		fieldCount:  map[uint64]int{first.ID: 1, second.ID: 1},
 	}
 
 	s := newSearcherWithOptions(searcherOptions{matcher: matcher, ranker: ranker})
@@ -369,7 +368,7 @@ func TestRoomLookupFallsBackToGlobalWhenRoomEmpty(t *testing.T) {
 	t.Parallel()
 
 	global := &Stub{
-		ID:      uuid.New(),
+		ID:      nextTestID(),
 		Service: "svc",
 		Method:  "M",
 		Input:   InputData{Equals: map[string]any{"name": "Alex"}},
@@ -382,7 +381,7 @@ func TestRoomLookupFallsBackToGlobalWhenRoomEmpty(t *testing.T) {
 	result, err := s.find(Query{
 		Service: "svc",
 		Method:  "M",
-		Room: "S1",
+		Room:    "S1",
 		Input:   []map[string]any{{"name": "Alex"}},
 	})
 
@@ -396,7 +395,7 @@ func TestRoomLookupMergesRoomAndGlobalStorage(t *testing.T) {
 	t.Parallel()
 
 	global := &Stub{
-		ID:      uuid.New(),
+		ID:      nextTestID(),
 		Service: "svc",
 		Method:  "M",
 		Input:   InputData{Equals: map[string]any{"name": "Alex"}},
@@ -404,10 +403,10 @@ func TestRoomLookupMergesRoomAndGlobalStorage(t *testing.T) {
 	}
 
 	room := &Stub{
-		ID:      uuid.New(),
+		ID:      nextTestID(),
 		Service: "svc",
 		Method:  "M",
-		Room: "S1",
+		Room:    "S1",
 		Input:   InputData{Equals: map[string]any{"name": "Bob"}},
 		Output:  Output{Data: map[string]any{"scope": "room"}},
 	}
@@ -418,7 +417,7 @@ func TestRoomLookupMergesRoomAndGlobalStorage(t *testing.T) {
 	result, err := s.find(Query{
 		Service: "svc",
 		Method:  "M",
-		Room: "S1",
+		Room:    "S1",
 		Input:   []map[string]any{{"name": "Alex"}},
 	})
 
@@ -430,7 +429,7 @@ func TestRoomLookupMergesRoomAndGlobalStorage(t *testing.T) {
 	result, err = s.find(Query{
 		Service: "svc",
 		Method:  "M",
-		Room: "S1",
+		Room:    "S1",
 		Input:   []map[string]any{{"name": "Bob"}},
 	})
 

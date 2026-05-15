@@ -339,7 +339,7 @@ paths:
             type: string
         - name: room
           in: query
-          description: Filter by room ID (empty means global stubs)
+          description: Resolve room-specific enabled state for returned stubs (does not filter stub catalog)
           required: false
           schema:
             type: string
@@ -1056,7 +1056,6 @@ components:
         - service
         - method
         - room
-        - priority
         - times
         - used
         - specificity
@@ -1079,8 +1078,6 @@ components:
           type: string
         room:
           type: string
-        priority:
-          type: integer
         enabled:
           type: boolean
         times:
@@ -1351,12 +1348,7 @@ components:
         enabled:
           type: boolean
           default: true
-          description: Whether the stub participates in matching.
-          x-go-type-skip-optional-pointer: true
-        priority:
-          type: integer
-          default: 0
-          description: "Deprecated: kept for backward compatibility and ignored by matcher."
+          description: Effective enabled status for the selected room context.
           x-go-type-skip-optional-pointer: true
         headers:
           $ref: '#/components/schemas/StubHeaders'

@@ -7,12 +7,10 @@ import (
 )
 
 const (
-	ListSortPriorityDesc = "priority_desc"
-	ListSortPriorityAsc  = "priority_asc"
-	ListSortEnabledDesc  = "enabled_desc"
-	ListSortEnabledAsc   = "enabled_asc"
-	ListSortServiceAsc   = "service_asc"
-	ListSortMethodAsc    = "method_asc"
+	ListSortEnabledDesc = "enabled_desc"
+	ListSortEnabledAsc  = "enabled_asc"
+	ListSortServiceAsc  = "service_asc"
+	ListSortMethodAsc   = "method_asc"
 )
 
 // ListOptions controls filtering, sorting and pagination for stubs listing.
@@ -33,6 +31,9 @@ type ListOptions struct {
 // List returns filtered stubs and total before pagination.
 func (b *Budgerigar) List(options ListOptions) ([]*Stub, int) {
 	filtered := filterStubs(b.searcher.storage.values(), options)
+	if options.RoomSet {
+		filtered = b.decorateEffectiveEnabled(filtered, options.Room)
+	}
 
 	sortStubs(filtered, options.Sort)
 
@@ -40,6 +41,25 @@ func (b *Budgerigar) List(options ListOptions) ([]*Stub, int) {
 	filtered = paginateStubs(filtered, options)
 
 	return filtered, total
+}
+
+func (b *Budgerigar) decorateEffectiveEnabled(values []*Stub, room string) []*Stub {
+	if len(values) == 0 {
+		return values
+	}
+
+	out := make([]*Stub, 0, len(values))
+	for _, item := range values {
+		copyValue := *item
+		copyValue.SetEnabled(b.isEnabledForRoom(item, room))
+		out = append(out, &copyValue)
+	}
+
+	return out
+}
+
+func (b *Budgerigar) EffectiveForRoom(values []*Stub, room string) []*Stub {
+	return b.decorateEffectiveEnabled(values, room)
 }
 
 func filterStubs(stubs iter.Seq[*Stub], options ListOptions) []*Stub {
@@ -70,13 +90,6 @@ func filterStubs(stubs iter.Seq[*Stub], options ListOptions) []*Stub {
 		method := options.Method
 		seq = whereStubs(seq, func(stub *Stub) bool {
 			return stub.Method == method
-		})
-	}
-
-	if options.RoomSet {
-		room := options.Room
-		seq = whereStubs(seq, func(stub *Stub) bool {
-			return stub.Room == room
 		})
 	}
 
@@ -121,11 +134,11 @@ func sortStubs(stubs []*Stub, mode string) {
 			return leftEnabled
 		}
 
-		return stubs[i].ID.String() < stubs[j].ID.String()
+		return stubs[i].ID < stubs[j].ID
 	}
 
 	switch mode {
-	case ListSortPriorityAsc, ListSortEnabledAsc:
+	case ListSortEnabledAsc:
 		less = func(i, j int) bool {
 			leftEnabled := stubs[i].IsEnabled()
 			rightEnabled := stubs[j].IsEnabled()
@@ -133,7 +146,7 @@ func sortStubs(stubs []*Stub, mode string) {
 				return !leftEnabled
 			}
 
-			return stubs[i].ID.String() < stubs[j].ID.String()
+			return stubs[i].ID < stubs[j].ID
 		}
 	case ListSortServiceAsc:
 		less = func(i, j int) bool {

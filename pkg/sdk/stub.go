@@ -4,7 +4,6 @@ import (
 	"maps"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/samber/lo"
 	"google.golang.org/grpc/codes"
 
@@ -26,7 +25,6 @@ type StubBuilder interface {
 	ReplyHeaderPairs(kv ...string) StubBuilder
 	Delay(d time.Duration) StubBuilder
 	IgnoreArrayOrder() StubBuilder
-	Priority(p int) StubBuilder
 	Enabled(v bool) StubBuilder
 	Times(n int) StubBuilder
 	Unary(inKey string, inVal any, outKey string, outVal any) StubBuilder
@@ -34,13 +32,12 @@ type StubBuilder interface {
 }
 
 type stubBuilderData struct {
-	input    stuber.InputData
-	inputs   []stuber.InputData
-	headers  stuber.InputHeader
-	output   stuber.Output
-	priority int
-	enabled  *bool
-	options  stuber.StubOptions
+	input   stuber.InputData
+	inputs  []stuber.InputData
+	headers stuber.InputHeader
+	output  stuber.Output
+	enabled *bool
+	options stuber.StubOptions
 }
 
 type stubBuilderCore struct {
@@ -146,11 +143,6 @@ func (c *stubBuilderCore) IgnoreArrayOrder() StubBuilder {
 	return c
 }
 
-func (c *stubBuilderCore) Priority(p int) StubBuilder {
-	c.data.priority = p
-	return c
-}
-
 func (c *stubBuilderCore) Enabled(v bool) StubBuilder {
 	c.data.enabled = &v
 	return c
@@ -163,16 +155,14 @@ func (c *stubBuilderCore) Times(n int) StubBuilder {
 
 func (c *stubBuilderCore) Commit() {
 	stub := &stuber.Stub{
-		ID:       uuid.New(),
-		Service:  c.service,
-		Method:   c.method,
-		Input:    c.data.input,
-		Inputs:   c.data.inputs,
-		Headers:  c.data.headers,
-		Output:   c.data.output,
-		Priority: c.data.priority,
-		Enabled:  c.data.enabled,
-		Options:  c.data.options,
+		Service: c.service,
+		Method:  c.method,
+		Input:   c.data.input,
+		Inputs:  c.data.inputs,
+		Headers: c.data.headers,
+		Output:  c.data.output,
+		Enabled: c.data.enabled,
+		Options: c.data.options,
 	}
 	c.onCommit(stub)
 }

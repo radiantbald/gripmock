@@ -32,14 +32,12 @@ func TestStubBuilderReplyHeadersAndIgnoreArrayOrder(t *testing.T) {
 		ReplyHeaders(map[string]string{"x-a": "1"}).
 		ReplyHeaderPairs("x-b", "2").
 		Delay(0).
-		Priority(7).
 		Times(2).
 		Commit()
 
 	// Assert
 	require.NotNil(t, got)
 	require.Equal(t, 2, got.Options.Times)
-	require.Equal(t, 7, got.Priority)
 	require.Equal(t, "1", got.Output.Headers["x-a"])
 	require.Equal(t, "2", got.Output.Headers["x-b"])
 	require.True(t, got.Input.IgnoreArrayOrder)

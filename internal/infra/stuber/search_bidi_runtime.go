@@ -1,7 +1,6 @@
 package stuber
 
 import (
-	"bytes"
 	"sync"
 	"sync/atomic"
 )
@@ -106,7 +105,7 @@ func (br *BidiResult) selectBestStub(itemQuery Query, messageIndex int) (*Stub, 
 			continue
 		}
 
-		if totalRank == bestRank && bytes.Compare(stub.ID[:], bestStub.ID[:]) < 0 {
+		if totalRank == bestRank && stub.ID < bestStub.ID {
 			bestStub = stub
 			bestIndex = i
 		}
@@ -188,7 +187,7 @@ func (s *searcher) newBidiResult(query QueryBidi, matchingStubs []*Stub, lookup 
 	result.reserveQuery = Query{
 		Service:       query.Service,
 		Method:        query.Method,
-		Room:       query.Room,
+		Room:          query.Room,
 		StrictService: query.StrictService,
 		Headers:       query.Headers,
 		Input:         result.inputBuf[:],

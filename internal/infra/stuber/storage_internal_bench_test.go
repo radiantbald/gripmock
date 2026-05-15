@@ -64,7 +64,7 @@ func BenchmarkStorageFindByID(b *testing.B) {
 	b.ResetTimer()
 
 	for range b.N {
-		_ = s.findByID(uuid.New())
+		_ = s.findByID(nextTestID())
 	}
 }
 
@@ -81,7 +81,7 @@ func BenchmarkStorageDel(b *testing.B) {
 	b.ResetTimer()
 
 	for range b.N {
-		_ = s.del(uuid.New())
+		_ = s.del(nextTestID())
 	}
 }
 

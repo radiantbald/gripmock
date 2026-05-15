@@ -1,7 +1,5 @@
 package stuber
 
-import "github.com/google/uuid"
-
 // traceCollector is an internal hook interface used by search workflow
 // to report stage transitions for inspect/debug use-cases.
 //
@@ -9,5 +7,5 @@ import "github.com/google/uuid"
 type traceCollector interface {
 	addStage(name string, before, after int)
 	setFallbackToMethod(v bool)
-	setMatchedStubID(id *uuid.UUID)
+	setMatchedStubID(id *uint64)
 }

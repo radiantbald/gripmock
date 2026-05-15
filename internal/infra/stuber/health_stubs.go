@@ -1,16 +1,15 @@
 package stuber
 
 import (
-	"github.com/google/uuid"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 const (
 	// InternalStubIDGripmockHealthCheck is the reserved ID for internal gripmock health Check stub.
-	InternalStubIDGripmockHealthCheck = "ffffffff-ffff-ffff-ffff-ffffffffffff"
+	InternalStubIDGripmockHealthCheck uint64 = ^uint64(0)
 
 	// InternalStubIDGripmockHealthWatch is the reserved ID for internal gripmock health Watch stub.
-	InternalStubIDGripmockHealthWatch = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+	InternalStubIDGripmockHealthWatch uint64 = ^uint64(0) - 1
 )
 
 // SetupGripmockHealthStubs creates internal stubs for gripmock health service.
@@ -40,7 +39,7 @@ func UpdateGripmockHealthStatus(storage InternalStubStorage, status healthgrpc.H
 
 func newGripmockHealthCheckStub(status string) *Stub {
 	return &Stub{
-		ID:      uuid.MustParse(InternalStubIDGripmockHealthCheck),
+		ID:      InternalStubIDGripmockHealthCheck,
 		Service: "grpc.health.v1.Health",
 		Method:  "Check",
 		Input: InputData{
@@ -54,7 +53,7 @@ func newGripmockHealthCheckStub(status string) *Stub {
 
 func newGripmockHealthWatchStub(status string) *Stub {
 	return &Stub{
-		ID:      uuid.MustParse(InternalStubIDGripmockHealthWatch),
+		ID:      InternalStubIDGripmockHealthWatch,
 		Service: "grpc.health.v1.Health",
 		Method:  "Watch",
 		Input: InputData{

@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -110,7 +109,6 @@ func TestHandleServerStreamWithArrayStream(t *testing.T) {
 	stream := createTestStream(t, mocker)
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: testServiceName,
 		Method:  testMethodName,
 		Input: stuber.InputData{
@@ -143,7 +141,6 @@ func TestHandleServerStreamWithNonArrayStream(t *testing.T) {
 	stream := createTestStream(t, mocker)
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: testServiceName,
 		Method:  testMethodName,
 		Input: stuber.InputData{
@@ -177,7 +174,6 @@ func TestHandleServerStreamWithHeaders(t *testing.T) {
 	stream.ctx = ctx
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: testServiceName,
 		Method:  testMethodName,
 		Input: stuber.InputData{
@@ -213,7 +209,6 @@ func TestHandleServerStreamWithError(t *testing.T) {
 	stream := createTestStream(t, mocker)
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: testServiceName,
 		Method:  testMethodName,
 		Input: stuber.InputData{
@@ -285,7 +280,6 @@ func TestHandleServerStreamEmptyStream(t *testing.T) {
 	stream := createTestStream(t, mocker)
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: testServiceName,
 		Method:  testMethodName,
 		Input: stuber.InputData{
@@ -314,7 +308,6 @@ func TestHandleNonArrayStreamDataSendsMessages(t *testing.T) {
 	}
 
 	stub := &stuber.Stub{
-		ID: uuid.New(),
 		Output: stuber.Output{
 			Data: map[string]any{"message": "test"},
 		},
@@ -336,7 +329,6 @@ func TestHandleNonArrayStreamDataWithDelay(t *testing.T) {
 	}
 
 	stub := &stuber.Stub{
-		ID: uuid.New(),
 		Output: stuber.Output{
 			Data:  map[string]any{"message": "test"},
 			Delay: types.Duration(10 * time.Millisecond),
@@ -364,7 +356,6 @@ func TestHandleNonArrayStreamDataWithTemplates(t *testing.T) {
 	}
 
 	stub := &stuber.Stub{
-		ID: uuid.New(),
 		Output: stuber.Output{
 			Data: map[string]any{"message": "Hello, {{.Request.name}}!"},
 		},
@@ -389,7 +380,6 @@ func TestHandleNonArrayStreamDataContextCancelled(t *testing.T) {
 	}
 
 	stub := &stuber.Stub{
-		ID: uuid.New(),
 		Output: stuber.Output{
 			Data: map[string]any{"message": "test"},
 		},
@@ -411,7 +401,6 @@ func TestHandleNonArrayStreamDataWithError(t *testing.T) {
 	}
 
 	stub := &stuber.Stub{
-		ID: uuid.New(),
 		Output: stuber.Output{
 			Data:  map[string]any{"message": "test"},
 			Error: "test error",
@@ -549,8 +538,8 @@ func TestRoomFromMetadataHeaderAbsent(t *testing.T) {
 func TestRoomFromContextUsesPeerBindingWhenHeaderMissing(t *testing.T) {
 	// Arrange
 	const (
-		peerHost  = "172.21.199.199"
-		roomID = "peer-bound-room"
+		peerHost = "172.21.199.199"
+		roomID   = "peer-bound-room"
 	)
 	roominfra.AssignClient(peerHost, roomID)
 
@@ -589,8 +578,8 @@ func TestClientFromContextIncludesUserAgentFingerprint(t *testing.T) {
 func TestRoomFromContextFallsBackToPeerOnlyBinding(t *testing.T) {
 	// Arrange
 	const (
-		peerHost  = "172.21.199.200"
-		roomID = "peer-only-room"
+		peerHost = "172.21.199.200"
+		roomID   = "peer-only-room"
 	)
 	roominfra.AssignClient(peerHost, roomID)
 

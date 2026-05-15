@@ -23,7 +23,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/go-playground/validator/v10"
 	"github.com/goccy/go-json"
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -88,8 +87,8 @@ type RestServer struct {
 	history         history.Reader
 	validator       *validator.Validate
 	restDescriptors *descriptors.Registry
-	publicIDs       map[rest.ID]uuid.UUID
-	privateIDs      map[uuid.UUID]rest.ID
+	publicIDs       map[rest.ID]uint64
+	privateIDs      map[uint64]rest.ID
 	mcpHandler      http.Handler
 	usersRepository *pgusers.Repository
 	allowedPhones   *pgallowlist.Repository
@@ -132,8 +131,8 @@ func NewRestServer(
 		history:         historyReader,
 		validator:       v,
 		restDescriptors: r,
-		publicIDs:       make(map[rest.ID]uuid.UUID),
-		privateIDs:      make(map[uuid.UUID]rest.ID),
+		publicIDs:       make(map[rest.ID]uint64),
+		privateIDs:      make(map[uint64]rest.ID),
 	}
 
 	go func() {
@@ -644,7 +643,7 @@ func (h *RestServer) ProtofilesDelete(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *RestServer) collectStubsForProtofileDelete(deleted pgprotometadata.DeleteProtofileResult) []uuid.UUID {
+func (h *RestServer) collectStubsForProtofileDelete(deleted pgprotometadata.DeleteProtofileResult) []uint64 {
 	if len(deleted.ServiceIDs) == 0 && len(deleted.ServiceMethods) == 0 {
 		return nil
 	}
@@ -662,7 +661,7 @@ func (h *RestServer) collectStubsForProtofileDelete(deleted pgprotometadata.Dele
 		methodSet[item.ServiceID+"|"+item.MethodID] = struct{}{}
 	}
 
-	ids := make([]uuid.UUID, 0)
+	ids := make([]uint64, 0)
 	for _, stub := range h.budgerigar.All() {
 		if stub == nil {
 			continue
@@ -1350,7 +1349,7 @@ func mcpStubsUpsert(h *RestServer, args map[string]any) (map[string]any, error) 
 
 	ids := h.budgerigar.PutMany(stubs...)
 
-	return map[string]any{"ids": uuidListToStringSlice(ids)}, nil
+	return map[string]any{"ids": idListToStringSlice(ids)}, nil
 }
 
 func mcpStubsList(h *RestServer, args map[string]any) (map[string]any, error) {
@@ -1381,7 +1380,7 @@ func mcpStubsUnused(h *RestServer, args map[string]any) (map[string]any, error) 
 }
 
 func mcpStubsGet(h *RestServer, args map[string]any) (map[string]any, error) {
-	id, err := mcpUUIDArg(args, "id")
+	id, err := mcpIDArg(args, "id")
 	if err != nil {
 		return nil, err
 	}
@@ -1389,21 +1388,21 @@ func mcpStubsGet(h *RestServer, args map[string]any) (map[string]any, error) {
 	found := h.budgerigar.FindByID(id)
 
 	if found == nil {
-		return map[string]any{"found": false, "id": id.String()}, nil
+		return map[string]any{"found": false, "id": strconv.FormatUint(id, 10)}, nil
 	}
 
 	return map[string]any{"found": true, "stub": found}, nil
 }
 
 func mcpStubsDelete(h *RestServer, args map[string]any) (map[string]any, error) {
-	id, err := mcpUUIDArg(args, "id")
+	id, err := mcpIDArg(args, "id")
 	if err != nil {
 		return nil, err
 	}
 
 	deleted := h.budgerigar.DeleteByID(id) > 0
 
-	return map[string]any{"deleted": deleted, "id": id.String()}, nil
+	return map[string]any{"deleted": deleted, "id": strconv.FormatUint(id, 10)}, nil
 }
 
 func mcpStubsBatchDelete(h *RestServer, args map[string]any) (map[string]any, error) {
@@ -1412,12 +1411,12 @@ func mcpStubsBatchDelete(h *RestServer, args map[string]any) (map[string]any, er
 		return nil, err
 	}
 
-	ids := make([]uuid.UUID, 0, len(idStrings))
+	ids := make([]uint64, 0, len(idStrings))
 	deletedIDs := make([]string, 0, len(idStrings))
 	notFoundIDs := make([]string, 0)
 
 	for _, idString := range idStrings {
-		id, parseErr := uuid.Parse(idString)
+		id, parseErr := strconv.ParseUint(strings.TrimSpace(idString), 10, 64)
 		if parseErr != nil {
 			return nil, mcpUUIDArgError("ids", idString, parseErr)
 		}
@@ -1581,7 +1580,7 @@ func mcpStubsSearch(h *RestServer, args map[string]any) (map[string]any, error) 
 		response := map[string]any{"matched": false}
 
 		if similar := result.Similar(); similar != nil {
-			response["similarStubId"] = similar.ID.String()
+			response["similarStubId"] = strconv.FormatUint(similar.ID, 10)
 		}
 
 		return response, nil
@@ -1589,7 +1588,7 @@ func mcpStubsSearch(h *RestServer, args map[string]any) (map[string]any, error) 
 
 	return map[string]any{
 		"matched": true,
-		"stubId":  found.ID.String(),
+		"stubId":  strconv.FormatUint(found.ID, 10),
 		"output":  found.Output,
 	}, nil
 }
@@ -1602,7 +1601,7 @@ func mcpStubsInspect(h *RestServer, args map[string]any) (map[string]any, error)
 
 	report := h.budgerigar.InspectQuery(query)
 
-	return map[string]any{"report": toRestInspectReport(report)}, nil
+	return map[string]any{"report": h.toRestInspectReport(report)}, nil
 }
 
 func mcpInspectQuery(args map[string]any) (stuber.Query, error) {
@@ -1632,7 +1631,7 @@ func mcpInspectQueryOptions(args map[string]any, query *stuber.Query) error {
 	}
 
 	if idValue, ok := args["id"]; ok && idValue != nil {
-		id, err := mcpUUIDArg(args, "id")
+		id, err := mcpIDArg(args, "id")
 		if err != nil {
 			return err
 		}
@@ -1712,15 +1711,15 @@ func listMCPStubs(stubs []*stuber.Stub, args map[string]any) ([]*stuber.Stub, er
 	return filtered, nil
 }
 
-func mcpUUIDArg(args map[string]any, key string) (uuid.UUID, error) {
+func mcpIDArg(args map[string]any, key string) (uint64, error) {
 	value, _ := args[key].(string)
 	if value == "" {
-		return uuid.Nil, mcpRequiredArgError(key)
+		return 0, mcpRequiredArgError(key)
 	}
 
-	id, err := uuid.Parse(value)
+	id, err := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
 	if err != nil {
-		return uuid.Nil, mcpUUIDArgError(key, value, err)
+		return 0, mcpUUIDArgError(key, value, err)
 	}
 
 	return id, nil
@@ -1866,11 +1865,11 @@ func convertMCPAnyMapSlice(input []any) ([]map[string]any, error) {
 	return out, nil
 }
 
-func uuidListToStringSlice(ids []uuid.UUID) []string {
+func idListToStringSlice(ids []uint64) []string {
 	out := make([]string, 0, len(ids))
 
 	for _, id := range ids {
-		out = append(out, id.String())
+		out = append(out, strconv.FormatUint(id, 10))
 	}
 
 	return out
@@ -1947,7 +1946,7 @@ func collectDebugStubs(h *RestServer, service, method, room string, stubsLimit i
 		}
 
 		stubRecords = append(stubRecords, map[string]any{
-			"id":      stub.ID.String(),
+			"id":      strconv.FormatUint(stub.ID, 10),
 			"service": stub.Service,
 			"method":  stub.Method,
 			"room":    stub.Room,
@@ -2198,7 +2197,7 @@ func (h *RestServer) historyCallRecordToRest(c history.CallRecord) rest.CallReco
 		r.Client = &client
 	}
 
-	if c.StubID != uuid.Nil {
+	if c.StubID != 0 {
 		r.StubId = h.publicIDPtr(c.StubID)
 	}
 
@@ -2297,10 +2296,6 @@ func (h *RestServer) AddStub(w http.ResponseWriter, r *http.Request) {
 	}
 
 	inputs := make([]*stuber.Stub, 0, len(payload))
-	sess := strings.TrimSpace(muxmiddleware.FromRequest(r))
-	if sess == "" {
-		sess = strings.TrimSpace(r.URL.Query().Get("room"))
-	}
 	for _, item := range payload {
 		stub, convertErr := h.toDomainStub(item)
 		if convertErr != nil {
@@ -2309,9 +2304,7 @@ func (h *RestServer) AddStub(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if sess != "" {
-			stub.Room = sess
-		}
+		stub.Room = ""
 		stub.Source = stuber.SourceRest
 
 		if err := h.validateStub(stub); err != nil {
@@ -2624,14 +2617,6 @@ func (h *RestServer) PatchStubByID(w http.ResponseWriter, r *http.Request) {
 	if selectedRoom == "" {
 		selectedRoom = strings.TrimSpace(r.URL.Query().Get("room"))
 	}
-	targetRoom := strings.TrimSpace(target.Room)
-	if targetRoom != "" && targetRoom != selectedRoom {
-		w.WriteHeader(http.StatusNotFound)
-		h.writeResponse(r.Context(), w, map[string]string{
-			"error": fmt.Sprintf("Stub with ID '%d' not found in selected room", publicID),
-		})
-		return
-	}
 
 	body, readErr := httputil.RequestBody(r)
 	if readErr != nil {
@@ -2647,6 +2632,15 @@ func (h *RestServer) PatchStubByID(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(body, &patch); err != nil {
 		h.validationError(r.Context(), w, errors.Wrap(err, "invalid patch payload"))
 		return
+	}
+
+	enabledUpdate, patchHasEnabled := extractEnabledPatch(patch)
+	if patchHasEnabled && selectedRoom == "" && enabledUpdate != target.IsEnabled() {
+		h.validationError(r.Context(), w, errors.New("room is required when updating enabled"))
+		return
+	}
+	if patchHasEnabled && selectedRoom == "" {
+		patchHasEnabled = false
 	}
 
 	currentPayload, err := json.Marshal(target)
@@ -2675,8 +2669,9 @@ func (h *RestServer) PatchStubByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updated.ID = target.ID
-	if strings.TrimSpace(updated.Room) == "" {
-		updated.Room = target.Room
+	updated.Room = ""
+	if patchHasEnabled {
+		updated.Enabled = target.Enabled
 	}
 
 	if err := h.validateStub(&updated); err != nil {
@@ -2689,13 +2684,20 @@ func (h *RestServer) PatchStubByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if patchHasEnabled {
+		if err := h.budgerigar.SetRoomEnabled(selectedRoom, updated.ID, enabledUpdate); err != nil {
+			h.responseError(r.Context(), w, errors.Wrap(err, "failed to update room enabled state"))
+			return
+		}
+	}
+
 	currentStub := h.budgerigar.FindByID(target.ID)
 	if currentStub == nil {
 		h.responseError(r.Context(), w, errors.New("failed to read updated stub"))
 		return
 	}
 
-	h.writeResponse(r.Context(), w, h.toRestStub(currentStub))
+	h.writeResponse(r.Context(), w, h.toRestStubForRoom(currentStub, selectedRoom))
 }
 
 // UpdateStubEnabledByID is kept for backward compatibility in tests/callers.
@@ -2722,7 +2724,7 @@ func (h *RestServer) BatchStubsDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(inputs) > 0 {
-		ids := make([]uuid.UUID, 0, len(inputs))
+		ids := make([]uint64, 0, len(inputs))
 		for _, id := range inputs {
 			privateID, ok := h.resolvePrivateID(id)
 			if !ok {
@@ -2741,27 +2743,23 @@ func (h *RestServer) BatchStubsDelete(w http.ResponseWriter, r *http.Request) {
 // ListUsedStubs returns stubs that have been matched.
 func (h *RestServer) ListUsedStubs(w http.ResponseWriter, r *http.Request) {
 	roomID := strings.TrimSpace(muxmiddleware.FromRequest(r))
-	visible := make([]*stuber.Stub, 0)
-	for _, stub := range h.budgerigar.Used() {
-		if stubVisibleForRoom(stub.Room, roomID) {
-			visible = append(visible, stub)
-		}
+	if roomID == "" {
+		roomID = strings.TrimSpace(r.URL.Query().Get("room"))
 	}
+	visible := h.budgerigar.EffectiveForRoom(h.budgerigar.Used(), roomID)
 
-	h.writeResponse(r.Context(), w, h.toRestStubs(visible))
+	h.writeResponse(r.Context(), w, h.toRestStubsForRoom(visible, roomID))
 }
 
 // ListUnusedStubs returns stubs that have never been matched.
 func (h *RestServer) ListUnusedStubs(w http.ResponseWriter, r *http.Request) {
 	roomID := strings.TrimSpace(muxmiddleware.FromRequest(r))
-	visible := make([]*stuber.Stub, 0)
-	for _, stub := range h.budgerigar.Unused() {
-		if stubVisibleForRoom(stub.Room, roomID) {
-			visible = append(visible, stub)
-		}
+	if roomID == "" {
+		roomID = strings.TrimSpace(r.URL.Query().Get("room"))
 	}
+	visible := h.budgerigar.EffectiveForRoom(h.budgerigar.Unused(), roomID)
 
-	h.writeResponse(r.Context(), w, h.toRestStubs(visible))
+	h.writeResponse(r.Context(), w, h.toRestStubsForRoom(visible, roomID))
 }
 
 // ListStubs returns all stubs, optionally filtered by source.
@@ -2775,9 +2773,13 @@ func (h *RestServer) ListStubs(w http.ResponseWriter, r *http.Request, params re
 	}
 
 	stubs, total := h.budgerigar.List(options)
+	selectedRoom := ""
+	if options.RoomSet {
+		selectedRoom = strings.TrimSpace(options.Room)
+	}
 	w.Header().Set("X-Total-Count", strconv.Itoa(total))
 
-	h.writeResponse(r.Context(), w, h.toRestStubs(stubs))
+	h.writeResponse(r.Context(), w, h.toRestStubsForRoom(stubs, selectedRoom))
 }
 
 func listOptionsFromParams(params rest.ListStubsParams) stuber.ListOptions {
@@ -2829,7 +2831,7 @@ func (h *RestServer) SearchStubs(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
-				request["id"] = privateID.String()
+				request["id"] = strconv.FormatUint(privateID, 10)
 			}
 		}
 
@@ -2900,10 +2902,10 @@ func (h *RestServer) InspectStubs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	report := h.budgerigar.InspectQuery(query)
-	h.writeResponse(r.Context(), w, toRestInspectReport(report))
+	h.writeResponse(r.Context(), w, h.toRestInspectReport(report))
 }
 
-func toRestInspectReport(report stuber.InspectReport) rest.InspectReport {
+func (h *RestServer) toRestInspectReport(report stuber.InspectReport) rest.InspectReport {
 	stages := make([]rest.InspectStage, len(report.Stages))
 	for i, stage := range report.Stages {
 		stages[i] = rest.InspectStage{
@@ -2927,12 +2929,11 @@ func toRestInspectReport(report stuber.InspectReport) rest.InspectReport {
 		}
 
 		candidates[i] = rest.InspectCandidate{
-			Id:             candidate.ID.String(),
+			Id:             h.publicIDString(candidate.ID),
 			Name:           nilIfEmpty(candidate.Name),
 			Service:        candidate.Service,
 			Method:         candidate.Method,
 			Room:           candidate.Room,
-			Priority:       candidate.Priority,
 			Enabled:        boolPtr(candidate.Enabled),
 			Times:          candidate.Times,
 			Used:           candidate.Used,
@@ -2952,8 +2953,8 @@ func toRestInspectReport(report stuber.InspectReport) rest.InspectReport {
 		Service:          report.Service,
 		Method:           report.Method,
 		Room:             report.Room,
-		MatchedStubId:    stringFromUUIDPtr(report.MatchedStubID),
-		SimilarStubId:    stringFromUUIDPtr(report.SimilarStubID),
+		MatchedStubId:    h.publicIDStringFromUUIDPtr(report.MatchedStubID),
+		SimilarStubId:    h.publicIDStringFromUUIDPtr(report.SimilarStubID),
 		FallbackToMethod: report.FallbackToMethod,
 		Error:            stringFromPtr(report.Error),
 		Stages:           stages,
@@ -2964,13 +2965,26 @@ func toRestInspectReport(report stuber.InspectReport) rest.InspectReport {
 func (h *RestServer) toRestStubs(stubs []*stuber.Stub) []rest.Stub {
 	result := make([]rest.Stub, 0, len(stubs))
 	for _, stub := range stubs {
-		result = append(result, h.toRestStub(stub))
+		result = append(result, h.toRestStubForRoom(stub, ""))
 	}
 
 	return result
 }
 
 func (h *RestServer) toRestStub(stub *stuber.Stub) rest.Stub {
+	return h.toRestStubForRoom(stub, "")
+}
+
+func (h *RestServer) toRestStubsForRoom(stubs []*stuber.Stub, room string) []rest.Stub {
+	result := make([]rest.Stub, 0, len(stubs))
+	for _, stub := range stubs {
+		result = append(result, h.toRestStubForRoom(stub, room))
+	}
+
+	return result
+}
+
+func (h *RestServer) toRestStubForRoom(stub *stuber.Stub, room string) rest.Stub {
 	payload, err := json.Marshal(stub)
 	if err != nil {
 		return rest.Stub{}
@@ -2995,7 +3009,12 @@ func (h *RestServer) toRestStub(stub *stuber.Stub) rest.Stub {
 
 	id := h.ensurePublicID(stub.ID)
 	out.Id = &id
-	out.Enabled = boolPtr(stub.IsEnabled())
+	effective := h.budgerigar.EffectiveForRoom([]*stuber.Stub{stub}, strings.TrimSpace(room))
+	if len(effective) > 0 {
+		out.Enabled = effective[0].IsEnabled()
+	} else {
+		out.Enabled = stub.IsEnabled()
+	}
 
 	return out
 }
@@ -3031,17 +3050,24 @@ func (h *RestServer) toDomainStub(input rest.Stub) (*stuber.Stub, error) {
 
 		out.ID = privateID
 
-		// REST update payloads do not carry room field.
-		// Keep existing room scope when updating by ID to avoid moving scoped stubs to global.
-		if out.Room == "" {
-			existing := h.budgerigar.FindByID(privateID)
-			if existing != nil {
-				out.Room = existing.Room
-			}
-		}
 	}
+	out.Room = ""
 
 	return &out, nil
+}
+
+func extractEnabledPatch(patch map[string]any) (bool, bool) {
+	value, ok := patch["enabled"]
+	if !ok {
+		return false, false
+	}
+
+	switch casted := value.(type) {
+	case bool:
+		return casted, true
+	default:
+		return false, false
+	}
 }
 
 func nilIfEmpty(value string) *string {
@@ -3072,7 +3098,7 @@ func boolPtr(value bool) *bool {
 	return &value
 }
 
-func (h *RestServer) ensurePublicID(privateID uuid.UUID) rest.ID {
+func (h *RestServer) ensurePublicID(privateID uint64) rest.ID {
 	h.idMapMu.RLock()
 	if publicID, ok := h.privateIDs[privateID]; ok {
 		h.idMapMu.RUnlock()
@@ -3088,20 +3114,19 @@ func (h *RestServer) ensurePublicID(privateID uuid.UUID) rest.ID {
 		return publicID
 	}
 
-	for {
-		candidate := rest.ID(h.nextPublicID.Add(1))
-		if _, exists := h.publicIDs[candidate]; exists {
-			continue
-		}
-
-		h.publicIDs[candidate] = privateID
-		h.privateIDs[privateID] = candidate
-
-		return candidate
+	// Keep REST id aligned with storage id whenever possible.
+	candidate := rest.ID(privateID)
+	if existingPrivateID, exists := h.publicIDs[candidate]; exists && existingPrivateID != privateID {
+		delete(h.privateIDs, existingPrivateID)
 	}
+
+	h.publicIDs[candidate] = privateID
+	h.privateIDs[privateID] = candidate
+
+	return candidate
 }
 
-func (h *RestServer) resolvePrivateID(publicID rest.ID) (uuid.UUID, bool) {
+func (h *RestServer) resolvePrivateID(publicID rest.ID) (uint64, bool) {
 	h.idMapMu.RLock()
 	defer h.idMapMu.RUnlock()
 
@@ -3110,8 +3135,8 @@ func (h *RestServer) resolvePrivateID(publicID rest.ID) (uuid.UUID, bool) {
 	return privateID, ok
 }
 
-func (h *RestServer) publicIDPtr(privateID uuid.UUID) *rest.ID {
-	if privateID == uuid.Nil {
+func (h *RestServer) publicIDPtr(privateID uint64) *rest.ID {
+	if privateID == 0 {
 		return nil
 	}
 
@@ -3120,12 +3145,16 @@ func (h *RestServer) publicIDPtr(privateID uuid.UUID) *rest.ID {
 	return &id
 }
 
-func stringFromUUIDPtr(value *uuid.UUID) string {
+func (h *RestServer) publicIDString(privateID uint64) string {
+	return strconv.FormatUint(uint64(h.ensurePublicID(privateID)), 10)
+}
+
+func (h *RestServer) publicIDStringFromUUIDPtr(value *uint64) string {
 	if value == nil {
 		return ""
 	}
 
-	return value.String()
+	return h.publicIDString(*value)
 }
 
 func (h *RestServer) collectServices(file protoreflect.FileDescriptor, results *[]rest.Service) bool {

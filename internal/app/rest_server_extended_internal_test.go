@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/bavix/gripmock/v3/internal/domain/rest"
@@ -394,9 +393,9 @@ func (s *RestServerExtendedTestSuite) TestRoomsList() {
 
 	// In-memory values should not leak into API payload when rooms source is DB-only.
 	s.server.budgerigar.PutMany(
-		&stuber.Stub{ID: uuid.New(), Service: "RoomService", Method: "M1", Room: "b"},
-		&stuber.Stub{ID: uuid.New(), Service: "RoomService", Method: "M2", Room: "a"},
-		&stuber.Stub{ID: uuid.New(), Service: "RoomService", Method: "M3", Room: "b"},
+		&stuber.Stub{ID: 1, Service: "RoomService", Method: "M1", Room: "b"},
+		&stuber.Stub{ID: 2, Service: "RoomService", Method: "M2", Room: "a"},
+		&stuber.Stub{ID: 3, Service: "RoomService", Method: "M3", Room: "b"},
 	)
 
 	req := httptest.NewRequestWithContext(s.T().Context(), http.MethodGet, "/api/rooms", nil)

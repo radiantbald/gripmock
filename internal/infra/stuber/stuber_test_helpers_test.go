@@ -3,7 +3,6 @@ package stuber_test
 import (
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
@@ -21,13 +20,13 @@ func runFindByTests(t *testing.T, create func() *stuber.Budgerigar) {
 	require.Empty(t, s.All())
 
 	s.PutMany(
-		&stuber.Stub{ID: uuid.New(), Service: "Greeter1", Method: "SayHello1"},
-		&stuber.Stub{ID: uuid.New(), Service: "Greeter1", Method: "SayHello1"},
-		&stuber.Stub{ID: uuid.New(), Service: "Greeter2", Method: "SayHello2"},
-		&stuber.Stub{ID: uuid.New(), Service: "Greeter3", Method: "SayHello2"},
-		&stuber.Stub{ID: uuid.New(), Service: "Greeter4", Method: "SayHello3"},
-		&stuber.Stub{ID: uuid.New(), Service: "Greeter5", Method: "SayHello3"},
-		&stuber.Stub{ID: uuid.New(), Service: "Greeter1", Method: "SayHello3"},
+		&stuber.Stub{ID: newStubID(), Service: "Greeter1", Method: "SayHello1"},
+		&stuber.Stub{ID: newStubID(), Service: "Greeter1", Method: "SayHello1"},
+		&stuber.Stub{ID: newStubID(), Service: "Greeter2", Method: "SayHello2"},
+		&stuber.Stub{ID: newStubID(), Service: "Greeter3", Method: "SayHello2"},
+		&stuber.Stub{ID: newStubID(), Service: "Greeter4", Method: "SayHello3"},
+		&stuber.Stub{ID: newStubID(), Service: "Greeter5", Method: "SayHello3"},
+		&stuber.Stub{ID: newStubID(), Service: "Greeter1", Method: "SayHello3"},
 	)
 
 	require.Len(t, s.All(), 7)
@@ -38,10 +37,10 @@ func runFindBySortedTests(t *testing.T, create func() *stuber.Budgerigar) {
 
 	s := create()
 
-	stub1 := &stuber.Stub{ID: uuid.MustParse("00000000-0000-0000-0000-000000000003"), Service: "Greeter1", Method: "SayHello1", Priority: 10}
-	stub2 := &stuber.Stub{ID: uuid.MustParse("00000000-0000-0000-0000-000000000001"), Service: "Greeter1", Method: "SayHello1", Priority: 30}
-	stub3 := &stuber.Stub{ID: uuid.MustParse("00000000-0000-0000-0000-000000000002"), Service: "Greeter1", Method: "SayHello1", Priority: 20}
-	stub4 := &stuber.Stub{ID: uuid.MustParse("00000000-0000-0000-0000-000000000004"), Service: "Greeter2", Method: "SayHello2", Priority: 50}
+	stub1 := &stuber.Stub{ID: 3, Service: "Greeter1", Method: "SayHello1"}
+	stub2 := &stuber.Stub{ID: 1, Service: "Greeter1", Method: "SayHello1"}
+	stub3 := &stuber.Stub{ID: 2, Service: "Greeter1", Method: "SayHello1"}
+	stub4 := &stuber.Stub{ID: 4, Service: "Greeter2", Method: "SayHello2"}
 
 	s.PutMany(stub1, stub2, stub3, stub4)
 

@@ -35,7 +35,7 @@ func (s *searcher) buildSimilarCandidateFromRanked(stub *Stub, ranked rankedMatc
 	}
 }
 
-func (s *searcher) scoreWithPriority(query Query, stub *Stub) float64 {
+func (s *searcher) scoreRank(query Query, stub *Stub) float64 {
 	return s.ranker.Score(query, stub)
 }
 
@@ -59,7 +59,7 @@ func (s *searcher) rankedMatchFor(query Query, stub *Stub) rankedMatch {
 	return rankedMatch{
 		stub:        stub,
 		specificity: s.ranker.Specificity(query, stub),
-		totalScore:  s.scoreWithPriority(query, stub),
+		totalScore:  s.scoreRank(query, stub),
 		fieldCount:  s.ranker.FieldCount(stub),
 	}
 }

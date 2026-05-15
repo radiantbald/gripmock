@@ -31,7 +31,7 @@ import { JsonField } from "./components/json/JsonField";
 import { JsonTextAreaInput } from "./components/json/JsonTextAreaInput";
 import { KeyValueTableInput } from "./components/json/KeyValueTableInput";
 import { StubMatcherInput } from "./components/json/StubMatcherInput";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { useFormContext } from "react-hook-form";
 
@@ -43,6 +43,7 @@ import type { StubRecord } from "./types/entities";
 import { StubsDatagrid } from "./features/stubs/components/StubsDatagrid";
 import { setStubEditedSignal } from "./utils/stubEditSignal";
 import { EntityEmptyState } from "./components/empty/EntityEmptyState";
+import { getCurrentRoom, subscribeRoomChanges } from "./utils/room";
 
 const RADIUS_PX = "10px";
 const stubsListSx = {
@@ -626,6 +627,10 @@ export const StubCreate = () => {
 
 // Stub Edit component
 export const StubEdit = () => {
+  const [activeRoom, setActiveRoom] = useState(() => getCurrentRoom().trim());
+  useEffect(() => subscribeRoomChanges(() => setActiveRoom(getCurrentRoom().trim())), []);
+  const canToggleEnabled = activeRoom !== "";
+
   return (
     <Edit>
       <SimpleForm
@@ -730,7 +735,7 @@ export const StubEdit = () => {
               justifyContent: "start",
             }}
           >
-            <BooleanInput source="enabled" fullWidth />
+            {canToggleEnabled ? <BooleanInput source="enabled" fullWidth /> : null}
             <NumberInput
               source="output.code"
               label="gRPC status code"

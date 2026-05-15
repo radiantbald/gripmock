@@ -3,8 +3,6 @@ package stuber
 import (
 	"errors"
 	"iter"
-
-	"github.com/google/uuid"
 )
 
 func collectStubs(seq iter.Seq[*Stub]) []*Stub {
@@ -38,7 +36,7 @@ func (s *searcher) ensureServiceMethodExists(service, method string) error {
 	return nil
 }
 
-func (s *searcher) lookupVisibleByID(room string, id uuid.UUID) (*searcherLookup, *Stub) {
+func (s *searcher) lookupVisibleByID(room string, id uint64) (*searcherLookup, *Stub) {
 	lookup := s.lookup(room)
 	found := lookup.LookupID(id)
 

@@ -1,0 +1,2 @@
+ALTER TABLE stubs
+    DROP COLUMN IF EXISTS priority;

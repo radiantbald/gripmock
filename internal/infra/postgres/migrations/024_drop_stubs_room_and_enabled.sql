@@ -1,0 +1,6 @@
+ALTER TABLE stubs
+    DROP CONSTRAINT IF EXISTS stubs_room_fkey;
+
+ALTER TABLE stubs
+    DROP COLUMN IF EXISTS room,
+    DROP COLUMN IF EXISTS enabled;

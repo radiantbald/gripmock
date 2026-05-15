@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -77,7 +76,6 @@ func TestHandleArrayStreamDataSendsAllMessages(t *testing.T) {
 	}
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: "TestService",
 		Method:  "TestMethod",
 		Output: stuber.Output{
@@ -107,7 +105,6 @@ func TestHandleArrayStreamDataEmptyStream(t *testing.T) {
 	}
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: "TestService",
 		Method:  "TestMethod",
 		Output: stuber.Output{
@@ -132,7 +129,6 @@ func TestHandleArrayStreamDataWithDelay(t *testing.T) {
 
 	delay := types.Duration(10 * time.Millisecond)
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: "TestService",
 		Method:  "TestMethod",
 		Output: stuber.Output{
@@ -165,7 +161,6 @@ func TestHandleArrayStreamDataWithTemplates(t *testing.T) {
 	}
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: "TestService",
 		Method:  "TestMethod",
 		Output: stuber.Output{
@@ -204,7 +199,6 @@ func TestHandleArrayStreamDataInvalidDataType(t *testing.T) {
 	}
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: "TestService",
 		Method:  "TestMethod",
 		Output: stuber.Output{
@@ -237,7 +231,6 @@ func TestHandleArrayStreamDataSendMsgError(t *testing.T) {
 	}
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: "TestService",
 		Method:  "TestMethod",
 		Output: stuber.Output{
@@ -264,7 +257,6 @@ func TestHandleArrayStreamDataContextCancelled(t *testing.T) {
 	}
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: "TestService",
 		Method:  "TestMethod",
 		Output: stuber.Output{
@@ -290,7 +282,6 @@ func TestHandleArrayStreamDataMessageIndexInTemplates(t *testing.T) {
 	}
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: "TestService",
 		Method:  "TestMethod",
 		Output: stuber.Output{
@@ -326,7 +317,6 @@ func TestHandleArrayStreamDataWithHeaders(t *testing.T) {
 	}
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: "TestService",
 		Method:  "TestMethod",
 		Output: stuber.Output{
@@ -357,7 +347,6 @@ func TestHandleArrayStreamDataEOFError(t *testing.T) {
 	}
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: "TestService",
 		Method:  "TestMethod",
 		Output: stuber.Output{

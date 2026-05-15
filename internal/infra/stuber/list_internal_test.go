@@ -3,7 +3,6 @@ package stuber
 import (
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -12,15 +11,15 @@ func TestBudgerigarListFilterSortPaginate(t *testing.T) {
 
 	b := NewBudgerigar()
 	b.PutMany(
-		&Stub{Service: "svc.A", Method: "Ping", Priority: 10, Source: "proxy", Input: InputData{}, Output: Output{}},
-		&Stub{Service: "svc.A", Method: "Pong", Priority: 5, Source: "rest", Input: InputData{}, Output: Output{}},
-		&Stub{Service: "svc.B", Method: "Ping", Priority: 1, Source: "file", Input: InputData{}, Output: Output{}},
+		&Stub{Service: "svc.A", Method: "Ping", Source: "proxy", Input: InputData{}, Output: Output{}},
+		&Stub{Service: "svc.A", Method: "Pong", Source: "rest", Input: InputData{}, Output: Output{}},
+		&Stub{Service: "svc.B", Method: "Ping", Source: "file", Input: InputData{}, Output: Output{}},
 	)
 
 	stubs, total := b.List(ListOptions{
 		Source:  "proxy",
 		Service: "svc.A",
-		Sort:    ListSortPriorityDesc,
+		Sort:    ListSortEnabledDesc,
 		Limit:   1,
 		Offset:  0,
 	})
@@ -32,7 +31,7 @@ func TestBudgerigarListFilterSortPaginate(t *testing.T) {
 	require.Equal(t, "Ping", stubs[0].Method)
 }
 
-func TestBudgerigarListFilterByEmptyRoom(t *testing.T) {
+func TestBudgerigarListRoomContextDoesNotFilterCatalog(t *testing.T) {
 	t.Parallel()
 
 	b := NewBudgerigar()
@@ -43,9 +42,8 @@ func TestBudgerigarListFilterByEmptyRoom(t *testing.T) {
 
 	stubs, total := b.List(ListOptions{RoomSet: true, Room: ""})
 
-	require.Equal(t, 1, total)
-	require.Len(t, stubs, 1)
-	require.Empty(t, stubs[0].Room)
+	require.Equal(t, 2, total)
+	require.Len(t, stubs, 2)
 }
 
 func TestBudgerigarListFilters(t *testing.T) {
@@ -53,10 +51,10 @@ func TestBudgerigarListFilters(t *testing.T) {
 
 	b := NewBudgerigar()
 	b.PutMany(
-		&Stub{Service: "svc.A", Method: "Ping", Source: "proxy", Room: "", Priority: 30, Input: InputData{}, Output: Output{}},
-		&Stub{Service: "svc.A", Method: "Ping", Source: "rest", Room: "s1", Priority: 20, Input: InputData{}, Output: Output{}},
-		&Stub{Service: "svc.A", Method: "Pong", Source: "rest", Room: "", Priority: 10, Input: InputData{}, Output: Output{}},
-		&Stub{Service: "svc.B", Method: "Ping", Source: "file", Room: "s2", Priority: 5, Input: InputData{}, Output: Output{}},
+		&Stub{Service: "svc.A", Method: "Ping", Source: "proxy", Room: "", Input: InputData{}, Output: Output{}},
+		&Stub{Service: "svc.A", Method: "Ping", Source: "rest", Room: "s1", Input: InputData{}, Output: Output{}},
+		&Stub{Service: "svc.A", Method: "Pong", Source: "rest", Room: "", Input: InputData{}, Output: Output{}},
+		&Stub{Service: "svc.B", Method: "Ping", Source: "file", Room: "s2", Input: InputData{}, Output: Output{}},
 	)
 
 	t.Run("no filters", func(t *testing.T) {
@@ -92,13 +90,12 @@ func TestBudgerigarListFilters(t *testing.T) {
 		}
 	})
 
-	t.Run("room filter enabled", func(t *testing.T) {
+	t.Run("room context enabled", func(t *testing.T) {
 		t.Parallel()
 
 		stubs, total := b.List(ListOptions{RoomSet: true, Room: "s1"})
-		require.Equal(t, 1, total)
-		require.Len(t, stubs, 1)
-		require.Equal(t, "s1", stubs[0].Room)
+		require.Equal(t, 4, total)
+		require.Len(t, stubs, 4)
 	})
 
 	t.Run("room ignored when not set", func(t *testing.T) {
@@ -115,23 +112,14 @@ func TestBudgerigarListSorting(t *testing.T) {
 
 	b := newListSortPaginateFixture()
 
-	t.Run("default sort is priority desc", func(t *testing.T) {
+	t.Run("default sort keeps deterministic ordering", func(t *testing.T) {
 		t.Parallel()
 
 		stubs, total := b.List(ListOptions{})
 		require.Equal(t, 3, total)
-		require.Equal(t, 1, stubs[0].Priority)
-		require.Equal(t, 2, stubs[1].Priority)
-		require.Equal(t, 3, stubs[2].Priority)
-	})
-
-	t.Run("priority asc", func(t *testing.T) {
-		t.Parallel()
-
-		stubs, _ := b.List(ListOptions{Sort: ListSortPriorityAsc})
-		require.Equal(t, 1, stubs[0].Priority)
-		require.Equal(t, 2, stubs[1].Priority)
-		require.Equal(t, 3, stubs[2].Priority)
+		require.Equal(t, "svc.A", stubs[0].Service)
+		require.Equal(t, "svc.A", stubs[1].Service)
+		require.Equal(t, "svc.B", stubs[2].Service)
 	})
 
 	t.Run("service asc then method asc", func(t *testing.T) {
@@ -166,8 +154,8 @@ func TestBudgerigarListPagination(t *testing.T) {
 		stubs, total := b.List(ListOptions{Offset: -10, Limit: 2})
 		require.Equal(t, 3, total)
 		require.Len(t, stubs, 2)
-		require.Equal(t, 1, stubs[0].Priority)
-		require.Equal(t, 2, stubs[1].Priority)
+		require.Equal(t, "svc.A", stubs[0].Service)
+		require.Equal(t, "svc.A", stubs[1].Service)
 	})
 
 	t.Run("offset out of range", func(t *testing.T) {
@@ -182,9 +170,9 @@ func TestBudgerigarListPagination(t *testing.T) {
 func newListSortPaginateFixture() *Budgerigar {
 	b := NewBudgerigar()
 	b.PutMany(
-		&Stub{ID: uuid.MustParse("00000000-0000-0000-0000-000000000003"), Service: "svc.B", Method: "B", Priority: 3, Input: InputData{}, Output: Output{}},
-		&Stub{ID: uuid.MustParse("00000000-0000-0000-0000-000000000001"), Service: "svc.A", Method: "C", Priority: 1, Input: InputData{}, Output: Output{}},
-		&Stub{ID: uuid.MustParse("00000000-0000-0000-0000-000000000002"), Service: "svc.A", Method: "A", Priority: 2, Input: InputData{}, Output: Output{}},
+		&Stub{ID: 3, Service: "svc.B", Method: "B", Input: InputData{}, Output: Output{}},
+		&Stub{ID: 1, Service: "svc.A", Method: "C", Input: InputData{}, Output: Output{}},
+		&Stub{ID: 2, Service: "svc.A", Method: "A", Input: InputData{}, Output: Output{}},
 	)
 
 	return b

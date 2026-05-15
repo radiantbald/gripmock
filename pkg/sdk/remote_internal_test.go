@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -133,7 +132,7 @@ func TestRemoteHistoryAndVerifier(t *testing.T) {
 		case "/api/history":
 			require.Equal(t, "A", r.Header.Get("X-Gripmock-Room"))
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte("[{\"service\":\"svc\",\"method\":\"M\",\"request\":{\"x\":1},\"response\":{\"y\":2},\"error\":\"\",\"stubId\":\"550e8400-e29b-41d4-a716-446655440000\",\"timestamp\":\"" + now + "\"}]"))
+			_, _ = w.Write([]byte("[{\"service\":\"svc\",\"method\":\"M\",\"request\":{\"x\":1},\"response\":{\"y\":2},\"error\":\"\",\"stubId\":1,\"timestamp\":\"" + now + "\"}]"))
 		case "/api/verify":
 			var req map[string]any
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
@@ -239,7 +238,7 @@ func TestRemoteMockBatchDeleteErrors(t *testing.T) {
 	m := &remoteMock{restBaseURL: "://bad-url", httpClient: http.DefaultClient, room: "A"}
 
 	// Act
-	errBatch := m.batchDelete([]uuid.UUID{uuid.New()})
+	errBatch := m.batchDelete([]uint64{1})
 
 	// Assert
 	require.Error(t, errBatch)
@@ -253,7 +252,7 @@ func TestRemoteAddStubNoPanicOnBadURL(t *testing.T) {
 
 	// Act
 	code := codes.OK
-	m.addStub(&stuber.Stub{ID: uuid.New(), Service: "svc", Method: "M", Output: stuber.Output{Code: &code}})
+	m.addStub(&stuber.Stub{ID: 1, Service: "svc", Method: "M", Output: stuber.Output{Code: &code}})
 	err := m.getOpErr()
 
 	// Assert
@@ -279,7 +278,7 @@ func TestRemoteAddStubHTTPFailureStoredAsError(t *testing.T) {
 	m := newRemoteMockForServer(rest, "")
 
 	// Act
-	m.addStub(&stuber.Stub{ID: uuid.New(), Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"ok": true}}})
+	m.addStub(&stuber.Stub{ID: 1, Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"ok": true}}})
 	err := m.getOpErr()
 
 	// Assert
@@ -307,7 +306,7 @@ func TestRemoteAPIUsesDefaultHTTPClientWhenNil(t *testing.T) {
 	m := &remoteMock{restBaseURL: rest.URL}
 
 	// Act
-	m.addStub(&stuber.Stub{ID: uuid.New(), Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"ok": true}}})
+	m.addStub(&stuber.Stub{ID: 1, Service: "svc", Method: "M", Output: stuber.Output{Data: map[string]any{"ok": true}}})
 	err := m.getOpErr()
 
 	// Assert
@@ -359,7 +358,7 @@ func TestRemoteMockCloseCleanupError(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
-	m := &remoteMock{restBaseURL: "://bad-url", room: "A", httpClient: http.DefaultClient, stubIDs: []uuid.UUID{uuid.New()}}
+	m := &remoteMock{restBaseURL: "://bad-url", room: "A", httpClient: http.DefaultClient, stubIDs: []uint64{1}}
 
 	// Act
 	err := m.Close()
@@ -378,9 +377,9 @@ func TestRemoteMockCloseAlwaysClosesConnOnCleanupError(t *testing.T) {
 	m := &remoteMock{
 		conn:        conn,
 		restBaseURL: "://bad-url",
-		room:     "A",
+		room:        "A",
 		httpClient:  http.DefaultClient,
-		stubIDs:     []uuid.UUID{uuid.New()},
+		stubIDs:     []uint64{1},
 	}
 
 	// Act
@@ -530,14 +529,14 @@ func TestRemoteMockCleanupOwnedIDs(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
-	id1 := uuid.New()
-	id2 := uuid.New()
-	var deleted []uuid.UUID
+	id1 := uint64(1)
+	id2 := uint64(2)
+	var deleted []uint64
 
 	srv := newRemoteServer(t, func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/api/stubs/batchDelete", r.URL.Path)
 		require.Equal(t, http.MethodPost, r.Method)
-		var got []uuid.UUID
+		var got []uint64
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&got))
 		deleted = got
 		w.WriteHeader(http.StatusOK)
@@ -546,14 +545,14 @@ func TestRemoteMockCleanupOwnedIDs(t *testing.T) {
 	m := &remoteMock{
 		restBaseURL: srv.URL,
 		httpClient:  srv.Client(),
-		stubIDs:     []uuid.UUID{id1, id2},
+		stubIDs:     []uint64{id1, id2},
 	}
 
 	// Act
 	require.NoError(t, m.cleanupStubs())
 
 	// Assert
-	require.ElementsMatch(t, []uuid.UUID{id1, id2}, deleted)
+	require.ElementsMatch(t, []uint64{id1, id2}, deleted)
 }
 
 func TestRunRemoteViaSDKCleanupScenarios(t *testing.T) {
@@ -561,7 +560,7 @@ func TestRunRemoteViaSDKCleanupScenarios(t *testing.T) {
 
 	testCases := []struct {
 		name               string
-		room            string
+		room               string
 		times              int
 		historyCalls       int
 		verifyStatus       int
@@ -583,7 +582,7 @@ func TestRunRemoteViaSDKCleanupScenarios(t *testing.T) {
 		},
 		{
 			name:             "success-with-room",
-			room:          "A",
+			room:             "A",
 			times:            1,
 			historyCalls:     1,
 			verifyStatus:     http.StatusOK,
@@ -624,8 +623,8 @@ func TestRunRemoteViaSDKCleanupScenarios(t *testing.T) {
 				history    atomic.Int32
 				deleted    atomic.Int32
 				listed     atomic.Int32
-				createdID  string
-				deletedIDs []string
+				createdID  uint64
+				deletedIDs []uint64
 				mu         sync.Mutex
 			)
 
@@ -641,9 +640,10 @@ func TestRunRemoteViaSDKCleanupScenarios(t *testing.T) {
 						var payload []map[string]any
 						require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
 						require.Len(t, payload, 1)
-						id, _ := payload[0]["id"].(string)
+						id, ok := payload[0]["id"].(float64)
+						require.True(t, ok)
 						mu.Lock()
-						createdID = id
+						createdID = uint64(id)
 						mu.Unlock()
 						w.WriteHeader(http.StatusOK)
 						return
@@ -666,10 +666,10 @@ func TestRunRemoteViaSDKCleanupScenarios(t *testing.T) {
 					require.NoError(t, json.NewEncoder(w).Encode(recs))
 				case "/api/stubs/batchDelete":
 					deleted.Add(1)
-					var ids []string
+					var ids []uint64
 					require.NoError(t, json.NewDecoder(r.Body).Decode(&ids))
 					mu.Lock()
-					deletedIDs = append([]string(nil), ids...)
+					deletedIDs = append([]uint64(nil), ids...)
 					mu.Unlock()
 					w.WriteHeader(tc.deleteStatus)
 				case "/api/verify":
@@ -741,9 +741,9 @@ func TestRunRemoteFullyMockedViaSDK(t *testing.T) {
 		batchDeleteCall atomic.Int32
 
 		mu                 sync.Mutex
-		createdStubID      string
+		createdStubID      uint64
 		verifyExpectedSeen int
-		deletedIDs         []string
+		deletedIDs         []uint64
 	)
 
 	rest := newRemoteServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -760,11 +760,11 @@ func TestRunRemoteFullyMockedViaSDK(t *testing.T) {
 
 				idAny, ok := payload[0]["id"]
 				require.True(t, ok)
-				id, ok := idAny.(string)
+				id, ok := idAny.(float64)
 				require.True(t, ok)
 
 				mu.Lock()
-				createdStubID = id
+				createdStubID = uint64(id)
 				mu.Unlock()
 
 				w.WriteHeader(http.StatusOK)
@@ -820,10 +820,10 @@ func TestRunRemoteFullyMockedViaSDK(t *testing.T) {
 			require.Equal(t, "A", r.Header.Get("X-Gripmock-Room"))
 			batchDeleteCall.Add(1)
 
-			var ids []string
+			var ids []uint64
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&ids))
 			mu.Lock()
-			deletedIDs = append([]string(nil), ids...)
+			deletedIDs = append([]uint64(nil), ids...)
 			mu.Unlock()
 
 			w.WriteHeader(http.StatusOK)
@@ -867,8 +867,7 @@ func TestRunRemoteFullyMockedViaSDK(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	require.Equal(t, 2, verifyExpectedSeen)
-	require.NotEmpty(t, createdStubID)
-	require.Equal(t, []string{createdStubID}, deletedIDs)
+	require.Equal(t, []uint64{createdStubID}, deletedIDs)
 }
 
 func TestRunRemoteWithDescriptorsUploadsDescriptorSet(t *testing.T) {
@@ -883,7 +882,7 @@ func TestRunRemoteWithDescriptorsUploadsDescriptorSet(t *testing.T) {
 		history           atomic.Int32
 		deleted           atomic.Int32
 		descriptorUploads atomic.Int32
-		stubID            string
+		stubID            uint64
 	)
 
 	rest := newRemoteServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -910,7 +909,9 @@ func TestRunRemoteWithDescriptorsUploadsDescriptorSet(t *testing.T) {
 				var payload []map[string]any
 				require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
 				require.Len(t, payload, 1)
-				stubID, _ = payload[0]["id"].(string)
+				id, ok := payload[0]["id"].(float64)
+				require.True(t, ok)
+				stubID = uint64(id)
 				w.WriteHeader(http.StatusOK)
 				return
 			}

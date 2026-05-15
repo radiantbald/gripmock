@@ -17,11 +17,10 @@ func BenchmarkListFilterSortPaginate(b *testing.B) {
 		}
 
 		budgerigar.PutMany(&stuber.Stub{
-			Service:  "svc." + strconv.Itoa(i%200),
-			Method:   "Method" + strconv.Itoa(i%20),
-			Priority: i % 17,
-			Room:  "s" + strconv.Itoa(i%10),
-			Source:   source,
+			Service: "svc." + strconv.Itoa(i%200),
+			Method:  "Method" + strconv.Itoa(i%20),
+			Room:    "s" + strconv.Itoa(i%10),
+			Source:  source,
 			Input: stuber.InputData{
 				Equals: map[string]any{"id": i},
 			},
@@ -30,14 +29,14 @@ func BenchmarkListFilterSortPaginate(b *testing.B) {
 	}
 
 	options := stuber.ListOptions{
-		Source:     "proxy",
-		Service:    "svc.8",
-		Method:     "Method8",
+		Source:  "proxy",
+		Service: "svc.8",
+		Method:  "Method8",
 		RoomSet: true,
 		Room:    "s8",
-		Sort:       stuber.ListSortPriorityDesc,
-		Limit:      20,
-		Offset:     10,
+		Sort:    stuber.ListSortEnabledDesc,
+		Limit:   20,
+		Offset:  10,
 	}
 
 	b.ReportAllocs()
@@ -53,10 +52,9 @@ func BenchmarkListDefaultSortLargeSet(b *testing.B) {
 
 	for i := range 20000 {
 		budgerigar.PutMany(&stuber.Stub{
-			Service:  "svc." + strconv.Itoa(i%400),
-			Method:   "M" + strconv.Itoa(i%40),
-			Priority: i % 31,
-			Source:   "rest",
+			Service: "svc." + strconv.Itoa(i%400),
+			Method:  "M" + strconv.Itoa(i%40),
+			Source:  "rest",
 			Input: stuber.InputData{
 				Equals: map[string]any{"id": i},
 			},
@@ -64,7 +62,7 @@ func BenchmarkListDefaultSortLargeSet(b *testing.B) {
 		})
 	}
 
-	options := stuber.ListOptions{Sort: stuber.ListSortPriorityDesc, Limit: 100}
+	options := stuber.ListOptions{Sort: stuber.ListSortEnabledDesc, Limit: 100}
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -113,14 +111,13 @@ func BenchmarkAllImmutableCloneDeepPayload(b *testing.B) {
 func BenchmarkAllImmutableCloneSimplePayload(b *testing.B) {
 	budgerigar := stuber.NewBudgerigar()
 
-	for i := range 20000 {
+	for range 20000 {
 		budgerigar.PutMany(&stuber.Stub{
-			Service:  "svc.simple",
-			Method:   "Clone",
-			Priority: i % 5,
-			Source:   "rest",
-			Input:    stuber.InputData{},
-			Output:   stuber.Output{},
+			Service: "svc.simple",
+			Method:  "Clone",
+			Source:  "rest",
+			Input:   stuber.InputData{},
+			Output:  stuber.Output{},
 		})
 	}
 

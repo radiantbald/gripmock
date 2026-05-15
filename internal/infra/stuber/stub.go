@@ -1,11 +1,10 @@
 package stuber
 
 import (
-	"encoding/binary"
+	"bytes"
+	stdjson "encoding/json"
 	"fmt"
 
-	"github.com/goccy/go-json"
-	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 
 	"github.com/bavix/gripmock/v3/internal/infra/types"
@@ -34,40 +33,41 @@ type StubOptions struct {
 
 // Stub represents a gRPC service method and its associated data.
 type Stub struct {
-	ID       uuid.UUID   `json:"id"`                                               // The unique identifier of the stub.
-	Name     string      `json:"name,omitempty"`                                   // Optional user-defined stub name.
-	Service  string      `json:"service"           validate:"required"`            // The name of the service.
-	Method   string      `json:"method"            validate:"required"`            // The name of the method.
-	Room  string      `json:"room,omitempty"`                                // Room ID for isolation (empty = global).
-	Priority int         `json:"priority"`                                         // Deprecated: kept for backward compatibility.
-	Enabled  *bool       `json:"enabled,omitempty"`                                // Enabled state (nil means enabled for compatibility).
-	Options  StubOptions `json:"options,omitempty"`                                //nolint:modernize
-	Headers  InputHeader `json:"headers"`                                          // The headers of the request.
-	Input    InputData   `json:"input"             validate:"valid_input_config"`  // Unary input (mutually exclusive with Inputs).
-	Inputs   []InputData `json:"inputs,omitempty"  validate:"valid_input_config"`  // Client streaming inputs (mutually exclusive with Input).
-	Output   Output      `json:"output"            validate:"valid_output_config"` // The output data of the response.
-	Effects  []Effect    `json:"effects,omitempty" validate:"valid_effects"`       // Side effects applied after a successful match.
-	Source   string      `json:"source,omitempty"`                                 // Stub source.
+	ID      uint64      `json:"id"`                                               // The unique identifier of the stub.
+	Name    string      `json:"name,omitempty"`                                   // Optional user-defined stub name.
+	Service string      `json:"service"           validate:"required"`            // The name of the service.
+	Method  string      `json:"method"            validate:"required"`            // The name of the method.
+	Room    string      `json:"room,omitempty"`                                   // Room ID for isolation (empty = global).
+	Enabled *bool       `json:"enabled,omitempty"`                                // Enabled state (nil means enabled for compatibility).
+	Options StubOptions `json:"options,omitempty"`                                //nolint:modernize
+	Headers InputHeader `json:"headers"`                                          // The headers of the request.
+	Input   InputData   `json:"input"             validate:"valid_input_config"`  // Unary input (mutually exclusive with Inputs).
+	Inputs  []InputData `json:"inputs,omitempty"  validate:"valid_input_config"`  // Client streaming inputs (mutually exclusive with Input).
+	Output  Output      `json:"output"            validate:"valid_output_config"` // The output data of the response.
+	Effects []Effect    `json:"effects,omitempty" validate:"valid_effects"`       // Side effects applied after a successful match.
+	Source  string      `json:"source,omitempty"`                                 // Stub source.
 }
 
-// UnmarshalJSON supports legacy UUID IDs and numeric REST IDs.
+// UnmarshalJSON supports numeric IDs.
 func (s *Stub) UnmarshalJSON(data []byte) error {
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
+	var raw map[string]stdjson.RawMessage
+	if err := stdjson.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 
 	rawID, hasID := raw["id"]
 	delete(raw, "id")
 
-	withoutID, err := json.Marshal(raw)
+	withoutID, err := stdjson.Marshal(raw)
 	if err != nil {
 		return err
 	}
 
 	type alias Stub
 	var decoded alias
-	if err := json.Unmarshal(withoutID, &decoded); err != nil {
+	decoder := stdjson.NewDecoder(bytes.NewReader(withoutID))
+	decoder.UseNumber()
+	if err := decoder.Decode(&decoded); err != nil {
 		return err
 	}
 
@@ -76,33 +76,14 @@ func (s *Stub) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	var stringID string
-	if err := json.Unmarshal(rawID, &stringID); err == nil {
-		parsed, parseErr := uuid.Parse(stringID)
-		if parseErr != nil {
-			return parseErr
-		}
-
-		s.ID = parsed
-
-		return nil
-	}
-
 	var numericID uint64
-	if err := json.Unmarshal(rawID, &numericID); err == nil {
-		s.ID = numericIDToUUID(numericID)
+	if err := stdjson.Unmarshal(rawID, &numericID); err == nil {
+		s.ID = numericID
 
 		return nil
 	}
 
-	return fmt.Errorf("id must be either uuid string or uint64 number")
-}
-
-func numericIDToUUID(value uint64) uuid.UUID {
-	var id uuid.UUID
-	binary.BigEndian.PutUint64(id[8:], value)
-
-	return id
+	return fmt.Errorf("id must be uint64 number")
 }
 
 const (
@@ -144,7 +125,7 @@ func (s *Stub) IsBidirectional() bool {
 }
 
 // Key returns the unique identifier of the stub.
-func (s *Stub) Key() uuid.UUID {
+func (s *Stub) Key() uint64 {
 	return s.ID
 }
 
@@ -156,11 +137,6 @@ func (s *Stub) Left() string {
 // Right returns the method name of the stub.
 func (s *Stub) Right() string {
 	return s.Method
-}
-
-// Score returns the priority score of the stub.
-func (s *Stub) Score() int {
-	return s.Priority
 }
 
 // IsEnabled returns whether stub can participate in matching.

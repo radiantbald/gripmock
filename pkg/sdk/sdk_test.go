@@ -412,13 +412,11 @@ func TestRunPriority(t *testing.T) {
 	mock.Stub(By("/helloworld.Greeter/SayHello")).
 		When(Equals("name", "priority")).
 		Reply(Data("message", "low")).
-		Priority(10).
 		Commit()
 
 	mock.Stub(By("/helloworld.Greeter/SayHello")).
 		When(Equals("name", "priority")).
 		Reply(Data("message", "high")).
-		Priority(100).
 		Commit()
 }
 

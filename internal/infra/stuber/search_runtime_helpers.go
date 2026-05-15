@@ -15,7 +15,7 @@ func (s *searcher) resolveSearchCandidates(query Query) ([]*Stub, error) {
 
 	stubs, err := lookup.LookupServiceAvailable(query.Service, query.Method)
 	if err == nil {
-		return filterEnabledStubs(collectStubs(stubs)), nil
+		return s.filterEnabledStubs(collectStubs(stubs), query.Room), nil
 	}
 
 	if query.StrictService {
@@ -26,7 +26,7 @@ func (s *searcher) resolveSearchCandidates(query Query) ([]*Stub, error) {
 		return nil, ErrStubNotFound
 	}
 
-	candidates := filterEnabledStubs(collectStubs(lookup.LookupMethodAvailable(query.Method)))
+	candidates := s.filterEnabledStubs(collectStubs(lookup.LookupMethodAvailable(query.Method)), query.Room)
 	if len(candidates) == 0 {
 		return nil, ErrStubNotFound
 	}
@@ -34,19 +34,27 @@ func (s *searcher) resolveSearchCandidates(query Query) ([]*Stub, error) {
 	return candidates, nil
 }
 
-func filterEnabledStubs(stubs []*Stub) []*Stub {
+func (s *searcher) filterEnabledStubs(stubs []*Stub, room string) []*Stub {
 	if len(stubs) == 0 {
 		return stubs
 	}
 
 	filtered := make([]*Stub, 0, len(stubs))
 	for _, stub := range stubs {
-		if stub.IsEnabled() {
+		if s.isEnabledForRoom(stub, room) {
 			filtered = append(filtered, stub)
 		}
 	}
 
 	return filtered
+}
+
+func (s *searcher) isEnabledForRoom(stub *Stub, room string) bool {
+	if s.enabledForRoom == nil {
+		return stub.IsEnabled()
+	}
+
+	return s.enabledForRoom(stub, room)
 }
 
 // processStubs processes the collected stubs with ultra-fast paths.

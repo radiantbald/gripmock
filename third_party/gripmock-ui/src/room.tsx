@@ -22,7 +22,7 @@ import {
   Typography,
   Chip,
 } from "@mui/material";
-import { useGetList, useNotify } from "react-admin";
+import { useGetList, useNotify, useRefresh } from "react-admin";
 
 import {
   clearCurrentRoom,
@@ -90,6 +90,7 @@ const isMyRoom = (roomId: string, phone: string): boolean => {
 
 export const RoomScopePage = () => {
   const notify = useNotify();
+  const refresh = useRefresh();
   const [room, setRoom] = useState(() => getCurrentRoom());
   const [authorizedPhone, setAuthorizedPhone] = useState(() => getAuthorizedPhone());
   const [roomToDelete, setRoomToDelete] = useState<string | null>(null);
@@ -98,10 +99,10 @@ export const RoomScopePage = () => {
   const [createInProgress, setCreateInProgress] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
   const [rooms, setRooms] = useState<Array<{ id: string; name: string }>>([]);
-  const { data: backendRooms = [] } = useGetList<RoomRow>(
+  const { data: backendRooms = [], refetch: refetchRooms } = useGetList<RoomRow>(
     "rooms",
     { pagination: { page: 1, perPage: 1000 } },
-    { retry: false, staleTime: 30_000, refetchOnMount: false, refetchOnWindowFocus: false },
+    { retry: false, staleTime: 0, refetchOnMount: true, refetchOnWindowFocus: true },
   );
 
   const allRooms = useMemo(
@@ -175,6 +176,8 @@ export const RoomScopePage = () => {
       setCreateDialogOpen(false);
       setNewRoomName("");
       notify(`Room created: ${normalizedName} (#${createdID})`, { type: "info" });
+      refresh();
+      void refetchRooms();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to create room";
       notify(message, { type: "warning" });
@@ -213,6 +216,8 @@ export const RoomScopePage = () => {
         `Room data deleted: ${deletedStubs} stubs, ${deletedHistory} history records, ${deletedRoomRows} room rows`,
         { type: "info" },
       );
+      refresh();
+      void refetchRooms();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to delete room data";
       notify(message, { type: "warning" });

@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
-	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/samber/lo"
 
@@ -24,9 +23,9 @@ type Extender struct {
 	converter    *yaml2json.Convertor
 	ch           chan struct{}
 	watcher      *watcher.StubWatcher
-	mapIDsByFile map[string]uuid.UUIDs
+	mapIDsByFile map[string][]uint64
 	muUniqueIDs  sync.Mutex
-	uniqueIDs    map[uuid.UUID]struct{}
+	uniqueIDs    map[uint64]struct{}
 	loaded       atomic.Bool
 }
 
@@ -40,8 +39,8 @@ func NewStub(
 		converter:    converter,
 		ch:           make(chan struct{}),
 		watcher:      watcher,
-		mapIDsByFile: make(map[string]uuid.UUIDs),
-		uniqueIDs:    make(map[uuid.UUID]struct{}),
+		mapIDsByFile: make(map[string][]uint64),
+		uniqueIDs:    make(map[uint64]struct{}),
 		loaded:       atomic.Bool{},
 	}
 }
@@ -229,17 +228,13 @@ func (s *Extender) handleFileReadError(ctx context.Context, filePath string, err
 
 func (s *Extender) handleFirstTimeLoad(filePath string, stubs []*stuber.Stub) {
 	for _, stub := range stubs {
-		if stub.ID == uuid.Nil {
-			stub.ID = uuid.New()
-		}
-
 		stub.Source = stuber.SourceFile
 	}
 
 	s.mapIDsByFile[filePath] = s.storage.PutMany(stubs...)
 }
 
-func (s *Extender) handleExistingFileUpdate(filePath string, stubs []*stuber.Stub, existingIDs uuid.UUIDs) {
+func (s *Extender) handleExistingFileUpdate(filePath string, stubs []*stuber.Stub, existingIDs []uint64) {
 	for _, stub := range stubs {
 		stub.Source = stuber.SourceFile
 	}
@@ -259,10 +254,10 @@ func (s *Extender) handleExistingFileUpdate(filePath string, stubs []*stuber.Stu
 	}
 }
 
-func (s *Extender) extractCurrentIDs(stubs []*stuber.Stub) uuid.UUIDs {
-	currentIDs := make(uuid.UUIDs, 0, len(stubs))
+func (s *Extender) extractCurrentIDs(stubs []*stuber.Stub) []uint64 {
+	currentIDs := make([]uint64, 0, len(stubs))
 	for _, stub := range stubs {
-		if stub.ID != uuid.Nil {
+		if stub.ID != 0 {
 			currentIDs = append(currentIDs, stub.ID)
 		}
 	}
@@ -270,10 +265,10 @@ func (s *Extender) extractCurrentIDs(stubs []*stuber.Stub) uuid.UUIDs {
 	return currentIDs
 }
 
-func (s *Extender) generateNewIDs(stubs []*stuber.Stub, unusedIDs uuid.UUIDs) uuid.UUIDs {
-	newIDs := make(uuid.UUIDs, 0, len(stubs))
+func (s *Extender) generateNewIDs(stubs []*stuber.Stub, unusedIDs []uint64) []uint64 {
+	newIDs := make([]uint64, 0, len(stubs))
 	for _, stub := range stubs {
-		if stub.ID == uuid.Nil {
+		if stub.ID == 0 {
 			stub.ID, unusedIDs = genID(stub, unusedIDs)
 		}
 
@@ -292,7 +287,7 @@ func (s *Extender) checkUniqIDs(ctx context.Context, filePath string, stubs []*s
 	defer s.muUniqueIDs.Unlock()
 
 	for _, stub := range stubs {
-		if stub.ID == uuid.Nil {
+		if stub.ID == 0 {
 			continue
 		}
 
@@ -300,7 +295,7 @@ func (s *Extender) checkUniqIDs(ctx context.Context, filePath string, stubs []*s
 			zerolog.Ctx(ctx).
 				Warn().
 				Str("file", filePath).
-				Str("id", stub.ID.String()).
+				Uint64("id", stub.ID).
 				Msg("duplicate stub ID")
 		}
 
@@ -308,8 +303,8 @@ func (s *Extender) checkUniqIDs(ctx context.Context, filePath string, stubs []*s
 	}
 }
 
-func genID(stub *stuber.Stub, freeIDs uuid.UUIDs) (uuid.UUID, uuid.UUIDs) {
-	if stub.ID != uuid.Nil {
+func genID(stub *stuber.Stub, freeIDs []uint64) (uint64, []uint64) {
+	if stub.ID != 0 {
 		return stub.ID, freeIDs
 	}
 
@@ -317,7 +312,7 @@ func genID(stub *stuber.Stub, freeIDs uuid.UUIDs) (uuid.UUID, uuid.UUIDs) {
 		return freeIDs[0], freeIDs[1:]
 	}
 
-	return uuid.New(), nil
+	return 0, nil
 }
 
 func (s *Extender) readStub(ctx context.Context, path string) ([]*stuber.Stub, error) {

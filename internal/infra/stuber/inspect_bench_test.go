@@ -3,20 +3,17 @@ package stuber_test
 import (
 	"testing"
 
-	"github.com/google/uuid"
-
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
 )
 
 func BenchmarkInspectQuery(b *testing.B) {
 	budgerigar := stuber.NewBudgerigar()
 
-	for i := range 500 {
+	for range 500 {
 		budgerigar.PutMany(&stuber.Stub{
-			ID:       uuid.New(),
-			Service:  "service",
-			Method:   "method",
-			Priority: i % 10,
+			ID:      newStubID(),
+			Service: "service",
+			Method:  "method",
 			Input: stuber.InputData{
 				Equals: map[string]any{"name": "alex"},
 			},

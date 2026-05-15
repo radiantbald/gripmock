@@ -5,7 +5,7 @@ import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import HubIcon from "@mui/icons-material/Hub";
 import { Link as RouterLink, useLocation } from "react-router-dom";
 import { clearAuthorizedPhone } from "../../utils/auth";
-import { getCurrentRoom, subscribeRoomChanges } from "../../utils/room";
+import { clearCurrentRoom, getCurrentRoom, subscribeRoomChanges } from "../../utils/room";
 import { resolveRoomRow, type RoomRow } from "../../features/room/model";
 
 const resolveSectionTitle = (pathname: string): string => {
@@ -34,7 +34,11 @@ export const CustomAppBar = () => {
   const appBarContentRef = useRef<HTMLDivElement | null>(null);
   const roomScopeSlotRef = useRef<HTMLDivElement | null>(null);
   const [roomScopeSlotLeft, setRoomScopeSlotLeft] = useState<number | null>(null);
-  const { data: rooms = [] } = useGetList<RoomRow>(
+  const {
+    data: rooms = [],
+    isPending: roomsPending,
+    error: roomsError,
+  } = useGetList<RoomRow>(
     "rooms",
     { pagination: { page: 1, perPage: 1000 } },
     { retry: false, staleTime: 30_000, refetchOnMount: false, refetchOnWindowFocus: false },
@@ -58,6 +62,20 @@ export const CustomAppBar = () => {
       }),
     [],
   );
+  useEffect(() => {
+    if (roomsPending || roomsError) {
+      return;
+    }
+
+    if (!room) {
+      return;
+    }
+
+    if (!roomNameById.has(room)) {
+      clearCurrentRoom();
+      setRoom("");
+    }
+  }, [room, roomNameById, roomsError, roomsPending]);
 
   const updateRoomScopeSlotLeft = useCallback(() => {
     const container = appBarContentRef.current;

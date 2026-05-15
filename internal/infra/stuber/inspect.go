@@ -1,8 +1,6 @@
 package stuber
 
 import (
-	"github.com/google/uuid"
-
 	"github.com/bavix/features"
 )
 
@@ -10,7 +8,7 @@ type searchTrace struct {
 	stages           []InspectStage
 	fallbackToMethod bool
 	candidates       []InspectCandidate
-	matchedStubID    *uuid.UUID
+	matchedStubID    *uint64
 }
 
 const inspectStagesCap = 8
@@ -44,7 +42,7 @@ func (t *searchTrace) initCandidates(candidates []InspectCandidate) {
 	t.candidates = candidates
 }
 
-func (t *searchTrace) setMatchedStubID(id *uuid.UUID) {
+func (t *searchTrace) setMatchedStubID(id *uint64) {
 	t.matchedStubID = id
 }
 
@@ -78,24 +76,23 @@ type InspectStage struct {
 }
 
 type InspectCandidate struct {
-	ID               uuid.UUID               `json:"id"`
-	Name             string                  `json:"name,omitempty"`
-	Service          string                  `json:"service"`
-	Method           string                  `json:"method"`
-	Room          string                  `json:"room,omitempty"`
-	Priority         int                     `json:"priority"`
-	Enabled          bool                    `json:"enabled"`
-	Times            int                     `json:"times"`
-	Used             int                     `json:"used"`
-	VisibleByRoom bool                    `json:"visibleByRoom"`
-	WithinTimes      bool                    `json:"withinTimes"`
-	HeadersMatched   bool                    `json:"headersMatched"`
-	InputMatched     bool                    `json:"inputMatched"`
-	Matched          bool                    `json:"matched"`
-	Specificity      int                     `json:"specificity"`
-	Score            float64                 `json:"score"`
-	ExcludedBy       []string                `json:"excludedBy,omitempty"`
-	Events           []InspectCandidateEvent `json:"events,omitempty"`
+	ID             uint64                  `json:"id"`
+	Name           string                  `json:"name,omitempty"`
+	Service        string                  `json:"service"`
+	Method         string                  `json:"method"`
+	Room           string                  `json:"room,omitempty"`
+	Enabled        bool                    `json:"enabled"`
+	Times          int                     `json:"times"`
+	Used           int                     `json:"used"`
+	VisibleByRoom  bool                    `json:"visibleByRoom"`
+	WithinTimes    bool                    `json:"withinTimes"`
+	HeadersMatched bool                    `json:"headersMatched"`
+	InputMatched   bool                    `json:"inputMatched"`
+	Matched        bool                    `json:"matched"`
+	Specificity    int                     `json:"specificity"`
+	Score          float64                 `json:"score"`
+	ExcludedBy     []string                `json:"excludedBy,omitempty"`
+	Events         []InspectCandidateEvent `json:"events,omitempty"`
 }
 
 type InspectCandidateEvent struct {
@@ -107,11 +104,11 @@ type InspectCandidateEvent struct {
 type InspectReport struct {
 	Service          string             `json:"service"`
 	Method           string             `json:"method"`
-	Room          string             `json:"room,omitempty"`
+	Room             string             `json:"room,omitempty"`
 	FallbackToMethod bool               `json:"fallbackToMethod"`
 	Error            *string            `json:"error,omitempty"`
-	MatchedStubID    *uuid.UUID         `json:"matchedStubId,omitempty"`
-	SimilarStubID    *uuid.UUID         `json:"similarStubId,omitempty"`
+	MatchedStubID    *uint64            `json:"matchedStubId,omitempty"`
+	SimilarStubID    *uint64            `json:"similarStubId,omitempty"`
 	Stages           []InspectStage     `json:"stages"`
 	Candidates       []InspectCandidate `json:"candidates"`
 }
@@ -137,7 +134,7 @@ func (s *searcher) inspect(query Query) InspectReport {
 		result = nil
 	}
 
-	var matchedID *uuid.UUID
+	var matchedID *uint64
 
 	if result != nil && result.Found() != nil {
 		id := result.Found().ID
@@ -149,7 +146,7 @@ func (s *searcher) inspect(query Query) InspectReport {
 	report := InspectReport{
 		Service:    query.Service,
 		Method:     query.Method,
-		Room:    query.Room,
+		Room:       query.Room,
 		Stages:     trace.stages,
 		Candidates: trace.finalizeCandidates(),
 	}

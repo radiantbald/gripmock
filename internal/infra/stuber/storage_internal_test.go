@@ -4,25 +4,22 @@ import (
 	"maps"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
 func newTestStub(service, method string, priority int) *Stub {
 	return &Stub{
-		ID:       uuid.New(),
-		Service:  service,
-		Method:   method,
-		Priority: priority,
+		ID:      nextTestID(),
+		Service: service,
+		Method:  method,
 	}
 }
 
-func newTestStubWithID(id uuid.UUID, service, method string, priority int) *Stub {
+func newTestStubWithID(id uint64, service, method string, priority int) *Stub {
 	return &Stub{
-		ID:       id,
-		Service:  service,
-		Method:   method,
-		Priority: priority,
+		ID:      id,
+		Service: service,
+		Method:  method,
 	}
 }
 
@@ -50,7 +47,7 @@ func TestUpdate(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
-	id := uuid.New()
+	id := nextTestID()
 	s := newStorage()
 	initialStub := newTestStubWithID(id, "Greeter", "SayHello", 0)
 
@@ -63,7 +60,6 @@ func TestUpdate(t *testing.T) {
 
 	v := s.findByID(id)
 	require.NotNil(t, v)
-	require.Equal(t, 0, v.Priority)
 
 	// Arrange
 	updatedStub := newTestStubWithID(id, "Greeter", "SayHello", 42)
@@ -77,13 +73,12 @@ func TestUpdate(t *testing.T) {
 
 	v = s.findByID(id)
 	require.NotNil(t, v)
-	require.Equal(t, 42, v.Priority)
 }
 
 func TestFindByID(t *testing.T) {
 	t.Parallel()
 
-	id := uuid.MustParse("00000000-0000-0001-0000-000000000000")
+	id := uint64(1 << 48)
 
 	s := newStorage()
 	require.Nil(t, s.findByID(id))
@@ -156,16 +151,16 @@ func TestFindByIDs(t *testing.T) {
 	t.Parallel()
 
 	s := newStorage()
-	stub1 := newTestStubWithID(uuid.New(), "A", "B", 0)
-	stub2 := newTestStubWithID(uuid.New(), "C", "D", 0)
-	stub3 := newTestStubWithID(uuid.New(), "E", "F", 0)
+	stub1 := newTestStubWithID(nextTestID(), "A", "B", 0)
+	stub2 := newTestStubWithID(nextTestID(), "C", "D", 0)
+	stub3 := newTestStubWithID(nextTestID(), "E", "F", 0)
 	s.upsert(stub1, stub2, stub3)
 
 	t.Run("existing IDs", func(t *testing.T) {
 		t.Parallel()
 
 		results := make([]*Stub, 0, 2)
-		for v := range s.findByIDs(maps.Keys(map[uuid.UUID]struct{}{stub1.ID: {}, stub2.ID: {}})) {
+		for v := range s.findByIDs(maps.Keys(map[uint64]struct{}{stub1.ID: {}, stub2.ID: {}})) {
 			results = append(results, v)
 		}
 
@@ -176,7 +171,7 @@ func TestFindByIDs(t *testing.T) {
 		t.Parallel()
 
 		results := make([]*Stub, 0, 1)
-		for v := range s.findByIDs(maps.Keys(map[uuid.UUID]struct{}{stub1.ID: {}, uuid.Nil: {}})) {
+		for v := range s.findByIDs(maps.Keys(map[uint64]struct{}{stub1.ID: {}, 0: {}})) {
 			results = append(results, v)
 		}
 
@@ -187,7 +182,7 @@ func TestFindByIDs(t *testing.T) {
 func TestDelete(t *testing.T) {
 	t.Parallel()
 
-	id1, id2, id3 := uuid.New(), uuid.New(), uuid.New()
+	id1, id2, id3 := nextTestID(), nextTestID(), nextTestID()
 
 	s := newStorage()
 
@@ -237,8 +232,8 @@ func TestFindAllSorted(t *testing.T) {
 		require.Len(t, results, 3)
 
 		// IDs must be returned in ascending order.
-		require.LessOrEqual(t, results[0].ID.String(), results[1].ID.String())
-		require.LessOrEqual(t, results[1].ID.String(), results[2].ID.String())
+		require.LessOrEqual(t, results[0].ID, results[1].ID)
+		require.LessOrEqual(t, results[1].ID, results[2].ID)
 	})
 
 	t.Run("single item", func(t *testing.T) {
@@ -249,7 +244,6 @@ func TestFindAllSorted(t *testing.T) {
 
 		results := collectStubs(seq)
 		require.Len(t, results, 1)
-		require.Equal(t, 50, results[0].Priority)
 	})
 
 	t.Run("not found", func(t *testing.T) {
@@ -340,10 +334,10 @@ func TestStorageFindByIDs(t *testing.T) {
 	s.upsert(item1, item2, item3)
 
 	// Test finding by IDs
-	ids := []uuid.UUID{item1.ID, item2.ID}
+	ids := []uint64{item1.ID, item2.ID}
 
 	found := make([]*Stub, 0, len(ids))
-	for v := range s.findByIDs(func(yield func(uuid.UUID) bool) {
+	for v := range s.findByIDs(func(yield func(uint64) bool) {
 		for _, id := range ids {
 			if !yield(id) {
 				return
@@ -357,9 +351,9 @@ func TestStorageFindByIDs(t *testing.T) {
 
 	// Test finding by non-existent IDs
 	notFound := make([]*Stub, 0, 2)
-	for v := range s.findByIDs(func(yield func(uuid.UUID) bool) {
-		yield(uuid.New())
-		yield(uuid.New())
+	for v := range s.findByIDs(func(yield func(uint64) bool) {
+		yield(nextTestID())
+		yield(nextTestID())
 	}) {
 		notFound = append(notFound, v)
 	}
@@ -394,7 +388,7 @@ func TestStorageDelNonExistent(t *testing.T) {
 	s := newStorage()
 
 	// Test deleting non-existent items
-	deleted := s.del(uuid.New(), uuid.New())
+	deleted := s.del(nextTestID(), nextTestID())
 	require.Equal(t, 0, deleted)
 }
 
@@ -422,7 +416,7 @@ func TestStorageFindAllHEapPathSingleIndexManyItems(t *testing.T) {
 	require.Len(t, results, 12)
 	// IDs must be returned in ascending order.
 	for i := range len(results) - 1 {
-		require.LessOrEqual(t, results[i].ID.String(), results[i+1].ID.String())
+		require.LessOrEqual(t, results[i].ID, results[i+1].ID)
 	}
 }
 
@@ -432,10 +426,10 @@ func TestStorageFindAllHEapPathMultipleIndexes(t *testing.T) {
 	s := newStorage()
 
 	// posByPN with "pkg.Svc" returns both "pkg.Svc" and "Svc" indexes when both exist
-	id1 := uuid.MustParse("00000000-0000-0000-0000-000000000001")
-	id2 := uuid.MustParse("00000000-0000-0000-0000-000000000002")
-	id3 := uuid.MustParse("00000000-0000-0000-0000-000000000003")
-	id4 := uuid.MustParse("00000000-0000-0000-0000-000000000004")
+	id1 := uint64(1)
+	id2 := uint64(2)
+	id3 := uint64(3)
+	id4 := uint64(4)
 
 	s.upsert(
 		newTestStubWithID(id2, "pkg.Greeter", "SayHello", 1),
@@ -491,8 +485,8 @@ func TestStorageFindByIDsEarlyExit(t *testing.T) {
 	item2 := newTestStub("C", "D", 0)
 	s.upsert(item1, item2)
 
-	ids := func(yield func(uuid.UUID) bool) {
-		for _, id := range []uuid.UUID{item1.ID, item2.ID} {
+	ids := func(yield func(uint64) bool) {
+		for _, id := range []uint64{item1.ID, item2.ID} {
 			if !yield(id) {
 				return
 			}
@@ -531,7 +525,7 @@ func TestStorageFindAllSliceSortPath(t *testing.T) {
 	require.Len(t, results, 5)
 
 	for i := range len(results) - 1 {
-		require.LessOrEqual(t, results[i].ID.String(), results[i+1].ID.String())
+		require.LessOrEqual(t, results[i].ID, results[i+1].ID)
 	}
 }
 
@@ -603,9 +597,9 @@ func TestStorageFindAllThreeItemSort(t *testing.T) {
 	t.Parallel()
 
 	s := newStorage()
-	id1 := uuid.MustParse("00000000-0000-0000-0000-000000000001")
-	id2 := uuid.MustParse("00000000-0000-0000-0000-000000000002")
-	id3 := uuid.MustParse("00000000-0000-0000-0000-000000000003")
+	id1 := uint64(1)
+	id2 := uint64(2)
+	id3 := uint64(3)
 	s.upsert(
 		newTestStubWithID(id3, "Tri", "Sort", 10),
 		newTestStubWithID(id1, "Tri", "Sort", 5),
@@ -639,7 +633,7 @@ func TestStorageFindByMethodAvailable(t *testing.T) {
 	stubs := collectStubs(s.findByMethodAvailable("SharedMethod", ""))
 	require.Len(t, stubs, 2)
 
-	ids := map[uuid.UUID]struct{}{}
+	ids := map[uint64]struct{}{}
 	for _, stub := range stubs {
 		ids[stub.ID] = struct{}{}
 	}
@@ -654,7 +648,7 @@ func TestStorageFindByMethodAvailable(t *testing.T) {
 func TestStorageFindByMethodAvailableHandlesMethodUpdate(t *testing.T) {
 	t.Parallel()
 
-	id := uuid.New()
+	id := nextTestID()
 	s := newStorage()
 
 	s.upsert(newTestStubWithID(id, "Svc", "OldMethod", 1))

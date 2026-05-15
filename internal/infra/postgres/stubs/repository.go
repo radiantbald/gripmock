@@ -9,7 +9,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/goccy/go-json"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -24,7 +23,7 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
 }
 
-func (r *Repository) UpsertMany(ctx context.Context, stubs ...*stuber.Stub) ([]uuid.UUID, error) {
+func (r *Repository) UpsertMany(ctx context.Context, stubs ...*stuber.Stub) ([]uint64, error) {
 	if len(stubs) == 0 {
 		return nil, nil
 	}
@@ -61,43 +60,17 @@ func (r *Repository) UpsertMany(ctx context.Context, stubs ...*stuber.Stub) ([]u
 			return nil, errors.Wrap(err, "failed to marshal stub effects")
 		}
 
-		var roomRef any
-		rawRoom := strings.TrimSpace(item.Room)
-		if rawRoom != "" {
-			if parsedID, parseErr := strconv.ParseInt(rawRoom, 10, 64); parseErr == nil {
-				roomRef = parsedID
-			} else {
-				creator := fmt.Sprintf("stub-bind:%x", md5.Sum([]byte(rawRoom)))
-				var createdID int64
-				if scanErr := r.pool.QueryRow(ctx, `
-					INSERT INTO rooms (name, creator, created_at, updated_at)
-					VALUES ($1, $2, NOW(), NOW())
-					ON CONFLICT (creator) DO UPDATE SET
-						name = EXCLUDED.name,
-						updated_at = NOW()
-					RETURNING id
-				`, rawRoom, creator).Scan(&createdID); scanErr != nil {
-					return nil, errors.Wrap(scanErr, "failed to resolve room by name")
-				}
-				roomRef = createdID
-				item.Room = strconv.FormatInt(createdID, 10)
-			}
-		}
-
 		batch.Queue(`
 			INSERT INTO stubs (
-				id, name, service, method, room, priority, enabled, options, headers, input, inputs, output, effects, source
+				id, name, service, method, options, headers, input, inputs, output, effects, source
 			) VALUES (
-				$1, $2, $3, $4, $5,
-				$6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14
+				$1, $2, $3, $4,
+				$5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11
 			)
 			ON CONFLICT (id) DO UPDATE SET
 				name = EXCLUDED.name,
 				service = EXCLUDED.service,
 				method = EXCLUDED.method,
-				room = EXCLUDED.room,
-				priority = EXCLUDED.priority,
-				enabled = EXCLUDED.enabled,
 				options = EXCLUDED.options,
 				headers = EXCLUDED.headers,
 				input = EXCLUDED.input,
@@ -111,9 +84,6 @@ func (r *Repository) UpsertMany(ctx context.Context, stubs ...*stuber.Stub) ([]u
 			item.Name,
 			item.Service,
 			item.Method,
-			roomRef,
-			item.Priority,
-			item.IsEnabled(),
 			optionsJSON,
 			headersJSON,
 			inputJSON,
@@ -133,7 +103,7 @@ func (r *Repository) UpsertMany(ctx context.Context, stubs ...*stuber.Stub) ([]u
 		}
 	}
 
-	ids := make([]uuid.UUID, len(stubs))
+	ids := make([]uint64, len(stubs))
 	for i, item := range stubs {
 		ids[i] = item.ID
 	}
@@ -141,12 +111,12 @@ func (r *Repository) UpsertMany(ctx context.Context, stubs ...*stuber.Stub) ([]u
 	return ids, nil
 }
 
-func (r *Repository) DeleteByID(ctx context.Context, ids ...uuid.UUID) (int, error) {
+func (r *Repository) DeleteByID(ctx context.Context, ids ...uint64) (int, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
 
-	commandTag, err := r.pool.Exec(ctx, `DELETE FROM stubs WHERE id = ANY($1::uuid[])`, ids)
+	commandTag, err := r.pool.Exec(ctx, `DELETE FROM stubs WHERE id = ANY($1::bigint[])`, ids)
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to delete stubs by id")
 	}
@@ -155,41 +125,106 @@ func (r *Repository) DeleteByID(ctx context.Context, ids ...uuid.UUID) (int, err
 }
 
 func (r *Repository) DeleteRoom(ctx context.Context, room string) (int, error) {
-	if parsedID, err := strconv.ParseInt(strings.TrimSpace(room), 10, 64); err == nil {
-		commandTag, execErr := r.pool.Exec(ctx, `DELETE FROM stubs WHERE room = $1`, parsedID)
-		if execErr != nil {
-			return 0, errors.Wrap(execErr, "failed to delete stubs by room id")
-		}
-
-		return int(commandTag.RowsAffected()), nil
+	roomID, err := r.resolveRoomID(ctx, room)
+	if err != nil {
+		return 0, err
+	}
+	if roomID == nil {
+		return 0, nil
 	}
 
 	commandTag, err := r.pool.Exec(ctx, `
-		DELETE FROM stubs
-		WHERE room IN (
-			SELECT id
-			FROM rooms
-			WHERE name = $1
-		)
-	`, room)
+		DELETE FROM enabled_stubs
+		WHERE room_id = $1
+	`, *roomID)
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to delete stubs by room")
+		return 0, errors.Wrap(err, "failed to delete room state by room")
 	}
 
 	return int(commandTag.RowsAffected()), nil
 }
 
+func (r *Repository) UpsertRoomState(ctx context.Context, updates ...stuber.RoomEnabledState) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	batch := &pgx.Batch{}
+	for _, item := range updates {
+		roomID, err := r.resolveRoomID(ctx, item.Room)
+		if err != nil {
+			return err
+		}
+		if roomID == nil {
+			return errors.New("room is required")
+		}
+
+		batch.Queue(`
+			DELETE FROM enabled_stubs
+			WHERE stub_id = $1 AND room_id = $2
+		`, item.StubID, *roomID)
+		if item.Enabled {
+			batch.Queue(`
+				INSERT INTO enabled_stubs (stub_id, room_id, stub_enabled_at)
+				VALUES ($1, $2, NOW())
+				ON CONFLICT (stub_id, room_id) DO UPDATE SET
+					stub_enabled_at = EXCLUDED.stub_enabled_at
+			`, item.StubID, *roomID)
+		}
+	}
+
+	br := r.pool.SendBatch(ctx, batch)
+	defer br.Close()
+
+	for _, item := range updates {
+		if _, err := br.Exec(); err != nil {
+			return errors.Wrap(err, "failed to upsert room state")
+		}
+		if item.Enabled {
+			if _, err := br.Exec(); err != nil {
+				return errors.Wrap(err, "failed to upsert room state")
+			}
+		}
+	}
+
+	return nil
+}
+
+func (r *Repository) LoadRoomState(ctx context.Context) ([]stuber.RoomEnabledState, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT es.stub_id, es.room_id::text, TRUE
+		FROM enabled_stubs AS es
+	`)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to query room state")
+	}
+	defer rows.Close()
+
+	result := make([]stuber.RoomEnabledState, 0)
+	for rows.Next() {
+		var item stuber.RoomEnabledState
+		if err := rows.Scan(&item.StubID, &item.Room, &item.Enabled); err != nil {
+			return nil, errors.Wrap(err, "failed to scan room state row")
+		}
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed while reading room state rows")
+	}
+
+	return result, nil
+}
+
 func (r *Repository) Clear(ctx context.Context) error {
-	_, err := r.pool.Exec(ctx, `TRUNCATE TABLE stubs`)
+	_, err := r.pool.Exec(ctx, `TRUNCATE TABLE stubs, enabled_stubs RESTART IDENTITY`)
 
 	return errors.Wrap(err, "failed to truncate stubs")
 }
 
 func (r *Repository) LoadAll(ctx context.Context) ([]*stuber.Stub, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT stubs.id, stubs.name, stubs.service, stubs.method, COALESCE(stubs.room::text, ''), stubs.priority, stubs.enabled, stubs.options, stubs.headers, stubs.input, stubs.inputs, stubs.output, stubs.effects, stubs.source
+		SELECT stubs.id, stubs.name, stubs.service, stubs.method, stubs.options, stubs.headers, stubs.input, stubs.inputs, stubs.output, stubs.effects, stubs.source
 		FROM stubs
-		LEFT JOIN rooms ON rooms.id = stubs.room
 	`)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query stubs")
@@ -242,30 +277,9 @@ func (r *Repository) List(ctx context.Context, options stuber.ListOptions) ([]*s
 		nextArg++
 	}
 
-	if options.RoomSet {
-		room := strings.TrimSpace(options.Room)
-		if room == "" {
-			clauses = append(clauses, "stubs.room IS NULL")
-		} else {
-			if parsedID, parseErr := strconv.ParseInt(room, 10, 64); parseErr == nil {
-				clauses = append(clauses, fmt.Sprintf("stubs.room = $%d", nextArg))
-				args = append(args, parsedID)
-				nextArg++
-			} else {
-				clauses = append(clauses, fmt.Sprintf(
-					`stubs.room IN (SELECT id FROM rooms WHERE name = $%d)`,
-					nextArg,
-				))
-				args = append(args, room)
-				nextArg++
-			}
-		}
-	}
-
 	query := `
-		SELECT stubs.id, stubs.name, stubs.service, stubs.method, COALESCE(stubs.room::text, ''), stubs.priority, stubs.enabled, stubs.options, stubs.headers, stubs.input, stubs.inputs, stubs.output, stubs.effects, stubs.source
+		SELECT stubs.id, stubs.name, stubs.service, stubs.method, stubs.options, stubs.headers, stubs.input, stubs.inputs, stubs.output, stubs.effects, stubs.source
 		FROM stubs
-		LEFT JOIN rooms ON rooms.id = stubs.room
 	`
 	if len(clauses) > 0 {
 		query += " WHERE " + strings.Join(clauses, " AND ")
@@ -297,7 +311,6 @@ func (r *Repository) List(ctx context.Context, options stuber.ListOptions) ([]*s
 func scanStub(rows pgx.Rows) (*stuber.Stub, error) {
 	var (
 		item    stuber.Stub
-		enabled bool
 		options []byte
 		headers []byte
 		input   []byte
@@ -311,9 +324,6 @@ func scanStub(rows pgx.Rows) (*stuber.Stub, error) {
 		&item.Name,
 		&item.Service,
 		&item.Method,
-		&item.Room,
-		&item.Priority,
-		&enabled,
 		&options,
 		&headers,
 		&input,
@@ -325,7 +335,7 @@ func scanStub(rows pgx.Rows) (*stuber.Stub, error) {
 		return nil, errors.Wrap(err, "failed to scan stub row")
 	}
 
-	item.SetEnabled(enabled)
+	item.Room = ""
 
 	if err := json.Unmarshal(options, &item.Options); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal stub options")
@@ -347,4 +357,30 @@ func scanStub(rows pgx.Rows) (*stuber.Stub, error) {
 	}
 
 	return &item, nil
+}
+
+func (r *Repository) resolveRoomID(ctx context.Context, room string) (*int64, error) {
+	rawRoom := strings.TrimSpace(room)
+	if rawRoom == "" {
+		return nil, nil
+	}
+
+	if parsedID, parseErr := strconv.ParseInt(rawRoom, 10, 64); parseErr == nil {
+		return &parsedID, nil
+	}
+
+	creator := fmt.Sprintf("stub-bind:%x", md5.Sum([]byte(rawRoom)))
+	var createdID int64
+	if scanErr := r.pool.QueryRow(ctx, `
+		INSERT INTO rooms (name, creator, created_at, updated_at)
+		VALUES ($1, $2, NOW(), NOW())
+		ON CONFLICT (creator) DO UPDATE SET
+			name = EXCLUDED.name,
+			updated_at = NOW()
+		RETURNING id
+	`, rawRoom, creator).Scan(&createdID); scanErr != nil {
+		return nil, errors.Wrap(scanErr, "failed to resolve room by name")
+	}
+
+	return &createdID, nil
 }

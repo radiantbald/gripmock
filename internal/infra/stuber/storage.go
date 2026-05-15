@@ -1,7 +1,6 @@
 package stuber
 
 import (
-	"bytes"
 	"container/heap"
 	"errors"
 	"iter"
@@ -11,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/google/uuid"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/zeebo/xxh3"
 )
@@ -44,10 +42,10 @@ type storage struct {
 	mu           sync.RWMutex
 	lefts        map[uint32]struct{}
 	methodSorted map[uint32]map[string][]*Stub
-	items        map[uint64]map[uuid.UUID]*Stub
+	items        map[uint64]map[uint64]*Stub
 	itemSorted   map[uint64]map[string][]*Stub
-	itemsByID    map[uuid.UUID]*Stub
-	rooms     map[string]int
+	itemsByID    map[uint64]*Stub
+	rooms        map[string]int
 }
 
 // newStorage creates a new instance of the storage struct.
@@ -55,10 +53,10 @@ func newStorage() *storage {
 	return &storage{
 		lefts:        make(map[uint32]struct{}),
 		methodSorted: make(map[uint32]map[string][]*Stub),
-		items:        make(map[uint64]map[uuid.UUID]*Stub),
+		items:        make(map[uint64]map[uint64]*Stub),
 		itemSorted:   make(map[uint64]map[string][]*Stub),
-		itemsByID:    make(map[uuid.UUID]*Stub),
-		rooms:     make(map[string]int),
+		itemsByID:    make(map[uint64]*Stub),
+		rooms:        make(map[string]int),
 	}
 }
 
@@ -69,9 +67,9 @@ func (s *storage) clear() {
 
 	s.lefts = make(map[uint32]struct{})
 	s.methodSorted = make(map[uint32]map[string][]*Stub)
-	s.items = make(map[uint64]map[uuid.UUID]*Stub)
+	s.items = make(map[uint64]map[uint64]*Stub)
 	s.itemSorted = make(map[uint64]map[string][]*Stub)
-	s.itemsByID = make(map[uuid.UUID]*Stub)
+	s.itemsByID = make(map[uint64]*Stub)
 	s.rooms = make(map[string]int)
 }
 
@@ -214,7 +212,7 @@ func (s *storage) yieldSmallItemsSorted(indexes []uint64, totalItems int, yield 
 		}
 	}
 
-	sortSmallItemsByPriority(items)
+	sortSmallItemsByID(items)
 
 	for _, v := range items {
 		if !yield(v) {
@@ -223,8 +221,8 @@ func (s *storage) yieldSmallItemsSorted(indexes []uint64, totalItems int, yield 
 	}
 }
 
-func sortSmallItemsByPriority(items []*Stub) {
-	slices.SortFunc(items, compareStubsByPriorityAndID)
+func sortSmallItemsByID(items []*Stub) {
+	slices.SortFunc(items, compareStubsByID)
 }
 
 // sortItem represents a stub with its score for sorting.
@@ -250,7 +248,7 @@ type scoreHeap []sortItem
 
 func (h *scoreHeap) Len() int { return len(*h) }
 func (h *scoreHeap) Less(i, j int) bool {
-	return compareStubsByPriorityAndID((*h)[i].stub, (*h)[j].stub) < 0
+	return compareStubsByID((*h)[i].stub, (*h)[j].stub) < 0
 }
 func (h *scoreHeap) Swap(i, j int) { (*h)[i], (*h)[j] = (*h)[j], (*h)[i] }
 func (h *scoreHeap) Push(x any) {
@@ -289,7 +287,7 @@ func (s *storage) yieldSortedValuesHeap(indexes []uint64, yield func(*Stub) bool
 				}
 
 				slices.SortFunc(items, func(a, b sortItem) int {
-					return compareStubsByPriorityAndID(a.stub, b.stub)
+					return compareStubsByID(a.stub, b.stub)
 				})
 
 				for _, item := range items {
@@ -394,7 +392,7 @@ func (s *storage) posByPN(left, right string) ([]uint64, error) {
 }
 
 // findByID retrieves the Stub associated with the given UUID from the storage.
-func (s *storage) findByID(key uuid.UUID) *Stub {
+func (s *storage) findByID(key uint64) *Stub {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -402,7 +400,7 @@ func (s *storage) findByID(key uuid.UUID) *Stub {
 }
 
 // findByIDs retrieves the Stubs associated with the given UUIDs from the storage.
-func (s *storage) findByIDs(ids iter.Seq[uuid.UUID]) iter.Seq[*Stub] {
+func (s *storage) findByIDs(ids iter.Seq[uint64]) iter.Seq[*Stub] {
 	return func(yield func(*Stub) bool) {
 		s.mu.RLock()
 		defer s.mu.RUnlock()
@@ -419,13 +417,13 @@ func (s *storage) findByIDs(ids iter.Seq[uuid.UUID]) iter.Seq[*Stub] {
 
 // upsert inserts or updates the given Stubs in storage.
 // Optimized for minimal allocations and maximum performance.
-func (s *storage) upsert(values ...*Stub) []uuid.UUID {
+func (s *storage) upsert(values ...*Stub) []uint64 {
 	if len(values) == 0 {
 		return nil
 	}
 
 	// Pre-allocate with exact size to minimize allocations
-	results := make([]uuid.UUID, len(values))
+	results := make([]uint64, len(values))
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -443,7 +441,7 @@ func (s *storage) upsert(values ...*Stub) []uuid.UUID {
 		index := s.pos(leftID, rightID)
 
 		if s.items[index] == nil {
-			s.items[index] = make(map[uuid.UUID]*Stub, 1)
+			s.items[index] = make(map[uint64]*Stub, 1)
 		}
 
 		s.items[index][v.ID] = v
@@ -459,7 +457,7 @@ func (s *storage) upsert(values ...*Stub) []uuid.UUID {
 
 // del deletes the Stub values with the given UUIDs from the storage.
 // It returns the number of Stub values that were successfully deleted.
-func (s *storage) del(keys ...uuid.UUID) int {
+func (s *storage) del(keys ...uint64) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -560,7 +558,7 @@ func (s *storage) removeRoomIndex(
 	sorted map[uint64]map[string][]*Stub,
 	key uint64,
 	room string,
-	id uuid.UUID,
+	id uint64,
 ) {
 	sortedBuckets, exists := sorted[key]
 	if !exists {
@@ -577,7 +575,7 @@ func (s *storage) removeRoomIndex(
 	}
 }
 
-func (s *storage) removeMethodRoomIndex(key uint32, room string, id uuid.UUID) {
+func (s *storage) removeMethodRoomIndex(key uint32, room string, id uint64) {
 	sortedBuckets, exists := s.methodSorted[key]
 	if !exists {
 		return
@@ -594,7 +592,7 @@ func (s *storage) removeMethodRoomIndex(key uint32, room string, id uuid.UUID) {
 }
 
 func insertSortedStub(stubs []*Stub, stub *Stub) []*Stub {
-	idx, _ := slices.BinarySearchFunc(stubs, stub, compareStubsByPriorityAndID)
+	idx, _ := slices.BinarySearchFunc(stubs, stub, compareStubsByID)
 	stubs = append(stubs, nil)
 	copy(stubs[idx+1:], stubs[idx:])
 	stubs[idx] = stub
@@ -602,7 +600,7 @@ func insertSortedStub(stubs []*Stub, stub *Stub) []*Stub {
 	return stubs
 }
 
-func removeSortedStubByID(stubs []*Stub, id uuid.UUID) []*Stub {
+func removeSortedStubByID(stubs []*Stub, id uint64) []*Stub {
 	for i, stub := range stubs {
 		if stub.ID == id {
 			copy(stubs[i:], stubs[i+1:])
@@ -619,7 +617,7 @@ func yieldMergedSorted(global, room []*Stub, yield func(*Stub) bool) {
 	j := 0
 
 	for i < len(global) && j < len(room) {
-		if compareStubsByPriorityAndID(global[i], room[j]) <= 0 {
+		if compareStubsByID(global[i], room[j]) <= 0 {
 			if !yield(global[i]) {
 				return
 			}
@@ -701,7 +699,7 @@ func mergeSortedSlices(left, right []*Stub) []*Stub {
 	j := 0
 
 	for i < len(left) && j < len(right) {
-		if compareStubsByPriorityAndID(left[i], right[j]) <= 0 {
+		if compareStubsByID(left[i], right[j]) <= 0 {
 			merged = append(merged, left[i])
 			i++
 
@@ -718,8 +716,15 @@ func mergeSortedSlices(left, right []*Stub) []*Stub {
 	return merged
 }
 
-func compareStubsByPriorityAndID(a, b *Stub) int {
-	return bytes.Compare(a.ID[:], b.ID[:])
+func compareStubsByID(a, b *Stub) int {
+	switch {
+	case a.ID < b.ID:
+		return -1
+	case a.ID > b.ID:
+		return 1
+	default:
+		return 0
+	}
 }
 
 // Global LRU cache for string hashes with size limit.

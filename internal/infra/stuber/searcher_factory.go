@@ -6,6 +6,7 @@ type searcherOptions struct {
 	processStrategy processStubsStrategy
 	matcher         matchStrategy
 	ranker          rankStrategy
+	enabledForRoom  func(*Stub, string) bool
 }
 
 // newSearcher creates a new searcher instance.
@@ -33,6 +34,13 @@ func newSearcherWithOptions(options searcherOptions) *searcher {
 		stubCallCount:   make(map[callCountKey]int),
 		lookupProvider:  lookupProvider,
 		lookupCache:     make(map[string]*searcherLookup),
+		enabledForRoom:  options.enabledForRoom,
+	}
+
+	if s.enabledForRoom == nil {
+		s.enabledForRoom = func(stub *Stub, _ string) bool {
+			return stub.IsEnabled()
+		}
 	}
 
 	processStrategy := options.processStrategy

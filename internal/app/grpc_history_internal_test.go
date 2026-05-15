@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -55,7 +54,6 @@ func TestHistoryUnary(t *testing.T) {
 	mocker.methodName = testMethodName
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: testServiceName,
 		Method:  testMethodName,
 		Input:   stuber.InputData{Contains: map[string]any{}},
@@ -92,7 +90,6 @@ func TestHistoryServerStream1N(t *testing.T) {
 	mocker.methodName = testMethodName
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: testServiceName,
 		Method:  testMethodName,
 		Input:   stuber.InputData{Contains: map[string]any{}},
@@ -134,7 +131,6 @@ func TestHistoryClientStreamN1(t *testing.T) {
 	mocker.methodName = testMethodName
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: testServiceName,
 		Method:  testMethodName,
 		Inputs:  []stuber.InputData{{Contains: map[string]any{}}},
@@ -176,7 +172,6 @@ func TestHistoryBidiStreamNM(t *testing.T) {
 	mocker.methodName = testMethodName
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: testServiceName,
 		Method:  testMethodName,
 		Input:   stuber.InputData{Contains: map[string]any{}},
@@ -222,7 +217,6 @@ func TestHistoryBidiStream11(t *testing.T) {
 	mocker.methodName = testMethodName
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: testServiceName,
 		Method:  testMethodName,
 		Input:   stuber.InputData{Contains: map[string]any{}},
@@ -261,7 +255,6 @@ func TestHistoryServerStreamWithError(t *testing.T) {
 	mocker.methodName = testMethodName
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: testServiceName,
 		Method:  testMethodName,
 		Input:   stuber.InputData{Contains: map[string]any{}},
@@ -351,7 +344,6 @@ func TestHistoryUnaryMethodRemovedInMetadataReturnsUnimplemented(t *testing.T) {
 	mocker.protoMetadata = &protoMetadataReaderMock{exists: false}
 
 	stub := &stuber.Stub{
-		ID:      uuid.New(),
 		Service: testServiceName,
 		Method:  testMethodName,
 		Input:   stuber.InputData{Contains: map[string]any{}},
@@ -371,7 +363,7 @@ func TestHistoryUnaryMethodRemovedInMetadataReturnsUnimplemented(t *testing.T) {
 	calls := recorder.Filter(history.FilterOpts{})
 	require.Len(t, calls, 1)
 	require.Equal(t, uint32(codes.Unimplemented), calls[0].Code)
-	require.Equal(t, uuid.Nil, calls[0].StubID)
+	require.Equal(t, uint64(0), calls[0].StubID)
 	require.NotEmpty(t, calls[0].Error)
 }
 

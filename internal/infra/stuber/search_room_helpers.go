@@ -2,12 +2,10 @@ package stuber
 
 import (
 	"iter"
-
-	"github.com/google/uuid"
 )
 
-func (s *searcher) collectUsedIDs() map[uuid.UUID]struct{} {
-	usedIDs := make(map[uuid.UUID]struct{}, len(s.stubCallCount))
+func (s *searcher) collectUsedIDs() map[uint64]struct{} {
+	usedIDs := make(map[uint64]struct{}, len(s.stubCallCount))
 
 	for key, n := range s.stubCallCount {
 		if n > 0 {

@@ -17,10 +17,10 @@ type CallRecord struct {
 	CallID    string           `json:"callId,omitempty"`    // Stable call identifier for UI/sniffer.
 	Transport string           `json:"transport,omitempty"` // Call source: mock/proxy.
 	Client    string           `json:"client,omitempty"`    // Client identifier (e.g. gRPC user-agent).
-	StubID    uuid.UUID        `json:"stubId,omitempty"`
+	StubID    uint64           `json:"stubId,omitempty"`
 	Service   string           `json:"service,omitempty"`
 	Method    string           `json:"method,omitempty"`
-	Room   string           `json:"room,omitempty"`   // Room ID (empty = global).
+	Room      string           `json:"room,omitempty"`      // Room ID (empty = global).
 	Request   map[string]any   `json:"request,omitempty"`   // Deprecated: use Requests.
 	Requests  []map[string]any `json:"requests,omitempty"`  // For streaming calls with multiple messages.
 	Response  map[string]any   `json:"response,omitempty"`  // Deprecated: use Responses.
@@ -43,7 +43,7 @@ type Recorder interface {
 type FilterOpts struct {
 	Service string
 	Method  string
-	Room string
+	Room    string
 }
 
 // Reader provides read access to recorded calls.

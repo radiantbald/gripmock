@@ -22,7 +22,7 @@ import {
 
 import type { StubRecord } from "../../../types/entities";
 import { apiClient } from "../../../dataProvider/apiClient";
-import { getCurrentRoom } from "../../../utils/room";
+import { getCurrentRoom, subscribeRoomChanges } from "../../../utils/room";
 import { RowActionsField } from "./RowActionsField";
 import { OutputKindChip, StubDetails } from "./StubVisuals";
 
@@ -210,12 +210,14 @@ const StubNode = ({
   gridSize,
   allowClone,
   isUpdating,
+  canToggle,
   onToggleEnabled,
 }: {
   stub: StubRecord;
   gridSize: "small" | "medium";
   allowClone?: boolean;
   isUpdating?: boolean;
+  canToggle: boolean;
   onToggleEnabled: (stub: StubRecord, nextEnabled: boolean) => Promise<void>;
 }) => {
   const d = densitySx(gridSize);
@@ -232,12 +234,14 @@ const StubNode = ({
   const actionGapPx = 4;
   const actionsSlotWidthPx =
     actionCount * actionButtonWidthPx + Math.max(0, actionCount - 1) * actionGapPx;
-  const isDisabled = stub.enabled === false;
+  // In room scope, missing `enabled` from API must be treated as disabled.
+  const isEnabled = canToggle ? stub.enabled === true : stub.enabled !== false;
+  const isDisabled = !isEnabled;
   const nextEnabled = isDisabled;
   const statusLabel = isDisabled ? "Disabled" : "Enabled";
   const statusActionLabel = isDisabled ? "Enable" : "Disable";
   const statusActionColor = isDisabled ? "success" : "error";
-  const statusSlotWidth = 92;
+  const statusSlotWidth = canToggle ? 92 : 0;
   const statusSlotHeight = 22;
   const stubNameFontSize = d.text * 1.3;
   const statusControlSx = {
@@ -255,7 +259,7 @@ const StubNode = ({
 
   const handleToggleEnabled = async (event: React.MouseEvent<HTMLDivElement>) => {
     event.stopPropagation();
-    if (isUpdating) {
+    if (isUpdating || !canToggle) {
       return;
     }
 
@@ -340,32 +344,35 @@ const StubNode = ({
                 height: statusSlotHeight,
                 flexShrink: 0,
                 alignSelf: "center",
+                overflow: "hidden",
               }}
-              onMouseEnter={() => setIsStatusHovered(true)}
-              onMouseLeave={() => setIsStatusHovered(false)}
+              onMouseEnter={canToggle ? () => setIsStatusHovered(true) : undefined}
+              onMouseLeave={canToggle ? () => setIsStatusHovered(false) : undefined}
             >
-              <Chip
-                size="small"
-                variant="outlined"
-                color={isStatusHovered ? statusActionColor : stub.enabled !== false ? "success" : "default"}
-                onClick={handleToggleEnabled}
-                clickable
-                disabled={isUpdating}
-                label={isStatusHovered ? statusActionLabel : statusLabel}
-                sx={{
-                  ...statusControlSx,
-                  "& .MuiChip-label": {
-                    px: 0,
-                    width: "100%",
-                    height: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    lineHeight: 1,
-                  },
-                  cursor: isStatusHovered && !isUpdating ? "pointer" : "default",
-                }}
-              />
+              {canToggle ? (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  color={isStatusHovered ? statusActionColor : isEnabled ? "success" : "default"}
+                  onClick={handleToggleEnabled}
+                  clickable
+                  disabled={isUpdating}
+                  label={isStatusHovered ? statusActionLabel : statusLabel}
+                  sx={{
+                    ...statusControlSx,
+                    "& .MuiChip-label": {
+                      px: 0,
+                      width: "100%",
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      lineHeight: 1,
+                    },
+                    cursor: isStatusHovered && !isUpdating ? "pointer" : "default",
+                  }}
+                />
+              ) : null}
             </Box>
             <Typography
               sx={{
@@ -479,21 +486,25 @@ export const StubsDatagrid = ({
   const [selectedMethodName, setSelectedMethodName] = useState<string>("");
   const [isStubsExpanded, setIsStubsExpanded] = useState(false);
   const [updatingByID, setUpdatingByID] = useState<Record<string, boolean>>({});
+  const [activeRoom, setActiveRoom] = useState(() => getCurrentRoom().trim());
 
   const records = data || [];
   const grouped = buildGroupedTree(records);
+  const canToggleInRoom = activeRoom !== "";
+
+  useEffect(() => subscribeRoomChanges(() => setActiveRoom(getCurrentRoom().trim())), []);
 
   const handleToggleEnabled = async (stub: StubRecord, nextEnabled: boolean) => {
     setUpdatingByID((current) => ({ ...current, [stub.id]: true }));
 
     try {
-      const activeRoom = getCurrentRoom().trim();
-      if (!activeRoom) {
+      const roomForToggle = getCurrentRoom().trim();
+      if (!roomForToggle) {
         throw new Error("Room is required to toggle stub status");
       }
 
       const result = await apiClient.request<{ enabled?: boolean }>(
-        `/stubs/${encodeURIComponent(String(stub.id))}?room=${encodeURIComponent(activeRoom)}`,
+        `/stubs/${encodeURIComponent(String(stub.id))}?room=${encodeURIComponent(roomForToggle)}`,
         {
           method: "PATCH",
           body: JSON.stringify({ enabled: nextEnabled }),
@@ -583,7 +594,6 @@ export const StubsDatagrid = ({
       <Box
         sx={{
           border: "1px solid",
-          borderColor: "divider",
           borderRadius: RADIUS_PX,
           overflow: "hidden",
           backgroundColor: "background.paper",
@@ -670,7 +680,6 @@ export const StubsDatagrid = ({
       <Box
         sx={{
           border: "1px solid",
-          borderColor: "divider",
           borderRadius: RADIUS_PX,
           overflow: "hidden",
           backgroundColor: "background.paper",
@@ -808,6 +817,7 @@ export const StubsDatagrid = ({
               gridSize={gridSize}
               allowClone={allowClone}
               isUpdating={Boolean(updatingByID[stub.id])}
+              canToggle={canToggleInRoom}
               onToggleEnabled={handleToggleEnabled}
             />
           ))}

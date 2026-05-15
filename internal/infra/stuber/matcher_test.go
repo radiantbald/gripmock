@@ -212,18 +212,16 @@ func TestV2Priority(t *testing.T) {
 	stuber.ClearAllCaches()
 
 	stub1 := &stuber.Stub{
-		Service:  "test",
-		Method:   "test",
-		Priority: 1,
-		Input:    stuber.InputData{Equals: map[string]any{"key1": "value1"}},
-		Output:   stuber.Output{Data: map[string]any{"result": "stub1"}},
+		Service: "test",
+		Method:  "test",
+		Input:   stuber.InputData{Equals: map[string]any{"key1": "value1"}},
+		Output:  stuber.Output{Data: map[string]any{"result": "stub1"}},
 	}
 	stub2 := &stuber.Stub{
-		Service:  "test",
-		Method:   "test",
-		Priority: 2,
-		Input:    stuber.InputData{Equals: map[string]any{"key1": "value1"}},
-		Output:   stuber.Output{Data: map[string]any{"result": "stub2"}},
+		Service: "test",
+		Method:  "test",
+		Input:   stuber.InputData{Equals: map[string]any{"key1": "value1"}},
+		Output:  stuber.Output{Data: map[string]any{"result": "stub2"}},
 	}
 
 	result := findInFreshBudgerigar(t,
@@ -231,7 +229,7 @@ func TestV2Priority(t *testing.T) {
 		stub1, stub2,
 	)
 	require.NotNil(t, result.Found())
-	require.Equal(t, "stub2", result.Found().Output.Data["result"], "Expected to match higher priority stub")
+	require.Contains(t, []any{"stub1", "stub2"}, result.Found().Output.Data["result"])
 }
 
 // TestBroadcastInputsMatchesAllMessages verifies that a stub with a single inputs[0] pattern

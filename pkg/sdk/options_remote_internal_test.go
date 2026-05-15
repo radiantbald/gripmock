@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -97,9 +96,9 @@ func TestRemoteArmRoomTTLTriggersOwnedCleanup(t *testing.T) {
 	m := &remoteMock{
 		restBaseURL: rest.URL,
 		httpClient:  rest.Client(),
-		room:     "A",
-		roomTTL:  10 * time.Millisecond,
-		stubIDs:     []uuid.UUID{uuid.New()},
+		room:        "A",
+		roomTTL:     10 * time.Millisecond,
+		stubIDs:     []uint64{1},
 	}
 
 	// Act
@@ -136,9 +135,9 @@ func TestRemoteArmRoomTTLStoresCleanupError(t *testing.T) {
 	m := &remoteMock{
 		restBaseURL: rest.URL,
 		httpClient:  rest.Client(),
-		room:     "A",
-		roomTTL:  10 * time.Millisecond,
-		stubIDs:     []uuid.UUID{uuid.New()},
+		room:        "A",
+		roomTTL:     10 * time.Millisecond,
+		stubIDs:     []uint64{1},
 	}
 
 	// Act
