@@ -1,9 +1,9 @@
 import { Box, Button } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import InboxOutlinedIcon from "@mui/icons-material/InboxOutlined";
+import SaveIcon from "@mui/icons-material/Save";
 import {
   List,
-  TextField,
   Create,
   Edit,
   SimpleForm,
@@ -11,10 +11,6 @@ import {
   SaveButton,
   TextInput,
   BooleanInput,
-  NumberField,
-  BooleanField,
-  Show,
-  SimpleShowLayout,
   TopToolbar,
   ExportButton,
   CreateButton,
@@ -27,15 +23,14 @@ import {
   useRecordContext,
   useCreatePath,
 } from "react-admin";
-import { JsonField } from "./components/json/JsonField";
 import { JsonTextAreaInput } from "./components/json/JsonTextAreaInput";
 import { KeyValueTableInput } from "./components/json/KeyValueTableInput";
 import { StubMatcherInput } from "./components/json/StubMatcherInput";
 import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { useFormContext } from "react-hook-form";
+import { useNavigate } from "react-router-dom";
 
-import { useJsonTheme } from "./utils/jsonTheme";
 import { downloadJsonFile } from "./utils/fileDownload";
 import { listContentSx } from "./components/table/listStyles";
 import { listActionButtonSx } from "./components/table/listActionButtonSx";
@@ -262,11 +257,18 @@ const UsedUnusedStubListActions = () => (
 );
 
 const CreateStubToolbar = () => (
-  <Toolbar
+  <CreateStubToolbarImpl />
+);
+
+const CreateStubToolbarImpl = () => {
+  const navigate = useNavigate();
+
+  return (
+    <Toolbar
     sx={{
       width: "100%",
       display: "flex",
-      justifyContent: "flex-end",
+      justifyContent: "flex-start",
       alignItems: "center",
       height: 72,
       py: 0,
@@ -301,70 +303,135 @@ const CreateStubToolbar = () => (
       defaultValue
       sx={{ my: 0 }}
     />
-    <SaveButton sx={{ ml: 0 }} />
+    <SaveButton
+      label="Save"
+      icon={<SaveIcon />}
+      sx={{ ml: 0 }}
+    />
+    <Button
+      type="button"
+      variant="outlined"
+      sx={{ textTransform: "none", px: 3 }}
+      onClick={() => navigate(-1)}
+    >
+      Cancel
+    </Button>
   </Toolbar>
+  );
+};
+
+const EditStubToolbar = ({ canToggleEnabled }: { canToggleEnabled: boolean }) => (
+  <EditStubToolbarImpl canToggleEnabled={canToggleEnabled} />
 );
 
-const EditStubToolbar = () => (
-  <EditStubToolbarImpl />
-);
-
-const EditStubToolbarImpl = () => {
+const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }) => {
   const { getValues } = useFormContext();
   const dataProvider = useDataProvider();
   const notify = useNotify();
   const redirect = useRedirect();
+  const navigate = useNavigate();
   const record = useRecordContext<StubRecord>();
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   return (
     <Toolbar
       sx={{
         width: "100%",
         display: "flex",
-        justifyContent: "flex-end",
+        justifyContent: "space-between",
         alignItems: "center",
         minHeight: 56,
         py: 0,
+        gap: 2,
         "& .ra-input": {
           my: 0,
         },
       }}
     >
+      <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+        <BooleanInput
+          source="enabled"
+          label="Enable Stub"
+          helperText={false}
+          disabled={!canToggleEnabled}
+          sx={{ my: 0 }}
+        />
+        <Button
+          type="button"
+          variant="contained"
+          disabled={saving || deleting}
+          sx={{ textTransform: "none", px: 3 }}
+          startIcon={<SaveIcon />}
+          onClick={async () => {
+            const id = record?.id;
+            if (id === undefined || id === null) {
+              notify("Stub id is missing, cannot save", { type: "error" });
+              return;
+            }
+
+            setSaving(true);
+            try {
+              const values = normalizeStubDelay(getValues() as Record<string, unknown>);
+              const response = await dataProvider.update("stubs", {
+                id,
+                data: values,
+                previousData: record as Record<string, unknown>,
+              });
+
+              const savedStubId = String((response?.data as { id?: string | number } | undefined)?.id ?? id).trim();
+              if (savedStubId) {
+                setStubEditedSignal(savedStubId);
+              }
+              redirect("list", "stubs");
+            } catch (error) {
+              notify((error as Error).message || "Failed to save stub", { type: "error" });
+            } finally {
+              setSaving(false);
+            }
+          }}
+        >
+          Save
+        </Button>
+        <Button
+          type="button"
+          variant="outlined"
+          disabled={saving || deleting}
+          sx={{ textTransform: "none", px: 3 }}
+          onClick={() => navigate(-1)}
+        >
+          Cancel
+        </Button>
+      </Box>
       <Button
         type="button"
-        variant="contained"
-        disabled={saving}
+        variant="outlined"
+        color="error"
+        disabled={saving || deleting}
         sx={{ textTransform: "none", px: 3 }}
         onClick={async () => {
           const id = record?.id;
           if (id === undefined || id === null) {
-            notify("Stub id is missing, cannot save", { type: "error" });
+            notify("Stub id is missing, cannot delete", { type: "error" });
             return;
           }
 
-          setSaving(true);
+          setDeleting(true);
           try {
-            const values = normalizeStubDelay(getValues() as Record<string, unknown>);
-            const response = await dataProvider.update("stubs", {
+            await dataProvider.delete("stubs", {
               id,
-              data: values,
               previousData: record as Record<string, unknown>,
             });
-
-            const savedStubId = String((response?.data as { id?: string | number } | undefined)?.id ?? id).trim();
-            if (savedStubId) {
-              setStubEditedSignal(savedStubId);
-            }
+            notify("Stub deleted", { type: "success" });
             redirect("list", "stubs");
           } catch (error) {
-            notify((error as Error).message || "Failed to save stub", { type: "error" });
+            notify((error as Error).message || "Failed to delete stub", { type: "error" });
           } finally {
-            setSaving(false);
+            setDeleting(false);
           }
         }}
       >
-        Save changes
+        Delete
       </Button>
     </Toolbar>
   );
@@ -635,7 +702,7 @@ export const StubEdit = () => {
   return (
     <Edit>
       <SimpleForm
-        toolbar={<EditStubToolbar />}
+        toolbar={<EditStubToolbar canToggleEnabled={canToggleEnabled} />}
         transform={normalizeStubDelay}
         warnWhenUnsavedChanges
         sx={{
@@ -646,17 +713,17 @@ export const StubEdit = () => {
           gap: 1,
         }}
       >
-        <TextInput source="id" fullWidth disabled />
         <Box
           sx={{
             width: "100%",
             display: "grid",
-            gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(220px, 320px))" },
+            gridTemplateColumns: { xs: "1fr", md: "repeat(4, minmax(180px, 1fr))" },
             gap: 2,
             alignItems: "start",
             justifyContent: "start",
           }}
         >
+          <TextInput source="id" label="Stub ID" fullWidth disabled />
           <TextInput source="name" label="Stub Name" fullWidth />
           <TextInput source="service" fullWidth />
           <TextInput source="method" fullWidth />
@@ -721,6 +788,7 @@ export const StubEdit = () => {
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",
+            alignSelf: "start",
           }}
         >
           <Box sx={{ width: "100%", fontSize: 16, fontWeight: 600, color: "#FF6C37", mb: 1 }}>
@@ -729,102 +797,73 @@ export const StubEdit = () => {
           <Box
             sx={{
               width: "100%",
-              display: "grid",
-              gridTemplateColumns: { xs: "1fr", md: "repeat(2, minmax(220px, 320px))" },
+              display: "flex",
+              flexDirection: "column",
               gap: 2,
-              alignItems: "start",
-              justifyContent: "start",
-            }}
-          >
-            {canToggleEnabled ? <BooleanInput source="enabled" fullWidth /> : null}
-            <NumberInput
-              source="output.code"
-              label="gRPC status code"
-              min={0}
-              max={16}
-              step={1}
-              helperText="Optional status code (0..16). Use non-zero with error responses."
-              fullWidth
-            />
-          </Box>
-          <Box
-            sx={{
-              width: "100%",
-              display: "grid",
-              gridTemplateColumns: { xs: "1fr", md: "repeat(2, minmax(220px, 420px))" },
-              gap: 2,
-              alignItems: "start",
-              justifyContent: "start",
-            }}
-          >
-            <TextInput
-              source="output.error"
-              label="gRPC error"
-              helperText="Optional error text (for non-zero status codes)."
-              fullWidth
-            />
-            <TextInput
-              source="output.delay"
-              label="Delay"
-              helperText="Optional response delay in milliseconds (e.g. 100)."
-              fullWidth
-            />
-          </Box>
-          <Box
-            sx={{
-              width: "100%",
-              display: "grid",
-              gridTemplateColumns: { xs: "1fr", md: "2fr 3fr" },
-              gap: 2,
-              alignItems: "start",
               minHeight: 0,
-              "& > *": { minHeight: 0 },
             }}
           >
-            <KeyValueTableInput
-              source="output.headers"
-              label="Response headers"
-              helperText="Metadata returned to client."
-              maxTableHeight={140}
-            />
-            <JsonTextAreaInput
-              source="output"
-              label="Data / Stream / Details"
-              minRows={8}
-              syncNestedFields={["code", "error", "delay", "headers"]}
-              visibleKeys={["data", "stream", "details"]}
-              placeholder={OUTPUT_PLACEHOLDER_TEMPLATE}
-            />
+            <Box
+              sx={{
+                width: "100%",
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(180px, 1fr))" },
+                gap: 2,
+                alignItems: "start",
+              }}
+            >
+              <NumberInput
+                source="output.code"
+                label="gRPC status code"
+                min={0}
+                max={16}
+                step={1}
+                helperText="Optional status code (0..16). Use non-zero with error responses."
+                fullWidth
+              />
+              <TextInput
+                source="output.error"
+                label="gRPC error"
+                helperText="Optional error text (for non-zero status codes)."
+                fullWidth
+              />
+              <TextInput
+                source="output.delay"
+                label="Delay"
+                helperText="Optional response delay in milliseconds (e.g. 100)."
+                fullWidth
+              />
+            </Box>
+            <Box
+              sx={{
+                width: "100%",
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", md: "2fr 3fr" },
+                gap: 2,
+                alignItems: "start",
+                minHeight: 0,
+                "& > *": { minHeight: 0 },
+              }}
+            >
+              <KeyValueTableInput
+                source="output.headers"
+                label="Response headers"
+                helperText="Metadata returned to client."
+                maxTableHeight={140}
+              />
+              <JsonTextAreaInput
+                source="output"
+                label="Data / Stream / Details"
+                minRows={8}
+                syncNestedFields={["code", "error", "delay", "headers"]}
+                visibleKeys={["data", "stream", "details"]}
+                placeholder={OUTPUT_PLACEHOLDER_TEMPLATE}
+              />
+            </Box>
           </Box>
         </Box>
         </Box>
       </SimpleForm>
     </Edit>
-  );
-};
-
-// Stub Show component
-export const StubShow = () => {
-  const jsonTheme = useJsonTheme();
-
-  return (
-    <Show>
-      <SimpleShowLayout>
-        <TextField source="id" />
-        <TextField source="name" />
-        <TextField source="service" />
-        <TextField source="method" />
-        <BooleanField source="enabled" />
-        <NumberField source="options.times" label="times" />
-        <BooleanField
-          source="input.ignoreArrayOrder"
-          label="ignoreArrayOrder"
-        />
-        <JsonField source="headers" reactJsonOptions={{ theme: jsonTheme }} />
-        <JsonField source="input" reactJsonOptions={{ theme: jsonTheme }} />
-        <JsonField source="inputs" reactJsonOptions={{ theme: jsonTheme }} />
-        <JsonField source="output" reactJsonOptions={{ theme: jsonTheme }} />
-      </SimpleShowLayout>
-    </Show>
   );
 };

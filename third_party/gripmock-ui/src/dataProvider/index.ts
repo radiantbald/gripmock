@@ -323,6 +323,16 @@ const dataProvider: DataProvider = {
   delete: async (resource, params) => {
     const canonical = canonicalResource(resource);
 
+    if (canonical === "stubs") {
+      const activeRoom = getCurrentRoom().trim();
+      const roomQuery = activeRoom ? `?room=${encodeURIComponent(activeRoom)}` : "";
+      await apiClient.request<void>(`/${canonical}/${encodeURIComponent(String(params.id))}${roomQuery}`, {
+        method: "DELETE",
+      });
+
+      return { data: params.id as any };
+    }
+
     if (canonical === "services") {
       await apiClient.request<void>(`/${canonical}/${params.id}`, {
         method: "DELETE",

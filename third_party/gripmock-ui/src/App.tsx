@@ -55,12 +55,6 @@ const StubEdit = wrapLazy(
     return { default: module.StubEdit };
   }),
 );
-const StubShow = wrapLazy(
-  lazy(async () => {
-    const module = await import("./stubs");
-    return { default: module.StubShow };
-  }),
-);
 const StubCreate = wrapLazy(
   lazy(async () => {
     const module = await import("./stubs");
@@ -179,7 +173,6 @@ export const App = () => {
         name="stubs"
         list={StubList}
         edit={StubEdit}
-        show={StubShow}
         create={StubCreate}
         options={{ label: "Stubs" }}
       />
