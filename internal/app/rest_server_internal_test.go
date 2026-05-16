@@ -839,6 +839,62 @@ func (s *RestServerTestSuite) TestUpdateStubEnabledByID_EnableFromAllDisabled() 
 	s.Equal(1, enabledCount, "one selected stub must become enabled")
 }
 
+func (s *RestServerTestSuite) TestPatchStubByID_ReturnsUpdatedPayload() {
+	payload := `[
+		{
+			"service": "svc",
+			"method": "M",
+			"enabled": true,
+			"input": {"equals": {"x": "1"}},
+			"output": {"data": {"message": "before", "value": 10}}
+		}
+	]`
+
+	w := s.addStubJSONWithRequest(s.server, payload, func(req *http.Request) {
+		req.Header.Set("X-Gripmock-Room", "A")
+	})
+	s.Equal(http.StatusOK, w.Code)
+
+	stubs := s.budgerigar.All()
+	s.Require().Len(stubs, 1)
+	publicID := s.server.ensurePublicID(stubs[0].ID)
+
+	req := httptest.NewRequestWithContext(
+		s.T().Context(),
+		http.MethodPatch,
+		"/api/stubs/"+strconv.FormatUint(uint64(publicID), 10)+"?room=A",
+		bytes.NewBufferString(`{"output":{"data":{"message":"after","value":15}}}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Gripmock-Room", "A")
+	req = mux.SetURLVars(req, map[string]string{
+		"uuid": strconv.FormatUint(uint64(publicID), 10),
+	})
+
+	rec := httptest.NewRecorder()
+	s.server.PatchStubByID(rec, req)
+	s.Equal(http.StatusOK, rec.Code)
+
+	var response map[string]any
+	s.Require().NoError(json.Unmarshal(rec.Body.Bytes(), &response))
+
+	output, ok := response["output"].(map[string]any)
+	s.Require().True(ok)
+	data, ok := output["data"].(map[string]any)
+	s.Require().True(ok)
+	s.Equal("after", data["message"])
+	s.InDelta(float64(15), data["value"], 0)
+	_, hasBeforeField := data["result"]
+	s.False(hasBeforeField, "removed keys from output.data must not be preserved after patch")
+
+	updated := s.budgerigar.FindByID(stubs[0].ID)
+	s.Require().NotNil(updated)
+	s.Equal("after", updated.Output.Data["message"])
+	s.Equal("15", updated.Output.Data["value"].(json.Number).String())
+	_, stillHasBeforeField := updated.Output.Data["result"]
+	s.False(stillHasBeforeField, "storage must not keep removed output.data keys after patch")
+}
+
 func (s *RestServerTestSuite) TestMcpMessageHistoryTools() {
 	server := s.newRestServerWithHistory(
 		history.CallRecord{Service: "svc", Method: "A", Request: map[string]any{"id": 1}},

@@ -23,6 +23,7 @@ import {
 import type { StubRecord } from "../../../types/entities";
 import { apiClient } from "../../../dataProvider/apiClient";
 import { getCurrentRoom, subscribeRoomChanges } from "../../../utils/room";
+import { clearStubEditedSignal, getStubEditedSignalStubId } from "../../../utils/stubEditSignal";
 import { RowActionsField } from "./RowActionsField";
 import { OutputKindChip, StubDetails } from "./StubVisuals";
 
@@ -36,7 +37,14 @@ type ServiceGroup = {
   methods: MethodGroup[];
 };
 
+type PersistedStubSelection = {
+  service?: string;
+  method?: string;
+  stubsExpanded?: boolean;
+};
+
 const RADIUS_PX = "10px";
+const STUBS_SELECTION_STORAGE_KEY = "gripmock.ui.stubs.selectionByRoom";
 const THIN_CHEVRON_SX = { fontSize: 18 } as const;
 const ICON_BUTTON_ACCENT_SX = {
   color: "text.secondary",
@@ -179,6 +187,57 @@ const buildGroupedTree = (records: StubRecord[]): ServiceGroup[] => {
       return { name: serviceName, methods };
     });
 };
+
+const readPersistedSelections = (): Record<string, PersistedStubSelection> => {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(STUBS_SELECTION_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+
+    const output: Record<string, PersistedStubSelection> = {};
+    Object.entries(parsed as Record<string, unknown>).forEach(([roomKey, value]) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return;
+      }
+      const candidate = value as Record<string, unknown>;
+      const service = typeof candidate.service === "string" ? candidate.service.trim() : undefined;
+      const method = typeof candidate.method === "string" ? candidate.method.trim() : undefined;
+      const stubsExpanded = typeof candidate.stubsExpanded === "boolean" ? candidate.stubsExpanded : undefined;
+      if (!service && !method && typeof stubsExpanded !== "boolean") {
+        return;
+      }
+      output[roomKey] = { service, method, stubsExpanded };
+    });
+
+    return output;
+  } catch {
+    return {};
+  }
+};
+
+const writePersistedSelections = (value: Record<string, PersistedStubSelection>): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(STUBS_SELECTION_STORAGE_KEY, JSON.stringify(value));
+  } catch {
+    // Ignore storage failures.
+  }
+};
+
+const selectionRoomKey = (room: string): string => room.trim() || "__global__";
 
 const densitySx = (gridSize: "small" | "medium") =>
   gridSize === "small"
@@ -487,12 +546,88 @@ export const StubsDatagrid = ({
   const [isStubsExpanded, setIsStubsExpanded] = useState(false);
   const [updatingByID, setUpdatingByID] = useState<Record<string, boolean>>({});
   const [activeRoom, setActiveRoom] = useState(() => getCurrentRoom().trim());
+  const [focusedStubId, setFocusedStubId] = useState(() => getStubEditedSignalStubId());
+  const [selectionHydrated, setSelectionHydrated] = useState(false);
 
   const records = data || [];
   const grouped = buildGroupedTree(records);
   const canToggleInRoom = activeRoom !== "";
 
   useEffect(() => subscribeRoomChanges(() => setActiveRoom(getCurrentRoom().trim())), []);
+
+  useEffect(() => {
+    setSelectionHydrated(false);
+    const persisted = readPersistedSelections()[selectionRoomKey(activeRoom)];
+    if (persisted) {
+      if (persisted.service) {
+        setSelectedServiceName(persisted.service);
+      }
+      if (persisted.method) {
+        setSelectedMethodName(persisted.method);
+      }
+      if (typeof persisted.stubsExpanded === "boolean") {
+        setIsStubsExpanded(persisted.stubsExpanded);
+      }
+    }
+    setSelectionHydrated(true);
+  }, [activeRoom]);
+
+  useEffect(() => {
+    if (!selectionHydrated) {
+      return;
+    }
+    const service = selectedServiceName.trim();
+    const method = selectedMethodName.trim();
+    if (!service || !method) {
+      return;
+    }
+
+    const roomKey = selectionRoomKey(activeRoom);
+    const next = readPersistedSelections();
+    next[roomKey] = {
+      ...next[roomKey],
+      service,
+      method,
+    };
+    writePersistedSelections(next);
+  }, [activeRoom, selectedMethodName, selectedServiceName, selectionHydrated]);
+
+  useEffect(() => {
+    if (!selectionHydrated) {
+      return;
+    }
+    const roomKey = selectionRoomKey(activeRoom);
+    const next = readPersistedSelections();
+    next[roomKey] = {
+      ...next[roomKey],
+      stubsExpanded: isStubsExpanded,
+    };
+    writePersistedSelections(next);
+  }, [activeRoom, isStubsExpanded, selectionHydrated]);
+
+  useEffect(() => {
+    if (!focusedStubId) {
+      return;
+    }
+    if (records.length === 0) {
+      return;
+    }
+
+    const focusedStub = records.find((stub) => String(stub.id).trim() === focusedStubId);
+    if (!focusedStub) {
+      clearStubEditedSignal();
+      setFocusedStubId("");
+      return;
+    }
+
+    const nextService = focusedStub.service?.trim() || "(no service)";
+    const nextMethod = focusedStub.method?.trim() || "(no method)";
+    setSelectedServiceName(nextService);
+    setSelectedMethodName(nextMethod);
+    setIsStubsExpanded(false);
+    clearStubEditedSignal();
+    setFocusedStubId("");
+  }, [focusedStubId, records]);
 
   const handleToggleEnabled = async (stub: StubRecord, nextEnabled: boolean) => {
     setUpdatingByID((current) => ({ ...current, [stub.id]: true }));
@@ -526,8 +661,13 @@ export const StubsDatagrid = ({
   };
 
   useEffect(() => {
+    if (focusedStubId) {
+      return;
+    }
+    if (!selectionHydrated) {
+      return;
+    }
     if (grouped.length === 0) {
-      setSelectedServiceName("");
       return;
     }
 
@@ -535,15 +675,20 @@ export const StubsDatagrid = ({
     if (!hasSelectedService) {
       setSelectedServiceName(grouped[0].name);
     }
-  }, [grouped, selectedServiceName]);
+  }, [focusedStubId, grouped, selectedServiceName, selectionHydrated]);
 
   const selectedService =
     grouped.find((serviceGroup) => serviceGroup.name === selectedServiceName) || grouped[0];
   const methods = selectedService?.methods || [];
 
   useEffect(() => {
+    if (focusedStubId) {
+      return;
+    }
+    if (!selectionHydrated) {
+      return;
+    }
     if (methods.length === 0) {
-      setSelectedMethodName("");
       return;
     }
 
@@ -551,7 +696,7 @@ export const StubsDatagrid = ({
     if (!hasSelectedMethod) {
       setSelectedMethodName(methods[0].name);
     }
-  }, [methods, selectedMethodName]);
+  }, [focusedStubId, methods, selectedMethodName, selectionHydrated]);
 
   const selectedMethod =
     methods.find((methodGroup) => methodGroup.name === selectedMethodName) || methods[0];

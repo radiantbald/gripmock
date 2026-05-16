@@ -5,6 +5,14 @@ type StubEditSignal = {
   savedAt: number;
 };
 
+const getStorage = (): Storage | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.localStorage;
+};
+
 export const setStubEditedSignal = (stubId: string): void => {
   const normalizedStubId = String(stubId).trim();
   if (!normalizedStubId) {
@@ -13,7 +21,7 @@ export const setStubEditedSignal = (stubId: string): void => {
 
   const payload: StubEditSignal = { stubId: normalizedStubId, savedAt: Date.now() };
   try {
-    roomStorage.setItem(STUB_EDIT_SIGNAL_KEY, JSON.stringify(payload));
+    getStorage()?.setItem(STUB_EDIT_SIGNAL_KEY, JSON.stringify(payload));
   } catch {
     // Ignore storage failures (private mode, quota, etc.).
   }
@@ -21,7 +29,7 @@ export const setStubEditedSignal = (stubId: string): void => {
 
 export const getStubEditedSignalStubId = (): string => {
   try {
-    const raw = roomStorage.getItem(STUB_EDIT_SIGNAL_KEY);
+    const raw = getStorage()?.getItem(STUB_EDIT_SIGNAL_KEY);
     if (!raw) {
       return "";
     }
@@ -35,7 +43,7 @@ export const getStubEditedSignalStubId = (): string => {
 
 export const clearStubEditedSignal = (): void => {
   try {
-    roomStorage.removeItem(STUB_EDIT_SIGNAL_KEY);
+    getStorage()?.removeItem(STUB_EDIT_SIGNAL_KEY);
   } catch {
     // Ignore storage failures (private mode, quota, etc.).
   }

@@ -1,10 +1,11 @@
-import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, Fragment, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
   Box,
   Button,
+  IconButton,
   Chip,
   Divider,
   Paper,
@@ -14,9 +15,14 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Typography,
 } from "@mui/material";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import KeyboardArrowUpRoundedIcon from "@mui/icons-material/KeyboardArrowUpRounded";
+import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import SearchOffRoundedIcon from "@mui/icons-material/SearchOffRounded";
@@ -190,6 +196,114 @@ const formatJsonInlinePayload = (value: unknown, maxLength = 180): string => {
   }
 };
 
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+type SearchOptions = {
+  caseSensitive: boolean;
+  wholeWord: boolean;
+  useRegex: boolean;
+};
+
+type MatchRange = {
+  start: number;
+  end: number;
+  index: number;
+};
+
+const hasSearchableContent = (value: unknown): boolean => {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
+  if (isPlainObject(value)) {
+    return Object.keys(value).length > 0;
+  }
+
+  return true;
+};
+
+const buildSearchRegex = (query: string, options: SearchOptions): RegExp | null => {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) {
+    return null;
+  }
+
+  const source = options.useRegex ? normalizedQuery : escapeRegExp(normalizedQuery);
+  const boundedSource = options.wholeWord ? `\\b(?:${source})\\b` : source;
+  const flags = options.caseSensitive ? "g" : "gi";
+
+  try {
+    return new RegExp(boundedSource, flags);
+  } catch {
+    return null;
+  }
+};
+
+const collectMatchRanges = (text: string, matcher: RegExp | null, offset = 0): MatchRange[] => {
+  if (!matcher) {
+    return [];
+  }
+
+  const ranges: MatchRange[] = [];
+  const regex = new RegExp(matcher.source, matcher.flags.includes("g") ? matcher.flags : `${matcher.flags}g`);
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const start = match.index;
+    const matchedText = match[0] || "";
+    const end = start + matchedText.length;
+    ranges.push({ start, end, index: offset + ranges.length });
+    if (!matchedText) {
+      regex.lastIndex += 1;
+    }
+  }
+
+  return ranges;
+};
+
+const renderHighlightedJsonText = (text: string, ranges: MatchRange[], activeMatchIndex: number): ReactNode => {
+  if (!ranges.length) {
+    return text;
+  }
+
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  ranges.forEach((range, idx) => {
+    if (range.start > cursor) {
+      nodes.push(<Fragment key={`plain-${idx}`}>{text.slice(cursor, range.start)}</Fragment>);
+    }
+    const isActive = range.index === activeMatchIndex;
+    nodes.push(
+      <Box
+        component="mark"
+        data-match-index={range.index}
+        key={`mark-${range.index}`}
+        sx={{
+          px: 0,
+          borderRadius: 0.2,
+          bgcolor: isActive ? "#ff9800" : "warning.light",
+          color: isActive ? "#1a1a1a" : "warning.contrastText",
+        }}
+      >
+        {text.slice(range.start, range.end)}
+      </Box>,
+    );
+    cursor = range.end;
+  });
+  if (cursor < text.length) {
+    nodes.push(<Fragment key="plain-tail">{text.slice(cursor)}</Fragment>);
+  }
+
+  return nodes;
+};
+
 const hasMissingProtoError = (record?: HistoryRecord): boolean => {
   if (!record || record.code !== 12) {
     return false;
@@ -276,7 +390,25 @@ export const SnifferPage = () => {
   const [streamRevision, setStreamRevision] = useState(0);
   const [expandedResponseKeys, setExpandedResponseKeys] = useState<Set<string>>(new Set());
   const [editedStubId, setEditedStubId] = useState(() => getStubEditedSignalStubId());
+  const [showRequestSearch, setShowRequestSearch] = useState(false);
+  const [showResponseSearch, setShowResponseSearch] = useState(false);
+  const [requestSearchQuery, setRequestSearchQuery] = useState("");
+  const [requestSearchOptions, setRequestSearchOptions] = useState<SearchOptions>({
+    caseSensitive: false,
+    wholeWord: false,
+    useRegex: false,
+  });
+  const [requestActiveMatch, setRequestActiveMatch] = useState(-1);
+  const [responseSearchQuery, setResponseSearchQuery] = useState("");
+  const [responseSearchOptions, setResponseSearchOptions] = useState<SearchOptions>({
+    caseSensitive: false,
+    wholeWord: false,
+    useRegex: false,
+  });
+  const [responseActiveMatch, setResponseActiveMatch] = useState(-1);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const requestSearchContainerRef = useRef<HTMLDivElement | null>(null);
+  const responseSearchContainerRef = useRef<HTMLDivElement | null>(null);
 
   const checkProtoStatus = useCallback(
     async (service: string, method: string): Promise<{ hasMethod: boolean; hasProto: boolean }> => {
@@ -384,6 +516,7 @@ export const SnifferPage = () => {
   const shouldHideResponsePayload = showMissingProtoHint || showMissingRoomHint || shouldShowAttachedRoomInfo;
   const shouldShowMissingStubBlock = !shouldHideResponsePayload && showMissingStubHint;
   const shouldShowInvalidStubBlock = !shouldHideResponsePayload && showResponseSchemaHint;
+  const shouldShowResponsePayloadBlock = !shouldHideResponsePayload && !shouldShowInvalidStubBlock && !shouldShowMissingStubBlock;
   const shouldShowStubEditedRetryHint = shouldShowInvalidStubBlock && !!editedStubId && editedStubId === selectedStubId;
   const stubsListPath = useMemo(() => {
     const basePath = createPath({ resource: "stubs", type: "list" });
@@ -409,6 +542,26 @@ export const SnifferPage = () => {
     return unwrapRootPayload(selected?.request ?? {});
   }, [selected]);
   const requestPayloadText = useMemo(() => formatJsonPayload(requestPayload), [requestPayload]);
+  const hasRequestSearchablePayload = useMemo(() => {
+    if (!selected) {
+      return false;
+    }
+
+    if (Array.isArray(selected.requests) && selected.requests.length > 0) {
+      return selected.requests.some((item) => hasSearchableContent(unwrapRootPayload(item)));
+    }
+
+    return hasSearchableContent(unwrapRootPayload(selected.request));
+  }, [selected]);
+  const requestSearchRegex = useMemo(
+    () => buildSearchRegex(requestSearchQuery, requestSearchOptions),
+    [requestSearchOptions, requestSearchQuery],
+  );
+  const requestMatchRanges = useMemo(
+    () => collectMatchRanges(requestPayloadText, requestSearchRegex),
+    [requestPayloadText, requestSearchRegex],
+  );
+  const requestMatchCount = requestMatchRanges.length;
   const responseEntries = useMemo(() => {
     const selectedResponses =
       Array.isArray(selected?.responses) && selected.responses.length > 0 ? selected.responses : [];
@@ -416,14 +569,46 @@ export const SnifferPage = () => {
       selectedResponses.length > 0 ? selectedResponses : [selected?.response ?? {}];
     const responseTimestamps = Array.isArray(selected?.responseTimestamps) ? selected.responseTimestamps : [];
 
-    return responsePayloads.map((payload, index) => ({
+    return responsePayloads.map((payload, index) => {
+      const unwrappedPayload = unwrapRootPayload(payload);
+      return {
       key: `${index}-${String(responseTimestamps[index] || "")}`,
-      payload: unwrapRootPayload(payload),
+      payload: unwrappedPayload,
+      payloadText: formatJsonPayload(unwrappedPayload),
       timestamp: responseTimestamps[index] || (index === 0 ? selected?.timestamp : undefined),
       index,
-    }));
+      };
+    });
   }, [selected]);
   const orderedResponseEntries = useMemo(() => [...responseEntries].reverse(), [responseEntries]);
+  const hasResponseSearchablePayload = useMemo(() => {
+    if (!selected) {
+      return false;
+    }
+
+    if (Array.isArray(selected.responses) && selected.responses.length > 0) {
+      return selected.responses.some((item) => hasSearchableContent(unwrapRootPayload(item)));
+    }
+
+    return hasSearchableContent(unwrapRootPayload(selected.response));
+  }, [selected]);
+  const responseSearchRegex = useMemo(
+    () => buildSearchRegex(responseSearchQuery, responseSearchOptions),
+    [responseSearchOptions, responseSearchQuery],
+  );
+  const responseMatchData = useMemo(() => {
+    let offset = 0;
+    const byEntry = orderedResponseEntries.map((entry) => {
+      const ranges = collectMatchRanges(entry.payloadText, responseSearchRegex, offset);
+      offset += ranges.length;
+      return { key: entry.key, ranges };
+    });
+
+    return {
+      totalMatches: offset,
+      rangesByEntry: new Map(byEntry.map((item) => [item.key, item.ranges])),
+    };
+  }, [orderedResponseEntries, responseSearchRegex]);
   const isSingleResponseView = orderedResponseEntries.length <= 1;
   const singleResponseEntry = orderedResponseEntries[0];
   const responseHeaderTimestamp = isSingleResponseView
@@ -436,6 +621,66 @@ export const SnifferPage = () => {
       return latestKey ? new Set([latestKey]) : new Set();
     });
   }, [selected?.callId, selected?.id, orderedResponseEntries]);
+
+  useEffect(() => {
+    setShowRequestSearch(false);
+    setShowResponseSearch(false);
+    setRequestSearchQuery("");
+    setResponseSearchQuery("");
+    setRequestActiveMatch(-1);
+    setResponseActiveMatch(-1);
+  }, [selected?.callId, selected?.id]);
+
+  useEffect(() => {
+    if (!showRequestSearch) {
+      setRequestActiveMatch(-1);
+      return;
+    }
+    if (requestMatchCount === 0) {
+      setRequestActiveMatch(-1);
+      return;
+    }
+    setRequestActiveMatch((current) => (current < 0 || current >= requestMatchCount ? 0 : current));
+  }, [requestMatchCount, showRequestSearch]);
+
+  useEffect(() => {
+    if (!showResponseSearch) {
+      setResponseActiveMatch(-1);
+      return;
+    }
+    if (responseMatchData.totalMatches === 0) {
+      setResponseActiveMatch(-1);
+      return;
+    }
+    setResponseActiveMatch((current) => (current < 0 || current >= responseMatchData.totalMatches ? 0 : current));
+  }, [responseMatchData.totalMatches, showResponseSearch]);
+
+  useEffect(() => {
+    if (!showRequestSearch || requestActiveMatch < 0) {
+      return;
+    }
+    const marker = requestSearchContainerRef.current?.querySelector<HTMLElement>(
+      `[data-match-index="${requestActiveMatch}"]`,
+    );
+    marker?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [requestActiveMatch, requestMatchRanges, showRequestSearch]);
+
+  useEffect(() => {
+    if (!showResponseSearch || responseActiveMatch < 0) {
+      return;
+    }
+    const marker = responseSearchContainerRef.current?.querySelector<HTMLElement>(
+      `[data-match-index="${responseActiveMatch}"]`,
+    );
+    marker?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [responseActiveMatch, responseMatchData, showResponseSearch]);
+
+  useEffect(() => {
+    if (!showResponseSearch || !responseSearchQuery.trim() || orderedResponseEntries.length <= 1) {
+      return;
+    }
+    setExpandedResponseKeys(new Set(orderedResponseEntries.map((entry) => entry.key)));
+  }, [orderedResponseEntries, responseSearchQuery, showResponseSearch]);
 
   useEffect(() => {
     const syncEditedStubId = () => setEditedStubId(getStubEditedSignalStubId());
@@ -565,6 +810,34 @@ export const SnifferPage = () => {
       }
       setIsUploadingProto(false);
     }
+  };
+
+  const stepRequestMatch = (direction: 1 | -1) => {
+    if (requestMatchCount === 0) {
+      return;
+    }
+    setRequestActiveMatch((current) => {
+      const safeCurrent = current < 0 ? 0 : current;
+      return (safeCurrent + direction + requestMatchCount) % requestMatchCount;
+    });
+  };
+
+  const stepResponseMatch = (direction: 1 | -1) => {
+    if (responseMatchData.totalMatches === 0) {
+      return;
+    }
+    setResponseActiveMatch((current) => {
+      const safeCurrent = current < 0 ? 0 : current;
+      return (safeCurrent + direction + responseMatchData.totalMatches) % responseMatchData.totalMatches;
+    });
+  };
+
+  const toggleSearchOption = (target: "request" | "response", option: keyof SearchOptions) => {
+    if (target === "request") {
+      setRequestSearchOptions((current) => ({ ...current, [option]: !current[option] }));
+      return;
+    }
+    setResponseSearchOptions((current) => ({ ...current, [option]: !current[option] }));
   };
 
   return (
@@ -727,16 +1000,107 @@ export const SnifferPage = () => {
               <Typography variant="subtitle2" sx={panelTitleSx}>
                 Request
               </Typography>
-              <Chip
-                size="small"
-                variant="outlined"
-                label={selectedService && selectedMethod ? `${selectedService}.${selectedMethod}` : "No call selected"}
-              />
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={selectedService && selectedMethod ? `${selectedService}.${selectedMethod}` : "No call selected"}
+                />
+                {hasRequestSearchablePayload ? (
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      if (showRequestSearch) {
+                        setShowRequestSearch(false);
+                        setRequestSearchQuery("");
+                        setRequestActiveMatch(-1);
+                      } else {
+                        setShowRequestSearch(true);
+                      }
+                    }}
+                    sx={{
+                      border: "1px solid",
+                      borderColor: showRequestSearch ? "primary.main" : "divider",
+                      borderRadius: 1,
+                    }}
+                  >
+                    <SearchRoundedIcon fontSize="small" />
+                  </IconButton>
+                ) : null}
+              </Box>
             </Box>
             <Divider />
-            <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.25 }}>
+            {showRequestSearch && hasRequestSearchablePayload ? (
+              <>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.75,
+                    px: 1.25,
+                    py: 0.75,
+                    bgcolor: "#2f3136",
+                    borderBottom: "1px solid",
+                    borderColor: "divider",
+                  }}
+                >
+                  <TextField
+                    value={requestSearchQuery}
+                    onChange={(event) => setRequestSearchQuery(event.target.value)}
+                    size="small"
+                    fullWidth
+                    placeholder="Find"
+                    sx={{
+                      "& .MuiInputBase-root": { bgcolor: "#3a3d42", color: "common.white" },
+                      "& .MuiOutlinedInput-notchedOutline": { borderColor: "#5c6168" },
+                    }}
+                  />
+                  <Button
+                    size="small"
+                    variant={requestSearchOptions.caseSensitive ? "contained" : "text"}
+                    onClick={() => toggleSearchOption("request", "caseSensitive")}
+                  >
+                    Aa
+                  </Button>
+                  <Button
+                    size="small"
+                    variant={requestSearchOptions.wholeWord ? "contained" : "text"}
+                    onClick={() => toggleSearchOption("request", "wholeWord")}
+                  >
+                    ab
+                  </Button>
+                  <Button
+                    size="small"
+                    variant={requestSearchOptions.useRegex ? "contained" : "text"}
+                    onClick={() => toggleSearchOption("request", "useRegex")}
+                  >
+                    .*
+                  </Button>
+                  <Typography variant="body2" sx={{ minWidth: 52, textAlign: "center", color: "grey.300" }}>
+                    {requestMatchCount > 0 ? `${requestActiveMatch + 1} of ${requestMatchCount}` : "0 of 0"}
+                  </Typography>
+                  <IconButton size="small" onClick={() => stepRequestMatch(-1)} disabled={requestMatchCount === 0}>
+                    <KeyboardArrowUpRoundedIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton size="small" onClick={() => stepRequestMatch(1)} disabled={requestMatchCount === 0}>
+                    <KeyboardArrowDownRoundedIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      setShowRequestSearch(false);
+                      setRequestSearchQuery("");
+                      setRequestActiveMatch(-1);
+                    }}
+                  >
+                    <CloseRoundedIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </>
+            ) : null}
+            <Box ref={requestSearchContainerRef} sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.25 }}>
               <Box component="pre" sx={jsonTextSx}>
-                {requestPayloadText}
+                {renderHighlightedJsonText(requestPayloadText, requestMatchRanges, requestActiveMatch)}
               </Box>
             </Box>
           </Paper>
@@ -768,6 +1132,27 @@ export const SnifferPage = () => {
                 ) : (
                   <Chip size="small" variant="outlined" label={`${orderedResponseEntries.length} items`} />
                 )}
+                {shouldShowResponsePayloadBlock && hasResponseSearchablePayload ? (
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      if (showResponseSearch) {
+                        setShowResponseSearch(false);
+                        setResponseSearchQuery("");
+                        setResponseActiveMatch(-1);
+                      } else {
+                        setShowResponseSearch(true);
+                      }
+                    }}
+                    sx={{
+                      border: "1px solid",
+                      borderColor: showResponseSearch ? "primary.main" : "divider",
+                      borderRadius: 1,
+                    }}
+                  >
+                    <SearchRoundedIcon fontSize="small" />
+                  </IconButton>
+                ) : null}
               </Box>
             </Box>
             <Divider />
@@ -954,10 +1339,95 @@ export const SnifferPage = () => {
                 </Box>
               </Box>
             ) : (
-              <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.25 }}>
+              <Box sx={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
+                {showResponseSearch && hasResponseSearchablePayload ? (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 0.75,
+                      px: 1.25,
+                      py: 0.75,
+                      bgcolor: "#2f3136",
+                      borderBottom: "1px solid",
+                      borderColor: "divider",
+                    }}
+                  >
+                    <TextField
+                      value={responseSearchQuery}
+                      onChange={(event) => setResponseSearchQuery(event.target.value)}
+                      size="small"
+                      fullWidth
+                      placeholder="Find"
+                      sx={{
+                        "& .MuiInputBase-root": { bgcolor: "#3a3d42", color: "common.white" },
+                        "& .MuiOutlinedInput-notchedOutline": { borderColor: "#5c6168" },
+                      }}
+                    />
+                    <Button
+                      size="small"
+                      variant={responseSearchOptions.caseSensitive ? "contained" : "text"}
+                      onClick={() => toggleSearchOption("response", "caseSensitive")}
+                    >
+                      Aa
+                    </Button>
+                    <Button
+                      size="small"
+                      variant={responseSearchOptions.wholeWord ? "contained" : "text"}
+                      onClick={() => toggleSearchOption("response", "wholeWord")}
+                    >
+                      ab
+                    </Button>
+                    <Button
+                      size="small"
+                      variant={responseSearchOptions.useRegex ? "contained" : "text"}
+                      onClick={() => toggleSearchOption("response", "useRegex")}
+                    >
+                      .*
+                    </Button>
+                    <Typography variant="body2" sx={{ minWidth: 52, textAlign: "center", color: "grey.300" }}>
+                      {responseMatchData.totalMatches > 0
+                        ? `${responseActiveMatch + 1} of ${responseMatchData.totalMatches}`
+                        : "0 of 0"}
+                    </Typography>
+                    <IconButton
+                      size="small"
+                      onClick={() => stepResponseMatch(-1)}
+                      disabled={responseMatchData.totalMatches === 0}
+                    >
+                      <KeyboardArrowUpRoundedIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => stepResponseMatch(1)}
+                      disabled={responseMatchData.totalMatches === 0}
+                    >
+                      <KeyboardArrowDownRoundedIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setShowResponseSearch(false);
+                        setResponseSearchQuery("");
+                        setResponseActiveMatch(-1);
+                      }}
+                    >
+                      <CloseRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ) : null}
+                <Box ref={responseSearchContainerRef} sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.25 }}>
                 {isSingleResponseView ? (
                   <Box component="pre" sx={jsonTextSx}>
-                    {formatJsonPayload(singleResponseEntry?.payload ?? {})}
+                    {singleResponseEntry ? (
+                      renderHighlightedJsonText(
+                        singleResponseEntry.payloadText,
+                        responseMatchData.rangesByEntry.get(singleResponseEntry.key) || [],
+                        responseActiveMatch,
+                      )
+                    ) : (
+                      "No response payload"
+                    )}
                   </Box>
                 ) : (
                   <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -1035,13 +1505,18 @@ export const SnifferPage = () => {
                           }}
                         >
                           <Box component="pre" sx={jsonTextSx}>
-                            {formatJsonPayload(entry.payload)}
+                            {renderHighlightedJsonText(
+                              entry.payloadText,
+                              responseMatchData.rangesByEntry.get(entry.key) || [],
+                              responseActiveMatch,
+                            )}
                           </Box>
                         </AccordionDetails>
                       </Accordion>
                     ))}
                   </Box>
                 )}
+                </Box>
               </Box>
             )}
           </Paper>

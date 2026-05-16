@@ -17,7 +17,6 @@ import {
   AutocompleteInput,
   useGetList,
   NumberInput,
-  useRedirect,
   useDataProvider,
   useNotify,
   useRecordContext,
@@ -122,6 +121,35 @@ const normalizeStubDelay = <T extends Record<string, unknown>>(data: T): T => {
       delay: normalizeDelayValue((output as Record<string, unknown>).delay),
     },
   };
+};
+
+const STUBS_SELECTION_STORAGE_KEY = "gripmock.ui.stubs.selectionByRoom";
+
+const selectionRoomKey = (room: string): string => room.trim() || "__global__";
+
+const rememberStubsSelection = (service: unknown, method: unknown): void => {
+  const normalizedService = typeof service === "string" ? service.trim() : "";
+  const normalizedMethod = typeof method === "string" ? method.trim() : "";
+  if (!normalizedService || !normalizedMethod) {
+    return;
+  }
+
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    const room = getCurrentRoom().trim();
+    const roomKey = selectionRoomKey(room);
+    const raw = window.localStorage.getItem(STUBS_SELECTION_STORAGE_KEY);
+    const current =
+      raw && typeof raw === "string" ? (JSON.parse(raw) as Record<string, unknown>) : {};
+
+    current[roomKey] = { service: normalizedService, method: normalizedMethod };
+    window.localStorage.setItem(STUBS_SELECTION_STORAGE_KEY, JSON.stringify(current));
+  } catch {
+    // Ignore storage failures.
+  }
 };
 
 const DEFAULT_OUTPUT_TEMPLATE = {
@@ -262,6 +290,8 @@ const CreateStubToolbar = () => (
 
 const CreateStubToolbarImpl = () => {
   const navigate = useNavigate();
+  const createPath = useCreatePath();
+  const stubsListPath = createPath({ resource: "stubs", type: "list" });
 
   return (
     <Toolbar
@@ -312,7 +342,7 @@ const CreateStubToolbarImpl = () => {
       type="button"
       variant="outlined"
       sx={{ textTransform: "none", px: 3 }}
-      onClick={() => navigate(-1)}
+      onClick={() => navigate(stubsListPath)}
     >
       Cancel
     </Button>
@@ -325,14 +355,42 @@ const EditStubToolbar = ({ canToggleEnabled }: { canToggleEnabled: boolean }) =>
 );
 
 const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }) => {
-  const { getValues } = useFormContext();
+  const { handleSubmit, getValues } = useFormContext();
   const dataProvider = useDataProvider();
   const notify = useNotify();
-  const redirect = useRedirect();
   const navigate = useNavigate();
+  const createPath = useCreatePath();
+  const stubsListPath = createPath({ resource: "stubs", type: "list" });
   const record = useRecordContext<StubRecord>();
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const handleSave = handleSubmit(async (formValues) => {
+    const id = record?.id;
+    if (id === undefined || id === null) {
+      notify("Stub id is missing, cannot save", { type: "error" });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const values = normalizeStubDelay(formValues as Record<string, unknown>);
+      const response = await dataProvider.update("stubs", {
+        id,
+        data: values,
+        previousData: record as Record<string, unknown>,
+      });
+
+      const savedStubId = String((response?.data as { id?: string | number } | undefined)?.id ?? id).trim();
+      if (savedStubId) {
+        setStubEditedSignal(savedStubId);
+      }
+      navigate(stubsListPath);
+    } catch (error) {
+      notify((error as Error).message || "Failed to save stub", { type: "error" });
+    } finally {
+      setSaving(false);
+    }
+  });
 
   return (
     <Toolbar
@@ -363,32 +421,8 @@ const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }
           disabled={saving || deleting}
           sx={{ textTransform: "none", px: 3 }}
           startIcon={<SaveIcon />}
-          onClick={async () => {
-            const id = record?.id;
-            if (id === undefined || id === null) {
-              notify("Stub id is missing, cannot save", { type: "error" });
-              return;
-            }
-
-            setSaving(true);
-            try {
-              const values = normalizeStubDelay(getValues() as Record<string, unknown>);
-              const response = await dataProvider.update("stubs", {
-                id,
-                data: values,
-                previousData: record as Record<string, unknown>,
-              });
-
-              const savedStubId = String((response?.data as { id?: string | number } | undefined)?.id ?? id).trim();
-              if (savedStubId) {
-                setStubEditedSignal(savedStubId);
-              }
-              redirect("list", "stubs");
-            } catch (error) {
-              notify((error as Error).message || "Failed to save stub", { type: "error" });
-            } finally {
-              setSaving(false);
-            }
+          onClick={() => {
+            void handleSave();
           }}
         >
           Save
@@ -398,7 +432,14 @@ const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }
           variant="outlined"
           disabled={saving || deleting}
           sx={{ textTransform: "none", px: 3 }}
-          onClick={() => navigate(-1)}
+          onClick={() => {
+            if (record?.id !== undefined && record?.id !== null) {
+              setStubEditedSignal(String(record.id));
+            }
+            const values = getValues() as Record<string, unknown>;
+            rememberStubsSelection(values.service, values.method);
+            navigate(stubsListPath);
+          }}
         >
           Cancel
         </Button>
@@ -423,7 +464,9 @@ const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }
               previousData: record as Record<string, unknown>,
             });
             notify("Stub deleted", { type: "success" });
-            redirect("list", "stubs");
+            const values = getValues() as Record<string, unknown>;
+            rememberStubsSelection(values.service, values.method);
+            navigate(stubsListPath);
           } catch (error) {
             notify((error as Error).message || "Failed to delete stub", { type: "error" });
           } finally {
@@ -521,8 +564,24 @@ export const UnusedStubList = () => {
 
 // Stub Create component
 export const StubCreate = () => {
+  const navigate = useNavigate();
+  const createPath = useCreatePath();
+  const stubsListPath = createPath({ resource: "stubs", type: "list" });
+
   return (
-    <Create redirect="list">
+    <Create
+      redirect={false}
+      mutationOptions={{
+        onSuccess: (data) => {
+          const createdStubId = String((data as { id?: string | number } | undefined)?.id ?? "").trim();
+          if (createdStubId) {
+            setStubEditedSignal(createdStubId);
+          }
+
+          navigate(stubsListPath);
+        },
+      }}
+    >
       <SimpleForm
         toolbar={<CreateStubToolbar />}
         transform={normalizeStubDelay}

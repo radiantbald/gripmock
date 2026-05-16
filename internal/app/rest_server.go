@@ -2554,15 +2554,14 @@ func decodeDescriptorFiles(fds *descriptorpb.FileDescriptorSet) ([]protoreflect.
 
 func mergeJSONPatchMap(base map[string]any, patch map[string]any) map[string]any {
 	for key, patchValue := range patch {
-		baseValue, baseExists := base[key]
-		patchMap, patchIsMap := patchValue.(map[string]any)
-		baseMap, baseIsMap := baseValue.(map[string]any)
-
-		if patchIsMap && baseExists && baseIsMap {
-			base[key] = mergeJSONPatchMap(baseMap, patchMap)
+		if patchValue == nil {
+			delete(base, key)
 			continue
 		}
 
+		// Replace object values as-is instead of deep-merging.
+		// This makes edit-form saves deterministic: removed keys in nested
+		// payloads (e.g. output.data) are not silently resurrected.
 		base[key] = patchValue
 	}
 

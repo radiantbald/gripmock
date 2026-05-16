@@ -1,1 +1,0 @@
-const e="gripmock.stubEditedSignal",a=t=>{const r=String(t).trim();if(!r)return;const o={stubId:r,savedAt:Date.now()};try{roomStorage.setItem(e,JSON.stringify(o))}catch{}},n=()=>{try{const t=roomStorage.getItem(e);if(!t)return"";const r=JSON.parse(t);return String(r?.stubId||"").trim()}catch{return""}},s=()=>{try{roomStorage.removeItem(e)}catch{}};export{s as c,n as g,a as s};
