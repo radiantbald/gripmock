@@ -4,18 +4,18 @@ ARG version
 ARG commit
 ARG date
 
-COPY . /gripmock-src
-
 WORKDIR /gripmock-src
 
-#hadolint ignore=DL3018
-RUN apk add --no-cache binutils \
-    && go build -o /usr/local/bin/gripmock -ldflags "-X 'github.com/bavix/gripmock/v3/internal/infra/build.Version=${version:-dev}' -X 'github.com/bavix/gripmock/v3/internal/infra/build.Commit=${commit:-unknown}' -X 'github.com/bavix/gripmock/v3/internal/infra/build.Date=${date:-}' -s -w" . \
-    && strip /usr/local/bin/gripmock \
-    && apk del binutils \
-    && rm -rf /root/.cache /go/pkg /tmp/* /var/cache/*
+COPY go.mod go.sum ./
+COPY third_party/gripmock-ui/go.mod ./third_party/gripmock-ui/go.mod
+RUN --mount=type=cache,id=gripmock-go-mod,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=gripmock-go-build,target=/root/.cache/go-build,sharing=locked \
+    sh -c 'echo "[deps] Ensuring Go dependencies are cached (download only missing)..."; go mod download all'
 
-RUN chmod +x /usr/local/bin/gripmock
+COPY . /gripmock-src
+RUN --mount=type=cache,id=gripmock-go-mod,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=gripmock-go-build,target=/root/.cache/go-build,sharing=locked \
+    go build -mod=readonly -o /usr/local/bin/gripmock -ldflags "-X 'github.com/bavix/gripmock/v3/internal/infra/build.Version=${version:-dev}' -X 'github.com/bavix/gripmock/v3/internal/infra/build.Commit=${commit:-unknown}' -X 'github.com/bavix/gripmock/v3/internal/infra/build.Date=${date:-}' -s -w" .
 
 FROM alpine:3.23
 

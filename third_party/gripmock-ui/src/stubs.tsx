@@ -38,6 +38,7 @@ import { useFormContext } from "react-hook-form";
 import { useJsonTheme } from "./utils/jsonTheme";
 import { downloadJsonFile } from "./utils/fileDownload";
 import { listContentSx } from "./components/table/listStyles";
+import { listActionButtonSx } from "./components/table/listActionButtonSx";
 import { ActiveFiltersSummary } from "./components/table/ActiveFiltersSummary";
 import type { StubRecord } from "./types/entities";
 import { StubsDatagrid } from "./features/stubs/components/StubsDatagrid";
@@ -248,15 +249,15 @@ const stubFilters = [
 
 const StubListActions = () => (
   <TopToolbar>
-    <ExportButton />
-    <CreateButton />
+    <ExportButton sx={listActionButtonSx} />
+    <CreateButton sx={listActionButtonSx} />
   </TopToolbar>
 );
 
 // Custom toolbar for used/unused stubs (without create button)
 const UsedUnusedStubListActions = () => (
   <TopToolbar>
-    <ExportButton />
+    <ExportButton sx={listActionButtonSx} />
   </TopToolbar>
 );
 

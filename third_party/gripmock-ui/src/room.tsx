@@ -34,6 +34,7 @@ import { getAuthorizedPhone, subscribeAuthChanges } from "./utils/auth";
 import { normalizeRoomId, resolveRoomRow, type RoomRow } from "./features/room/model";
 import { apiClient } from "./dataProvider/apiClient";
 import { EntityEmptyState } from "./components/empty/EntityEmptyState";
+import { listActionButtonSx } from "./components/table/listActionButtonSx";
 
 const RADIUS_PX = "10px";
 const LIST_ROW_HEIGHT_PX = 30;
@@ -52,27 +53,27 @@ const ROW_ACTION_BUTTON_SX = {
   },
 } as const;
 const ROOM_CREATE_BUTTON_SX = {
-  color: "#ff6c37",
-  textTransform: "none",
+  ...listActionButtonSx,
+  minHeight: 32,
+  height: 32,
+  py: 0,
+  px: 1.25,
+  lineHeight: 1,
   fontWeight: 500,
-  fontSize: 13,
-  letterSpacing: 0,
-  minHeight: "auto",
-  borderRadius: 1,
-  px: 0.625,
-  py: 0.5,
+  textTransform: "uppercase !important",
   whiteSpace: "nowrap",
-  "&:hover": {
-    backgroundColor: alpha("#ff6c37", 0.08),
-  },
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
   "& .MuiButton-startIcon": {
     mr: 0.65,
-  },
-  "& .MuiSvgIcon-root": {
-    fontSize: 22,
+    ml: 0,
+    mt: 0,
+    mb: 0,
+    display: "inline-flex",
+    alignItems: "center",
   },
 } as const;
-
 const toDigits = (value: string): string => value.replace(/\D/g, "");
 const isMyRoom = (roomId: string, phone: string): boolean => {
   const phoneDigits = toDigits(phone);
@@ -228,7 +229,7 @@ export const RoomScopePage = () => {
   };
 
   return (
-    <Box p={1.5} width="100%" height="100%" sx={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <Box p={0} width="100%" height="100%" sx={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
       {rooms.length === 0 ? (
         <EntityEmptyState
           icon={<InboxOutlinedIcon />}
@@ -242,7 +243,16 @@ export const RoomScopePage = () => {
         />
       ) : (
         <>
-          <Box sx={{ display: "flex", justifyContent: "flex-end", pb: 1 }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "flex-end",
+              alignItems: "center",
+              minHeight: 40,
+              height: 40,
+              pb: 0,
+            }}
+          >
             <Button
               variant="text"
               startIcon={<AddIcon />}
@@ -258,8 +268,8 @@ export const RoomScopePage = () => {
               border: "1px solid",
               borderColor: "divider",
               borderRadius: RADIUS_PX,
-              p: 0.35,
-              gap: 0.2,
+              p: 0,
+              gap: 0,
               bgcolor: "background.paper",
               display: "flex",
               flexDirection: "column",

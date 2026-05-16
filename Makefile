@@ -17,13 +17,17 @@ env:
 build:
 	docker buildx build --load -t bavix/gripmock:${version} .
 
-ui-install:
+deps-check:
 	@if [ ! -d "$(UI_DIR)/node_modules" ] || [ ! -f "$(UI_DEPS_STAMP)" ] || [ ! -x "$(UI_VITE_BIN)" ] || [ "$(UI_DIR)/package-lock.json" -nt "$(UI_DEPS_STAMP)" ]; then \
+		echo "[deps] UI dependencies missing or outdated, running npm ci..."; \
 		npm --prefix $(UI_DIR) ci; \
 		touch "$(UI_DEPS_STAMP)"; \
+	else \
+		echo "[deps] UI dependencies are up to date, skipping npm ci."; \
 	fi
+	@echo "[deps] Go dependencies are checked during Docker build (verify first, download only if missing)."
 
-ui-build: ui-install
+ui-build: deps-check
 	npm --prefix $(UI_DIR) run build
 
 up: env ui-build
