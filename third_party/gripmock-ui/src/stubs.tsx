@@ -28,7 +28,7 @@ import { StubMatcherInput } from "./components/json/StubMatcherInput";
 import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { useFormContext } from "react-hook-form";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { downloadJsonFile } from "./utils/fileDownload";
 import { listContentSx } from "./components/table/listStyles";
@@ -36,7 +36,7 @@ import { listActionButtonSx } from "./components/table/listActionButtonSx";
 import { ActiveFiltersSummary } from "./components/table/ActiveFiltersSummary";
 import type { StubRecord } from "./types/entities";
 import { StubsDatagrid } from "./features/stubs/components/StubsDatagrid";
-import { setStubEditedSignal } from "./utils/stubEditSignal";
+import { setStubEditedSignal, setStubReplacedSignal } from "./utils/stubEditSignal";
 import { EntityEmptyState } from "./components/empty/EntityEmptyState";
 import { getCurrentRoom, subscribeRoomChanges } from "./utils/room";
 
@@ -122,6 +122,8 @@ const normalizeStubDelay = <T extends Record<string, unknown>>(data: T): T => {
     },
   };
 };
+
+const normalizeTextValue = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
 const STUBS_SELECTION_STORAGE_KEY = "gripmock.ui.stubs.selectionByRoom";
 
@@ -355,16 +357,35 @@ const EditStubToolbar = ({ canToggleEnabled }: { canToggleEnabled: boolean }) =>
 );
 
 const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }) => {
-  const { handleSubmit, getValues } = useFormContext();
+  const {
+    handleSubmit,
+    getValues,
+    formState: { isDirty },
+  } = useFormContext();
   const dataProvider = useDataProvider();
   const notify = useNotify();
+  const location = useLocation();
   const navigate = useNavigate();
   const createPath = useCreatePath();
   const stubsListPath = createPath({ resource: "stubs", type: "list" });
+  const returnPath =
+    typeof location.state === "object" &&
+    location.state !== null &&
+    "returnTo" in location.state &&
+    typeof (location.state as { returnTo?: unknown }).returnTo === "string"
+      ? (location.state as { returnTo: string }).returnTo
+      : stubsListPath;
   const record = useRecordContext<StubRecord>();
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const handleSave = handleSubmit(async (formValues) => {
+    if (!isDirty) {
+      const values = getValues() as Record<string, unknown>;
+      rememberStubsSelection(values.service, values.method);
+      navigate(returnPath);
+      return;
+    }
+
     const id = record?.id;
     if (id === undefined || id === null) {
       notify("Stub id is missing, cannot save", { type: "error" });
@@ -384,7 +405,16 @@ const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }
       if (savedStubId) {
         setStubEditedSignal(savedStubId);
       }
-      navigate(stubsListPath);
+
+      const wasEnabled = record?.enabled === true;
+      const becomesEnabled = values.enabled === true;
+      const serviceChanged = normalizeTextValue(values.service) !== normalizeTextValue(record?.service);
+      const methodChanged = normalizeTextValue(values.method) !== normalizeTextValue(record?.method);
+      const shouldSetReplacedSignal = becomesEnabled && (!wasEnabled || serviceChanged || methodChanged);
+      if (shouldSetReplacedSignal) {
+        setStubReplacedSignal(String(values.service || ""), String(values.method || ""));
+      }
+      navigate(returnPath);
     } catch (error) {
       notify((error as Error).message || "Failed to save stub", { type: "error" });
     } finally {
@@ -433,12 +463,9 @@ const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }
           disabled={saving || deleting}
           sx={{ textTransform: "none", px: 3 }}
           onClick={() => {
-            if (record?.id !== undefined && record?.id !== null) {
-              setStubEditedSignal(String(record.id));
-            }
             const values = getValues() as Record<string, unknown>;
             rememberStubsSelection(values.service, values.method);
-            navigate(stubsListPath);
+            navigate(returnPath);
           }}
         >
           Cancel
@@ -466,7 +493,7 @@ const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }
             notify("Stub deleted", { type: "success" });
             const values = getValues() as Record<string, unknown>;
             rememberStubsSelection(values.service, values.method);
-            navigate(stubsListPath);
+            navigate(returnPath);
           } catch (error) {
             notify((error as Error).message || "Failed to delete stub", { type: "error" });
           } finally {

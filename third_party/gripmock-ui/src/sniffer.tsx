@@ -27,12 +27,17 @@ import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import SearchOffRoundedIcon from "@mui/icons-material/SearchOffRounded";
 import { useCreatePath, useDataProvider, useNotify } from "react-admin";
-import { Link as RouterLink } from "react-router-dom";
+import { Link as RouterLink, useLocation } from "react-router-dom";
 
 import { API_CONFIG } from "./constants/api";
 import { apiClient } from "./dataProvider/apiClient";
 import { getCurrentRoom, subscribeRoomChanges } from "./utils/room";
-import { clearStubEditedSignal, getStubEditedSignalStubId } from "./utils/stubEditSignal";
+import {
+  getStubEditedHistory,
+  getStubCallResolutionKind,
+  getStubReplacedHistory,
+  setStubCallResolutionKind,
+} from "./utils/stubEditSignal";
 import type { HistoryRecord } from "./types/entities";
 
 type StreamHandlers = {
@@ -102,6 +107,15 @@ const formatServerReceivedAt = (timestamp?: string): string => {
   }
 
   return serverTimestampFormatter.format(parsed);
+};
+
+const parseTimestampToMs = (timestamp?: string): number | null => {
+  if (!timestamp) {
+    return null;
+  }
+
+  const parsed = new Date(timestamp).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
 };
 
 const toSnifferRecord = (record: HistoryRecord): HistoryRecord => {
@@ -197,6 +211,30 @@ const formatJsonInlinePayload = (value: unknown, maxLength = 180): string => {
 };
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const normalizeValue = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
+const shortServiceName = (service: string): { short: string; hasDot: boolean } => {
+  const index = service.lastIndexOf(".");
+  if (index === -1) {
+    return { short: service, hasDot: false };
+  }
+
+  return { short: service.slice(index + 1), hasDot: true };
+};
+const sameServiceAlias = (leftRaw: unknown, rightRaw: unknown): boolean => {
+  const left = normalizeValue(leftRaw);
+  const right = normalizeValue(rightRaw);
+  if (left === right) {
+    return true;
+  }
+
+  const leftMeta = shortServiceName(left);
+  const rightMeta = shortServiceName(right);
+  if (leftMeta.short !== rightMeta.short) {
+    return false;
+  }
+
+  return !leftMeta.hasDot || !rightMeta.hasDot;
+};
 
 type SearchOptions = {
   caseSensitive: boolean;
@@ -379,6 +417,7 @@ export const SnifferPage = () => {
   const notify = useNotify();
   const dataProvider = useDataProvider();
   const createPath = useCreatePath();
+  const location = useLocation();
   const [records, setRecords] = useState<HistoryRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [activeRoom, setActiveRoom] = useState(() => getCurrentRoom());
@@ -389,7 +428,8 @@ export const SnifferPage = () => {
   const [recentlyAttachedPeer, setRecentlyAttachedPeer] = useState("");
   const [streamRevision, setStreamRevision] = useState(0);
   const [expandedResponseKeys, setExpandedResponseKeys] = useState<Set<string>>(new Set());
-  const [editedStubId, setEditedStubId] = useState(() => getStubEditedSignalStubId());
+  const [editedStubHistory, setEditedStubHistory] = useState(() => getStubEditedHistory());
+  const [stubReplacedHistory, setStubReplacedHistory] = useState(() => getStubReplacedHistory());
   const [showRequestSearch, setShowRequestSearch] = useState(false);
   const [showResponseSearch, setShowResponseSearch] = useState(false);
   const [requestSearchQuery, setRequestSearchQuery] = useState("");
@@ -487,11 +527,19 @@ export const SnifferPage = () => {
     () => records.find((item) => (item.callId || item.id) === selectedId) || records[0],
     [records, selectedId],
   );
+  const selectedRequestId = String(selected?.callId || selected?.id || "").trim();
   const showMissingProtoHint = hasMissingProtoError(selected);
   const showMissingStubHint = hasMissingStubError(selected);
   const selectedStubId = String(selected?.stubId || "").trim();
   const showResponseSchemaHint = hasResponseSchemaError(selected);
   const selectedRoom = String(selected?.room || "").trim();
+  const selectedCallReceivedAtMs = parseTimestampToMs(selected?.timestamp);
+  const latestEditedStubEventForSelected = editedStubHistory.find((item) => item.stubId === selectedStubId);
+  const latestEditedStubSavedAt = latestEditedStubEventForSelected?.savedAt ?? 0;
+  const isEditedSignalFreshForSelectedCall =
+    latestEditedStubSavedAt === 0 ||
+    selectedCallReceivedAtMs === null ||
+    latestEditedStubSavedAt >= selectedCallReceivedAtMs;
   const suggestedRoom = activeRoom.trim();
   const selectedPeer = String(selected?.client || "").trim();
   const selectedService = String(selected?.service || "").trim();
@@ -517,7 +565,27 @@ export const SnifferPage = () => {
   const shouldShowMissingStubBlock = !shouldHideResponsePayload && showMissingStubHint;
   const shouldShowInvalidStubBlock = !shouldHideResponsePayload && showResponseSchemaHint;
   const shouldShowResponsePayloadBlock = !shouldHideResponsePayload && !shouldShowInvalidStubBlock && !shouldShowMissingStubBlock;
-  const shouldShowStubEditedRetryHint = shouldShowInvalidStubBlock && !!editedStubId && editedStubId === selectedStubId;
+  const latestReplacedSignalForSelectedCall = stubReplacedHistory.find(
+    (item) =>
+      sameServiceAlias(item.service, selectedService) &&
+      normalizeValue(item.method) === normalizeValue(selectedMethod),
+  );
+  const latestReplacedSavedAt = latestReplacedSignalForSelectedCall?.savedAt ?? 0;
+  const shouldShowStubEditedRetryHint =
+    shouldShowInvalidStubBlock &&
+    isEditedSignalFreshForSelectedCall &&
+    latestEditedStubSavedAt > 0;
+  const shouldShowStubReplacedRetryHint =
+    shouldShowInvalidStubBlock &&
+    latestReplacedSavedAt > 0 &&
+    (selectedCallReceivedAtMs === null || latestReplacedSavedAt >= selectedCallReceivedAtMs);
+  const persistedResolutionKind = getStubCallResolutionKind(selectedRequestId);
+  const resolvedRetryHintKind =
+    persistedResolutionKind ||
+    (shouldShowStubReplacedRetryHint ? "replaced" : shouldShowStubEditedRetryHint ? "edited" : "");
+  const shouldShowResolvedReplacedHint = shouldShowInvalidStubBlock && resolvedRetryHintKind === "replaced";
+  const shouldShowResolvedEditedHint = shouldShowInvalidStubBlock && resolvedRetryHintKind === "edited";
+  const shouldHideSelectAnotherStubButton = shouldShowResolvedReplacedHint || shouldShowResolvedEditedHint;
   const stubsListPath = useMemo(() => {
     const basePath = createPath({ resource: "stubs", type: "list" });
     if (!selectedService || !selectedMethod) {
@@ -527,6 +595,7 @@ export const SnifferPage = () => {
     const filter = encodeURIComponent(JSON.stringify({ service: selectedService, method: selectedMethod }));
     return `${basePath}?filter=${filter}`;
   }, [createPath, selectedMethod, selectedService]);
+  const snifferPath = useMemo(() => createPath({ resource: "sniffer", type: "list" }), [createPath]);
   const selectedStubEditPath = useMemo(() => {
     if (!selectedStubId) {
       return createPath({ resource: "stubs", type: "list" });
@@ -683,8 +752,11 @@ export const SnifferPage = () => {
   }, [orderedResponseEntries, responseSearchQuery, showResponseSearch]);
 
   useEffect(() => {
-    const syncEditedStubId = () => setEditedStubId(getStubEditedSignalStubId());
-    const onFocus = () => syncEditedStubId();
+    const syncSignals = () => {
+      setEditedStubHistory(getStubEditedHistory());
+      setStubReplacedHistory(getStubReplacedHistory());
+    };
+    const onFocus = () => syncSignals();
 
     window.addEventListener("focus", onFocus);
     return () => {
@@ -693,16 +765,32 @@ export const SnifferPage = () => {
   }, []);
 
   useEffect(() => {
-    if (editedStubId && editedStubId !== selectedStubId) {
+    setEditedStubHistory(getStubEditedHistory());
+    setStubReplacedHistory(getStubReplacedHistory());
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!selectedRequestId || !shouldShowInvalidStubBlock) {
       return;
     }
-    if (showResponseSchemaHint) {
+    if (persistedResolutionKind) {
       return;
     }
 
-    clearStubEditedSignal();
-    setEditedStubId("");
-  }, [editedStubId, selectedStubId, showResponseSchemaHint]);
+    if (shouldShowStubReplacedRetryHint) {
+      setStubCallResolutionKind(selectedRequestId, "replaced");
+      return;
+    }
+    if (shouldShowStubEditedRetryHint) {
+      setStubCallResolutionKind(selectedRequestId, "edited");
+    }
+  }, [
+    persistedResolutionKind,
+    selectedRequestId,
+    shouldShowInvalidStubBlock,
+    shouldShowStubEditedRetryHint,
+    shouldShowStubReplacedRetryHint,
+  ]);
 
   useEffect(() => {
     const service = selectedService.trim();
@@ -1274,7 +1362,11 @@ export const SnifferPage = () => {
                       flexWrap: "wrap",
                     }}
                   >
-                    {shouldShowStubEditedRetryHint ? (
+                    {shouldShowResolvedReplacedHint ? (
+                      <Typography variant="body2" color="success.main" sx={{ fontWeight: 700 }}>
+                        Stub replaced - Retry Call
+                      </Typography>
+                    ) : shouldShowResolvedEditedHint ? (
                       <Typography variant="body2" color="success.main" sx={{ fontWeight: 700 }}>
                         Stub edited - retry call
                       </Typography>
@@ -1283,20 +1375,23 @@ export const SnifferPage = () => {
                         variant="contained"
                         component={RouterLink}
                         to={selectedStubEditPath}
+                        state={{ returnTo: snifferPath }}
                         sx={{ textTransform: "none", fontWeight: 700, borderRadius: RADIUS_PX, px: 2.25, py: 0.9 }}
                       >
                         Edit selected stub
                       </Button>
                     ) : null}
-                    <Button
-                      variant="outlined"
-                      component={RouterLink}
-                      to={stubsListPath}
-                      disabled={!hasMethodFromApi}
-                      sx={{ textTransform: "none", fontWeight: 700, borderRadius: RADIUS_PX, px: 2.25, py: 0.9 }}
-                    >
-                      Select another stub
-                    </Button>
+                    {shouldHideSelectAnotherStubButton ? null : (
+                      <Button
+                        variant="outlined"
+                        component={RouterLink}
+                        to={stubsListPath}
+                        disabled={!hasMethodFromApi}
+                        sx={{ textTransform: "none", fontWeight: 700, borderRadius: RADIUS_PX, px: 2.25, py: 0.9 }}
+                      >
+                        Select another stub
+                      </Button>
+                    )}
                   </Box>
                 </Box>
               </Box>

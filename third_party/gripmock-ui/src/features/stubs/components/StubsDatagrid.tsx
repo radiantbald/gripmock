@@ -23,7 +23,11 @@ import {
 import type { StubRecord } from "../../../types/entities";
 import { apiClient } from "../../../dataProvider/apiClient";
 import { getCurrentRoom, subscribeRoomChanges } from "../../../utils/room";
-import { clearStubEditedSignal, getStubEditedSignalStubId } from "../../../utils/stubEditSignal";
+import {
+  clearStubEditedSignal,
+  getStubEditedSignalStubId,
+  setStubReplacedSignal,
+} from "../../../utils/stubEditSignal";
 import { RowActionsField } from "./RowActionsField";
 import { OutputKindChip, StubDetails } from "./StubVisuals";
 
@@ -646,6 +650,9 @@ export const StubsDatagrid = ({
         },
       );
       const actuallyEnabled = typeof result?.enabled === "boolean" ? result.enabled : nextEnabled;
+      if (actuallyEnabled) {
+        setStubReplacedSignal(stub.service || "", stub.method || "");
+      }
       notify(actuallyEnabled ? "Stub enabled" : "Stub disabled", { type: "success" });
       await refresh();
     } catch (error) {
