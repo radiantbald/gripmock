@@ -863,7 +863,17 @@ export const SnifferPage = () => {
     const payload = await apiClient.request<HistoryRecord[]>(`/history${query ? `?${query}` : ""}`);
     const normalized = payload.map(toSnifferRecord).reverse().slice(0, MAX_ITEMS);
     setRecords(normalized);
-    setSelectedId((current) => current || normalized[0]?.callId || normalized[0]?.id || "");
+    setSelectedId((current) => {
+      const normalizedCurrent = String(current || "").trim();
+      if (normalizedCurrent) {
+        const stillExists = normalized.some((item) => (item.callId || item.id) === normalizedCurrent);
+        if (stillExists) {
+          return normalizedCurrent;
+        }
+      }
+
+      return normalized[0]?.callId || normalized[0]?.id || "";
+    });
   }, [activeRoom]);
 
   useEffect(() => {
@@ -886,7 +896,8 @@ export const SnifferPage = () => {
         setRecords((current) => pushRecord(current, record));
         const nextId = String(record.callId || record.id || "").trim();
         if (nextId) {
-          setSelectedId((current) => current || nextId);
+          // Keep details panel synchronized with the most recent stream item.
+          setSelectedId(nextId);
         }
       },
       onError: () => {
