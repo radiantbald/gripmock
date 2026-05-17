@@ -47,6 +47,12 @@ type StreamHandlers = {
 };
 
 const RADIUS_PX = "10px";
+const RESIZE_HANDLE_SIZE_PX = 10;
+const MIN_TOP_PANEL_RATIO = 0.2;
+const MIN_BOTTOM_PANEL_RATIO = 0.25;
+const MIN_REQUEST_PANEL_RATIO = 0.2;
+const MIN_RESPONSE_PANEL_RATIO = 0.2;
+const clampRatio = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
 const panelHeaderSx = {
   px: 1.25,
@@ -533,11 +539,16 @@ export const SnifferPage = () => {
   });
   const [responseActiveMatch, setResponseActiveMatch] = useState(-1);
   const [activeSearchTarget, setActiveSearchTarget] = useState<"request" | "response">("request");
+  const [topPanelRatio, setTopPanelRatio] = useState(0.5);
+  const [requestPanelRatio, setRequestPanelRatio] = useState(0.5);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const requestSearchInputRef = useRef<HTMLInputElement | null>(null);
   const responseSearchInputRef = useRef<HTMLInputElement | null>(null);
   const requestSearchContainerRef = useRef<HTMLDivElement | null>(null);
   const responseSearchContainerRef = useRef<HTMLDivElement | null>(null);
+  const rootLayoutRef = useRef<HTMLDivElement | null>(null);
+  const detailsLayoutRef = useRef<HTMLDivElement | null>(null);
+  const activeResizeRef = useRef<"rows" | "columns" | null>(null);
 
   const checkProtoStatus = useCallback(
     async (service: string, method: string): Promise<{ hasMethod: boolean; hasProto: boolean }> => {
@@ -1166,12 +1177,74 @@ export const SnifferPage = () => {
     shouldShowResponsePayloadBlock,
   ]);
 
+  useEffect(() => {
+    const stopResize = () => {
+      activeResizeRef.current = null;
+      document.body.style.removeProperty("cursor");
+      document.body.style.removeProperty("user-select");
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const activeResize = activeResizeRef.current;
+      if (!activeResize) {
+        return;
+      }
+
+      if (activeResize === "rows") {
+        const root = rootLayoutRef.current;
+        if (!root) {
+          return;
+        }
+        const rect = root.getBoundingClientRect();
+        if (rect.height <= 0) {
+          return;
+        }
+        const nextRatio = clampRatio(
+          (event.clientY - rect.top) / rect.height,
+          MIN_TOP_PANEL_RATIO,
+          1 - MIN_BOTTOM_PANEL_RATIO,
+        );
+        setTopPanelRatio(nextRatio);
+        return;
+      }
+
+      const details = detailsLayoutRef.current;
+      if (!details) {
+        return;
+      }
+      const rect = details.getBoundingClientRect();
+      if (rect.width <= 0) {
+        return;
+      }
+      const nextRatio = clampRatio(
+        (event.clientX - rect.left) / rect.width,
+        MIN_REQUEST_PANEL_RATIO,
+        1 - MIN_RESPONSE_PANEL_RATIO,
+      );
+      setRequestPanelRatio(nextRatio);
+    };
+
+    const handlePointerUp = () => stopResize();
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+
+    return () => {
+      stopResize();
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, []);
+
   return (
     <Box
+      ref={rootLayoutRef}
       sx={{
+        position: "relative",
         display: "grid",
-        gridTemplateRows: "minmax(0, 1fr) minmax(0, 1fr)",
-        gap: 0,
+        gridTemplateRows: `minmax(150px, ${topPanelRatio}fr) minmax(150px, ${1 - topPanelRatio}fr)`,
         p: 0,
         height: "100%",
         minHeight: 0,
@@ -1282,6 +1355,27 @@ export const SnifferPage = () => {
           </Table>
         </TableContainer>
       </Paper>
+      <Box
+        role="separator"
+        aria-label="Resize request list and payload panels"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          activeResizeRef.current = "rows";
+          document.body.style.cursor = "row-resize";
+          document.body.style.userSelect = "none";
+        }}
+        sx={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: `calc(${(topPanelRatio * 100).toFixed(3)}% - ${RESIZE_HANDLE_SIZE_PX / 2}px)`,
+          height: `${RESIZE_HANDLE_SIZE_PX}px`,
+          cursor: "row-resize",
+          touchAction: "none",
+          zIndex: 3,
+          backgroundColor: "transparent",
+        }}
+      />
 
       {!selected ? (
         <Paper
@@ -1306,7 +1400,16 @@ export const SnifferPage = () => {
           </Box>
         </Paper>
       ) : (
-        <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0, minHeight: 0 }}>
+        <Box
+          ref={detailsLayoutRef}
+          sx={{
+            position: "relative",
+            display: "grid",
+            gridTemplateColumns: `minmax(220px, ${requestPanelRatio}fr) minmax(220px, ${1 - requestPanelRatio}fr)`,
+            gap: 0,
+            minHeight: 0,
+          }}
+        >
           <Paper
             onMouseDownCapture={() => setActiveSearchTarget("request")}
             onFocusCapture={() => setActiveSearchTarget("request")}
@@ -1427,6 +1530,27 @@ export const SnifferPage = () => {
               </Box>
             </Box>
           </Paper>
+          <Box
+            role="separator"
+            aria-label="Resize request and response panels"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              activeResizeRef.current = "columns";
+              document.body.style.cursor = "col-resize";
+              document.body.style.userSelect = "none";
+            }}
+            sx={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: `calc(${(requestPanelRatio * 100).toFixed(3)}% - ${RESIZE_HANDLE_SIZE_PX / 2}px)`,
+              width: `${RESIZE_HANDLE_SIZE_PX}px`,
+              cursor: "col-resize",
+              touchAction: "none",
+              zIndex: 3,
+              backgroundColor: "transparent",
+            }}
+          />
 
           <Paper
             onMouseDownCapture={() => setActiveSearchTarget("response")}
