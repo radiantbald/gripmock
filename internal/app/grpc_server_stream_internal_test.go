@@ -575,7 +575,7 @@ func TestClientFromContextIncludesUserAgentFingerprint(t *testing.T) {
 	require.Equal(t, "172.21.199.199|grpcurl/1.9.3", result)
 }
 
-func TestRoomFromContextFallsBackToPeerOnlyBinding(t *testing.T) {
+func TestRoomFromContextDoesNotFallbackToPeerOnlyBindingForFingerprintedClient(t *testing.T) {
 	// Arrange
 	const (
 		peerHost = "172.21.199.200"
@@ -595,7 +595,7 @@ func TestRoomFromContextFallsBackToPeerOnlyBinding(t *testing.T) {
 	result := roomFromContext(ctx)
 
 	// Assert
-	require.Equal(t, roomID, result)
+	require.Empty(t, result)
 }
 
 // TestConvertToMap_Proto3DefaultValues verifies that scalar fields with default values (e.g. 0.0)

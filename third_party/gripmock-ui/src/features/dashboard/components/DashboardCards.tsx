@@ -303,7 +303,7 @@ export const ApiInfoCard = () => {
       .filter((item): item is { id: string; name: string } => item !== null)
       .map((item) => [item.id, item.name]),
   );
-  const roomLabel = room === "none" ? "none" : formatRoomLabel(room, roomNameById.get(room));
+  const roomLabel = room === "none" ? "global" : formatRoomLabel(room, roomNameById.get(room));
   const { data, isLoading, error } = useGetOne<Dashboard & { id: string }>(
     "dashboard",
     { id: "runtime" },

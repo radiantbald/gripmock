@@ -255,7 +255,7 @@ export const CustomAppBar = () => {
                 ) : null}
               </>
             ) : (
-              <Box component="span">none</Box>
+              <Box component="span">global</Box>
             )}
           </Typography>
         </Box>

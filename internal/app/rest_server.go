@@ -446,8 +446,13 @@ func (h *RestServer) RoomsAssignPeer(w http.ResponseWriter, r *http.Request) {
 		h.validationError(r.Context(), w, errors.New("peer and room are required"))
 		return
 	}
+	peerHost := peerHostFromClientID(peerID)
+	if userAgent == "" {
+		_, embeddedUserAgent := splitClientID(peerID)
+		userAgent = embeddedUserAgent
+	}
 	if fingerprint == "" {
-		fingerprint = clientFingerprint(peerID, userAgent)
+		fingerprint = clientFingerprint(peerHost, userAgent)
 	}
 
 	if h.clientsRepo != nil {
@@ -456,7 +461,7 @@ func (h *RestServer) RoomsAssignPeer(w http.ResponseWriter, r *http.Request) {
 			peerID,
 			roomID,
 			muxmiddleware.OwnerFromContext(r.Context()),
-			peerID,
+			peerHost,
 			userAgent,
 			fingerprint,
 		); err != nil {
@@ -485,20 +490,37 @@ func (h *RestServer) RoomsPeerStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	roomID := ""
+	lookupCandidates := clientLookupCandidates(peerID)
 	if h.clientsRepo != nil {
-		dbRoomID, err := h.clientsRepo.RoomByClient(r.Context(), peerID)
-		if err != nil {
-			h.validationError(r.Context(), w, err)
-			return
+		for _, candidateID := range lookupCandidates {
+			dbRoomID, err := h.clientsRepo.RoomByClient(r.Context(), candidateID)
+			if err != nil {
+				h.validationError(r.Context(), w, err)
+				return
+			}
+			if strings.TrimSpace(dbRoomID) == "" {
+				continue
+			}
+
+			roomID = strings.TrimSpace(dbRoomID)
+			break
 		}
-		roomID = strings.TrimSpace(dbRoomID)
 		if roomID == "" {
-			roominfra.UnassignClient(peerID)
+			for _, candidateID := range lookupCandidates {
+				roominfra.UnassignClient(candidateID)
+			}
 		} else {
-			roominfra.AssignClient(peerID, roomID)
+			for _, candidateID := range lookupCandidates {
+				roominfra.AssignClient(candidateID, roomID)
+			}
 		}
 	} else {
-		roomID = strings.TrimSpace(roominfra.RoomByClient(peerID))
+		for _, candidateID := range lookupCandidates {
+			roomID = strings.TrimSpace(roominfra.RoomByClient(candidateID))
+			if roomID != "" {
+				break
+			}
+		}
 	}
 	h.writeResponse(r.Context(), w, map[string]any{
 		"peer":  peerID,
@@ -553,6 +575,36 @@ func clientFingerprint(peerID string, userAgent string) string {
 	}
 
 	return peerID + "|" + userAgent
+}
+
+func splitClientID(clientID string) (string, string) {
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		return "", ""
+	}
+
+	parts := strings.SplitN(clientID, "|", 2)
+	peerHost := strings.TrimSpace(parts[0])
+	if len(parts) < 2 {
+		return peerHost, ""
+	}
+
+	return peerHost, strings.TrimSpace(parts[1])
+}
+
+func peerHostFromClientID(clientID string) string {
+	peerHost, _ := splitClientID(clientID)
+
+	return peerHost
+}
+
+func clientLookupCandidates(clientID string) []string {
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		return nil
+	}
+
+	return []string{clientID}
 }
 
 // ProtofilesList returns persisted runtime proto files metadata.
@@ -2073,6 +2125,34 @@ func (h *RestServer) ListHistory(w http.ResponseWriter, r *http.Request) {
 	opts, limit := historyFilterFromRequest(r)
 	out := filterHistory(h, opts, limit)
 	h.writeResponse(r.Context(), w, out)
+}
+
+// DeleteHistoryRoom removes only records scoped to the current non-global room.
+func (h *RestServer) DeleteHistoryRoom(w http.ResponseWriter, r *http.Request) {
+	if h.history == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		h.writeResponseError(r.Context(), w, errors.New("history is disabled"))
+		return
+	}
+
+	cleaner, ok := h.history.(history.RoomCleaner)
+	if !ok {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		h.writeResponseError(r.Context(), w, errors.New("history room cleanup is not supported by store"))
+		return
+	}
+
+	roomID := strings.TrimSpace(muxmiddleware.FromRequest(r))
+	if roomID == "" {
+		h.validationError(r.Context(), w, errors.New("room id is required and global room cannot be cleared"))
+		return
+	}
+
+	deletedCount := cleaner.DeleteRoom(roomID)
+	h.writeResponse(r.Context(), w, map[string]any{
+		"room":         roomID,
+		"deletedCount": deletedCount,
+	})
 }
 
 // StreamHistory returns recorded gRPC calls as Server-Sent Events.

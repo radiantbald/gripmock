@@ -9,7 +9,6 @@ const fontFamily = [
   "Segoe UI",
   "sans-serif",
 ].join(",");
-
 const baseComponents = {
   MuiCssBaseline: {
     styleOverrides: {
@@ -38,11 +37,17 @@ const baseComponents = {
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
+        padding: "0 !important",
+        paddingLeft: "0 !important",
+        paddingRight: "0 !important",
       },
       "#main-content": {
         flex: 1,
         minHeight: 0,
         overflow: "auto",
+        padding: "0 !important",
+        paddingLeft: "0 !important",
+        paddingRight: "0 !important",
       },
       ".RaCreate-main.RaCreate-noActions": {
         paddingTop: 6,
@@ -207,6 +212,7 @@ const baseComponents = {
     },
   },
 };
+const baseCssBaselineStyleOverrides = baseComponents.MuiCssBaseline.styleOverrides;
 
 export const customTheme = createTheme(defaultLightTheme, {
   typography: {
@@ -256,7 +262,9 @@ export const customDarkTheme = createTheme(defaultDarkTheme, {
     ...baseComponents,
     MuiCssBaseline: {
       styleOverrides: {
+        ...baseCssBaselineStyleOverrides,
         body: {
+          ...baseCssBaselineStyleOverrides.body,
           backgroundColor: "#1f2329",
           backgroundImage: "none",
         },

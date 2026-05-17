@@ -161,6 +161,9 @@ func (b *Builder) RestServe(
 	router.Path("/api/rooms/peers/status").Methods(http.MethodGet).Handler(
 		withMCPMiddlewares(http.HandlerFunc(apiServer.RoomsPeerStatus)),
 	)
+	router.Path("/api/history/room").Methods(http.MethodDelete).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.DeleteHistoryRoom)),
+	)
 	router.Path("/api/proto-metadata/status").Methods(http.MethodGet).Handler(
 		withMCPMiddlewares(http.HandlerFunc(apiServer.ProtoMetadataStatus)),
 	)

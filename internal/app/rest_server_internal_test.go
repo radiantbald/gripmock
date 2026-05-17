@@ -1396,6 +1396,47 @@ func (s *RestServerTestSuite) TestListHistory_RoomFromHeader() {
 	s.Len(list, 2)
 }
 
+func (s *RestServerTestSuite) TestDeleteHistoryRoom_OnlyCurrentRoom() {
+	server := s.newRestServerWithRoomHistory()
+
+	clearResp := s.deleteHistoryRoom(server, func(req *http.Request) {
+		req.Header.Set(muxmiddleware.HeaderName, "A")
+	})
+	s.Equal(http.StatusOK, clearResp.Code)
+
+	var payload map[string]any
+	s.Require().NoError(json.Unmarshal(clearResp.Body.Bytes(), &payload))
+	s.Equal("A", payload["room"])
+	s.Equal(float64(1), payload["deletedCount"])
+
+	roomAList := s.listHistory(server, func(req *http.Request) {
+		req.Header.Set(muxmiddleware.HeaderName, "A")
+	})
+	s.Equal(http.StatusOK, roomAList.Code)
+	var roomARecords []map[string]any
+	s.Require().NoError(json.Unmarshal(roomAList.Body.Bytes(), &roomARecords))
+	s.Len(roomARecords, 1) // only global record remains visible in room A
+
+	roomBList := s.listHistory(server, func(req *http.Request) {
+		req.Header.Set(muxmiddleware.HeaderName, "B")
+	})
+	s.Equal(http.StatusOK, roomBList.Code)
+	var roomBRecords []map[string]any
+	s.Require().NoError(json.Unmarshal(roomBList.Body.Bytes(), &roomBRecords))
+	s.Len(roomBRecords, 2) // global + room B remain untouched
+}
+
+func (s *RestServerTestSuite) TestDeleteHistoryRoom_RejectsGlobalRoom() {
+	server := s.newRestServerWithRoomHistory()
+
+	resp := s.deleteHistoryRoom(server, nil)
+	s.Equal(http.StatusBadRequest, resp.Code)
+
+	var payload map[string]string
+	s.Require().NoError(json.Unmarshal(resp.Body.Bytes(), &payload))
+	s.Contains(payload["error"], "global room cannot be cleared")
+}
+
 func (s *RestServerTestSuite) TestStreamHistorySendsLiveEvents() {
 	server := s.newRestServerWithStore(history.NewMemoryStore(0))
 	store, ok := server.history.(*history.MemoryStore)
@@ -2162,6 +2203,21 @@ func (s *RestServerTestSuite) streamHistory(server *RestServer, prepare func(*ht
 
 	w := httptest.NewRecorder()
 	server.StreamHistory(w, req, rest.StreamHistoryParams{})
+
+	return w
+}
+
+func (s *RestServerTestSuite) deleteHistoryRoom(
+	server *RestServer,
+	prepare func(*http.Request),
+) *httptest.ResponseRecorder {
+	req := httptest.NewRequestWithContext(s.T().Context(), http.MethodDelete, "/api/history/room", nil)
+	if prepare != nil {
+		prepare(req)
+	}
+
+	w := httptest.NewRecorder()
+	server.DeleteHistoryRoom(w, req)
 
 	return w
 }

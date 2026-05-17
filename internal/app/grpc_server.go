@@ -135,15 +135,6 @@ func roomFromContext(ctx context.Context) string {
 		return roomID
 	}
 
-	// Backward compatibility: legacy peer-only client IDs can still be resolved
-	// even when the new fingerprinted client ID includes user-agent.
-	if peerID := peerAddressFromContext(ctx); peerID != "" && peerID != clientID {
-		if roomID := room.RoomByClient(peerID); roomID != "" {
-			room.Touch(roomID)
-			return roomID
-		}
-	}
-
 	return ""
 }
 

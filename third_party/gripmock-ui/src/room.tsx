@@ -290,6 +290,7 @@ export const RoomScopePage = () => {
                     px: 1,
                     py: 0,
                     minHeight: LIST_ROW_HEIGHT_PX,
+                    minWidth: 0,
                     borderRadius: RADIUS_PX,
                     border: "1px solid transparent",
                     transition: "background-color 140ms ease, border-color 140ms ease",
@@ -328,10 +329,11 @@ export const RoomScopePage = () => {
                       sx={{
                         fontFamily: "monospace",
                         color: "text.secondary",
-                        fontSize: 10,
+                        fontSize: "clamp(8px, 2.2vw, 10px)",
                         lineHeight: 1,
-                        minWidth: 16,
+                        minWidth: 14,
                         textAlign: "right",
+                        flexShrink: 0,
                       }}
                     >
                       #{item.id}
@@ -341,9 +343,11 @@ export const RoomScopePage = () => {
                       noWrap
                       sx={{
                         fontWeight: 600,
-                        fontSize: 15.5,
+                        fontSize: "clamp(12px, 2.9vw, 15.5px)",
                         lineHeight: 1.15,
                         color: active ? "#FF6C37" : "text.primary",
+                        minWidth: 0,
+                        flex: 1,
                       }}
                     >
                       {item.name?.trim() || "(unnamed room)"}
@@ -421,7 +425,8 @@ export const RoomScopePage = () => {
             bgcolor: "#2b3345",
             color: "#e8ebf2",
             borderRadius: RADIUS_PX,
-            minWidth: 430,
+            width: "min(430px, calc(100vw - 32px))",
+            maxWidth: "calc(100vw - 32px)",
           },
         }}
       >
