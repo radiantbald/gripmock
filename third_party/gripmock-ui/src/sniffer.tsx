@@ -26,19 +26,20 @@ import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import SearchOffRoundedIcon from "@mui/icons-material/SearchOffRounded";
-import { useCreatePath, useDataProvider, useNotify } from "react-admin";
+import { useCreatePath, useDataProvider, useGetList, useNotify } from "react-admin";
 import { Link as RouterLink, useLocation } from "react-router-dom";
 
 import { API_CONFIG } from "./constants/api";
 import { apiClient } from "./dataProvider/apiClient";
 import { getCurrentRoom, subscribeRoomChanges } from "./utils/room";
 import {
+  getStubCreatedHistory,
   getStubEditedHistory,
   getStubCallResolutionKind,
   getStubReplacedHistory,
   setStubCallResolutionKind,
 } from "./utils/stubEditSignal";
-import type { HistoryRecord } from "./types/entities";
+import type { HistoryRecord, StubRecord } from "./types/entities";
 
 type StreamHandlers = {
   onCall: (record: HistoryRecord) => void;
@@ -428,6 +429,7 @@ export const SnifferPage = () => {
   const [recentlyAttachedPeer, setRecentlyAttachedPeer] = useState("");
   const [streamRevision, setStreamRevision] = useState(0);
   const [expandedResponseKeys, setExpandedResponseKeys] = useState<Set<string>>(new Set());
+  const [stubCreatedHistory, setStubCreatedHistory] = useState(() => getStubCreatedHistory());
   const [editedStubHistory, setEditedStubHistory] = useState(() => getStubEditedHistory());
   const [stubReplacedHistory, setStubReplacedHistory] = useState(() => getStubReplacedHistory());
   const [showRequestSearch, setShowRequestSearch] = useState(false);
@@ -603,6 +605,38 @@ export const SnifferPage = () => {
 
     return createPath({ resource: "stubs", type: "edit", id: selectedStubId });
   }, [createPath, selectedStubId]);
+  const stubCreatePath = useMemo(() => createPath({ resource: "stubs", type: "create" }), [createPath]);
+  const selectedServiceAndMethodFilter = useMemo(
+    () => ({ service: selectedService, method: selectedMethod }),
+    [selectedMethod, selectedService],
+  );
+  const shouldFetchMatchingStubs = Boolean(selectedService && selectedMethod);
+  const { data: matchingStubs = [], total: matchingStubsTotal } = useGetList<StubRecord>(
+    "stubs",
+    {
+      pagination: { page: 1, perPage: 1 },
+      sort: { field: "id", order: "DESC" },
+      filter: selectedServiceAndMethodFilter,
+    },
+    { enabled: shouldFetchMatchingStubs, retry: false, staleTime: 30_000, refetchOnWindowFocus: false },
+  );
+  const hasAnyMatchingStubs = (matchingStubsTotal ?? matchingStubs.length) > 0;
+  const canCreateStubFromSelectedCall = Boolean(selectedService && selectedMethod);
+  const latestCreatedSignalForSelectedCall = stubCreatedHistory.find(
+    (item) =>
+      sameServiceAlias(item.service, selectedService) &&
+      normalizeValue(item.method) === normalizeValue(selectedMethod),
+  );
+  const latestCreatedSavedAt = latestCreatedSignalForSelectedCall?.savedAt ?? 0;
+  const shouldShowStubCreatedHint =
+    shouldShowMissingStubBlock &&
+    latestCreatedSavedAt > 0 &&
+    (selectedCallReceivedAtMs === null || latestCreatedSavedAt >= selectedCallReceivedAtMs);
+  const shouldShowStubAssignedRetryHint =
+    shouldShowMissingStubBlock &&
+    latestReplacedSavedAt > 0 &&
+    (selectedCallReceivedAtMs === null || latestReplacedSavedAt >= selectedCallReceivedAtMs);
+  const shouldShowStubCreatedAndAssignedRetryHint = shouldShowStubCreatedHint && shouldShowStubAssignedRetryHint;
   const requestPayload = useMemo(() => {
     if (selected?.requests && selected.requests.length > 1) {
       return selected.requests.map((item) => unwrapRootPayload(item));
@@ -753,6 +787,7 @@ export const SnifferPage = () => {
 
   useEffect(() => {
     const syncSignals = () => {
+      setStubCreatedHistory(getStubCreatedHistory());
       setEditedStubHistory(getStubEditedHistory());
       setStubReplacedHistory(getStubReplacedHistory());
     };
@@ -765,6 +800,7 @@ export const SnifferPage = () => {
   }, []);
 
   useEffect(() => {
+    setStubCreatedHistory(getStubCreatedHistory());
     setEditedStubHistory(getStubEditedHistory());
     setStubReplacedHistory(getStubReplacedHistory());
   }, [location.pathname]);
@@ -1416,20 +1452,55 @@ export const SnifferPage = () => {
                     No stub is assigned for this call.
                   </Typography>
                   <Typography variant="body1" sx={{ opacity: 0.85 }}>
-                    {hasMethodFromApi
-                      ? "Open filtered stubs for this service/method and choose one."
-                      : "Service/method pair is not found in DB yet."}
+                    {hasAnyMatchingStubs
+                      ? "Stubs exist for this service/method, but none is assigned to this call. Assign an existing stub or create a new one."
+                      : "No stubs exist for this service/method yet. Create one for this call."}
                   </Typography>
                   <Box sx={{ mt: 2.25, display: "flex", justifyContent: "center", alignItems: "center", gap: 1.25 }}>
-                    <Button
-                      variant="contained"
-                      component={RouterLink}
-                      to={stubsListPath}
-                      disabled={!hasMethodFromApi}
-                      sx={{ textTransform: "none", fontWeight: 700, borderRadius: RADIUS_PX, px: 2.25, py: 0.9 }}
-                    >
-                      Assign stub
-                    </Button>
+                    {shouldShowStubCreatedAndAssignedRetryHint ? (
+                      <Typography variant="body2" color="success.main" sx={{ fontWeight: 700 }}>
+                        Stub created and assigned - retry call
+                      </Typography>
+                    ) : shouldShowStubAssignedRetryHint ? (
+                      <Typography variant="body2" color="success.main" sx={{ fontWeight: 700 }}>
+                        Stub assigned - retry call
+                      </Typography>
+                    ) : shouldShowStubCreatedHint ? (
+                      <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700 }}>
+                        Stub created
+                      </Typography>
+                    ) : null}
+                    {shouldShowStubAssignedRetryHint ? null : (
+                      <>
+                        {hasAnyMatchingStubs ? (
+                          <Button
+                            variant="outlined"
+                            component={RouterLink}
+                            to={stubsListPath}
+                            state={{ returnTo: snifferPath }}
+                            sx={{ textTransform: "none", fontWeight: 700, borderRadius: RADIUS_PX, px: 2.25, py: 0.9 }}
+                          >
+                            Assign stub
+                          </Button>
+                        ) : null}
+                        {shouldShowStubCreatedHint ? null : (
+                          <Button
+                            variant="contained"
+                            component={RouterLink}
+                            to={stubCreatePath}
+                            disabled={!canCreateStubFromSelectedCall}
+                            state={{
+                              returnTo: snifferPath,
+                              prefillService: selectedService,
+                              prefillMethod: selectedMethod,
+                            }}
+                            sx={{ textTransform: "none", fontWeight: 700, borderRadius: RADIUS_PX, px: 2.25, py: 0.9 }}
+                          >
+                            Create stub
+                          </Button>
+                        )}
+                      </>
+                    )}
                   </Box>
                 </Box>
               </Box>

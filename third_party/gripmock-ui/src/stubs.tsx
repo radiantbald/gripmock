@@ -21,6 +21,7 @@ import {
   useNotify,
   useRecordContext,
   useCreatePath,
+  useRedirect,
 } from "react-admin";
 import { JsonTextAreaInput } from "./components/json/JsonTextAreaInput";
 import { KeyValueTableInput } from "./components/json/KeyValueTableInput";
@@ -31,12 +32,13 @@ import { useFormContext } from "react-hook-form";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { downloadJsonFile } from "./utils/fileDownload";
+import { apiClient } from "./dataProvider/apiClient";
 import { listContentSx } from "./components/table/listStyles";
 import { listActionButtonSx } from "./components/table/listActionButtonSx";
 import { ActiveFiltersSummary } from "./components/table/ActiveFiltersSummary";
 import type { StubRecord } from "./types/entities";
 import { StubsDatagrid } from "./features/stubs/components/StubsDatagrid";
-import { setStubEditedSignal, setStubReplacedSignal } from "./utils/stubEditSignal";
+import { setStubCreatedSignal, setStubEditedSignal, setStubReplacedSignal } from "./utils/stubEditSignal";
 import { EntityEmptyState } from "./components/empty/EntityEmptyState";
 import { getCurrentRoom, subscribeRoomChanges } from "./utils/room";
 
@@ -124,6 +126,13 @@ const normalizeStubDelay = <T extends Record<string, unknown>>(data: T): T => {
 };
 
 const normalizeTextValue = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
+const resolveReturnPathFromLocationState = (state: unknown, fallbackPath: string): string =>
+  typeof state === "object" &&
+  state !== null &&
+  "returnTo" in state &&
+  typeof (state as { returnTo?: unknown }).returnTo === "string"
+    ? (state as { returnTo: string }).returnTo
+    : fallbackPath;
 
 const STUBS_SELECTION_STORAGE_KEY = "gripmock.ui.stubs.selectionByRoom";
 
@@ -292,8 +301,10 @@ const CreateStubToolbar = () => (
 
 const CreateStubToolbarImpl = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const createPath = useCreatePath();
   const stubsListPath = createPath({ resource: "stubs", type: "list" });
+  const returnPath = resolveReturnPathFromLocationState(location.state, stubsListPath);
 
   return (
     <Toolbar
@@ -344,7 +355,7 @@ const CreateStubToolbarImpl = () => {
       type="button"
       variant="outlined"
       sx={{ textTransform: "none", px: 3 }}
-      onClick={() => navigate(stubsListPath)}
+      onClick={() => navigate(returnPath)}
     >
       Cancel
     </Button>
@@ -368,13 +379,7 @@ const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }
   const navigate = useNavigate();
   const createPath = useCreatePath();
   const stubsListPath = createPath({ resource: "stubs", type: "list" });
-  const returnPath =
-    typeof location.state === "object" &&
-    location.state !== null &&
-    "returnTo" in location.state &&
-    typeof (location.state as { returnTo?: unknown }).returnTo === "string"
-      ? (location.state as { returnTo: string }).returnTo
-      : stubsListPath;
+  const returnPath = resolveReturnPathFromLocationState(location.state, stubsListPath);
   const record = useRecordContext<StubRecord>();
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -488,7 +493,7 @@ const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }
           try {
             await dataProvider.delete("stubs", {
               id,
-              previousData: record as Record<string, unknown>,
+              previousData: record as StubRecord,
             });
             notify("Stub deleted", { type: "success" });
             const values = getValues() as Record<string, unknown>;
@@ -592,20 +597,85 @@ export const UnusedStubList = () => {
 // Stub Create component
 export const StubCreate = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const createPath = useCreatePath();
   const stubsListPath = createPath({ resource: "stubs", type: "list" });
+  const returnPath = resolveReturnPathFromLocationState(location.state, stubsListPath);
+  const prefillService =
+    typeof location.state === "object" && location.state !== null
+      ? normalizeTextValue((location.state as { prefillService?: unknown }).prefillService)
+      : "";
+  const prefillMethod =
+    typeof location.state === "object" && location.state !== null
+      ? normalizeTextValue((location.state as { prefillMethod?: unknown }).prefillMethod)
+      : "";
 
   return (
     <Create
       redirect={false}
       mutationOptions={{
-        onSuccess: (data) => {
+        onSuccess: async (data, variables) => {
           const createdStubId = String((data as { id?: string | number } | undefined)?.id ?? "").trim();
           if (createdStubId) {
             setStubEditedSignal(createdStubId);
           }
 
-          navigate(stubsListPath);
+          const payloadService = normalizeTextValue(
+            (data as { service?: unknown } | undefined)?.service ??
+              (variables as { data?: { service?: unknown } } | undefined)?.data?.service ??
+              prefillService,
+          );
+          const payloadMethod = normalizeTextValue(
+            (data as { method?: unknown } | undefined)?.method ??
+              (variables as { data?: { method?: unknown } } | undefined)?.data?.method ??
+              prefillMethod,
+          );
+          const payloadEnabledRaw =
+            (data as { enabled?: unknown } | undefined)?.enabled ??
+            (variables as { data?: { enabled?: unknown } } | undefined)?.data?.enabled;
+          const payloadEnabled = payloadEnabledRaw === undefined ? true : payloadEnabledRaw === true;
+          let shouldSetAssignedSignal = payloadEnabled;
+          if (payloadEnabled) {
+            const activeRoom = getCurrentRoom().trim();
+            const backendId = String(
+              (data as { backendId?: unknown; id?: unknown } | undefined)?.backendId ??
+                (data as { id?: unknown } | undefined)?.id ??
+                "",
+            ).trim();
+            if (activeRoom && backendId) {
+              try {
+                const patchResult = await apiClient.request<{ enabled?: boolean }>(
+                  `/stubs/${encodeURIComponent(backendId)}?room=${encodeURIComponent(activeRoom)}`,
+                  {
+                    method: "PATCH",
+                    body: JSON.stringify({ enabled: true }),
+                  },
+                );
+                shouldSetAssignedSignal = patchResult?.enabled !== false;
+              } catch {
+                shouldSetAssignedSignal = false;
+              }
+            }
+          }
+          if (payloadService && payloadMethod) {
+            setStubCreatedSignal(payloadService, payloadMethod);
+            if (shouldSetAssignedSignal) {
+              setStubReplacedSignal(payloadService, payloadMethod);
+            }
+          }
+
+          navigate(returnPath, {
+            state: {
+              stubCreated:
+                payloadService && payloadMethod
+                  ? {
+                      service: payloadService,
+                      method: payloadMethod,
+                      savedAt: Date.now(),
+                    }
+                  : undefined,
+            },
+          });
         },
       }}
     >
@@ -614,6 +684,8 @@ export const StubCreate = () => {
         transform={normalizeStubDelay}
         warnWhenUnsavedChanges
         defaultValues={{
+          service: prefillService,
+          method: prefillMethod,
           output: DEFAULT_OUTPUT_TEMPLATE,
         }}
         sx={{

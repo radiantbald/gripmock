@@ -1,7 +1,9 @@
 const STUB_EDIT_SIGNAL_KEY = "gripmock.stubEditedSignal";
 const STUB_REPLACED_SIGNAL_KEY = "gripmock.stubReplacedSignal";
+const STUB_CREATED_SIGNAL_KEY = "gripmock.stubCreatedSignal";
 const STUB_EDIT_HISTORY_KEY = "gripmock.stubEditedHistory";
 const STUB_REPLACED_HISTORY_KEY = "gripmock.stubReplacedHistory";
+const STUB_CREATED_HISTORY_KEY = "gripmock.stubCreatedHistory";
 const STUB_CALL_RESOLUTION_KEY = "gripmock.stubCallResolution";
 
 type StubEditSignal = {
@@ -10,6 +12,11 @@ type StubEditSignal = {
 };
 
 type StubReplacedSignal = {
+  service: string;
+  method: string;
+  savedAt: number;
+};
+type StubCreatedSignal = {
   service: string;
   method: string;
   savedAt: number;
@@ -97,10 +104,48 @@ const readStubReplacedHistory = (): StubReplacedSignal[] => {
     return [];
   }
 };
+const readStubCreatedHistory = (): StubCreatedSignal[] => {
+  try {
+    const raw = getStorage()?.getItem(STUB_CREATED_HISTORY_KEY);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map((item) => {
+        const service = String((item as Partial<StubCreatedSignal>)?.service || "").trim();
+        const method = String((item as Partial<StubCreatedSignal>)?.method || "").trim();
+        if (!service || !method) {
+          return null;
+        }
+
+        return {
+          service,
+          method,
+          savedAt: toTimestamp((item as Partial<StubCreatedSignal>)?.savedAt),
+        } satisfies StubCreatedSignal;
+      })
+      .filter((item): item is StubCreatedSignal => item !== null);
+  } catch {
+    return [];
+  }
+};
 
 const writeStubReplacedHistory = (entries: StubReplacedSignal[]): void => {
   try {
     getStorage()?.setItem(STUB_REPLACED_HISTORY_KEY, JSON.stringify(entries));
+  } catch {
+    // Ignore storage failures (private mode, quota, etc.).
+  }
+};
+const writeStubCreatedHistory = (entries: StubCreatedSignal[]): void => {
+  try {
+    getStorage()?.setItem(STUB_CREATED_HISTORY_KEY, JSON.stringify(entries));
   } catch {
     // Ignore storage failures (private mode, quota, etc.).
   }
@@ -235,6 +280,33 @@ export const setStubReplacedSignal = (service: string, method: string): void => 
   ];
   writeStubReplacedHistory(next.slice(0, 200));
 };
+export const setStubCreatedSignal = (service: string, method: string): void => {
+  const normalizedService = String(service).trim();
+  const normalizedMethod = String(method).trim();
+  if (!normalizedService || !normalizedMethod) {
+    return;
+  }
+
+  const savedAt = Date.now();
+  const payload: StubCreatedSignal = {
+    service: normalizedService,
+    method: normalizedMethod,
+    savedAt,
+  };
+  try {
+    getStorage()?.setItem(STUB_CREATED_SIGNAL_KEY, JSON.stringify(payload));
+  } catch {
+    // Ignore storage failures (private mode, quota, etc.).
+  }
+
+  const signature = `${normalizedService}::${normalizedMethod}`;
+  const existing = readStubCreatedHistory();
+  const next = [
+    { service: normalizedService, method: normalizedMethod, savedAt },
+    ...existing.filter((item) => `${item.service}::${item.method}` !== signature),
+  ];
+  writeStubCreatedHistory(next.slice(0, 200));
+};
 
 export const getStubReplacedSignal = (): StubReplacedSignal | null => {
   try {
@@ -255,12 +327,39 @@ export const getStubReplacedSignal = (): StubReplacedSignal | null => {
     return null;
   }
 };
+export const getStubCreatedSignal = (): StubCreatedSignal | null => {
+  try {
+    const raw = getStorage()?.getItem(STUB_CREATED_SIGNAL_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<StubCreatedSignal>;
+    const service = String(parsed?.service || "").trim();
+    const method = String(parsed?.method || "").trim();
+    if (!service || !method) {
+      return null;
+    }
+
+    return { service, method, savedAt: toTimestamp(parsed?.savedAt) };
+  } catch {
+    return null;
+  }
+};
 
 export const getStubReplacedHistory = (): StubReplacedSignal[] => readStubReplacedHistory();
+export const getStubCreatedHistory = (): StubCreatedSignal[] => readStubCreatedHistory();
 
 export const clearStubReplacedSignal = (): void => {
   try {
     getStorage()?.removeItem(STUB_REPLACED_SIGNAL_KEY);
+  } catch {
+    // Ignore storage failures (private mode, quota, etc.).
+  }
+};
+export const clearStubCreatedSignal = (): void => {
+  try {
+    getStorage()?.removeItem(STUB_CREATED_SIGNAL_KEY);
   } catch {
     // Ignore storage failures (private mode, quota, etc.).
   }
