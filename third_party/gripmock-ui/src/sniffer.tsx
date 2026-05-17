@@ -69,6 +69,90 @@ const jsonTextSx = {
   tabSize: 2,
   cursor: "text",
 } as const;
+const compactSearchBarSx = {
+  display: "flex",
+  alignItems: "center",
+  gap: 0.5,
+  px: 1,
+  py: 0.25,
+  minHeight: 42,
+  bgcolor: "#2f3136",
+  borderBottom: "1px solid",
+  borderColor: "divider",
+} as const;
+const compactSearchInputSx = {
+  "& .MuiInputBase-root": {
+    minHeight: 28,
+    height: 28,
+    bgcolor: "#36393f",
+    color: "common.white",
+    borderRadius: 1,
+  },
+  "& .MuiInputBase-input": {
+    fontSize: 12,
+    py: 0.35,
+    px: 1,
+  },
+  "& .MuiOutlinedInput-notchedOutline": { borderColor: "#575c64" },
+} as const;
+const compactSearchToggleButtonSx = {
+  minWidth: 26,
+  width: 26,
+  height: 26,
+  px: 0,
+  fontSize: 11,
+  lineHeight: 1,
+  textTransform: "none",
+  color: "grey.200",
+  backgroundColor: "transparent",
+  boxShadow: "none",
+  "&:hover": {
+    backgroundColor: "transparent",
+    color: "#FF6C37",
+    boxShadow: "none",
+  },
+  "&.MuiButton-contained": {
+    backgroundColor: "transparent",
+    color: "#FF6C37",
+    boxShadow: "none",
+  },
+  "&.MuiButton-contained:hover": {
+    backgroundColor: "transparent",
+    color: "#FF6C37",
+    boxShadow: "none",
+  },
+} as const;
+const compactSearchIconButtonSx = {
+  width: 26,
+  height: 26,
+  p: 0,
+  color: "grey.200",
+  "&:hover": {
+    backgroundColor: "transparent",
+    color: "#FF6C37",
+  },
+} as const;
+const searchHeaderButtonSx = {
+  border: "none",
+  borderRadius: 1,
+  color: "text.secondary",
+  transition: "color 120ms ease",
+  "&:hover": {
+    backgroundColor: "transparent",
+    color: "#FF6C37",
+  },
+} as const;
+const compactSearchCounterSx = {
+  minWidth: 48,
+  textAlign: "center",
+  color: "grey.300",
+  fontSize: 12,
+  lineHeight: 1,
+  transition: "color 120ms ease",
+  "&:hover": {
+    color: "#FF6C37",
+  },
+} as const;
 
 const MAX_ITEMS = 500;
 const codeToChipColor = (code?: number) => (code === undefined || code === 0 ? "success" : "error");
@@ -448,7 +532,10 @@ export const SnifferPage = () => {
     useRegex: false,
   });
   const [responseActiveMatch, setResponseActiveMatch] = useState(-1);
+  const [activeSearchTarget, setActiveSearchTarget] = useState<"request" | "response">("request");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const requestSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const responseSearchInputRef = useRef<HTMLInputElement | null>(null);
   const requestSearchContainerRef = useRef<HTMLDivElement | null>(null);
   const responseSearchContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -964,6 +1051,121 @@ export const SnifferPage = () => {
     setResponseSearchOptions((current) => ({ ...current, [option]: !current[option] }));
   };
 
+  const openRequestSearch = useCallback(() => {
+    if (!hasRequestSearchablePayload) {
+      return;
+    }
+    setShowRequestSearch(true);
+  }, [hasRequestSearchablePayload]);
+
+  const closeRequestSearch = useCallback(() => {
+    setShowRequestSearch(false);
+    setRequestSearchQuery("");
+    setRequestActiveMatch(-1);
+  }, []);
+
+  const openResponseSearch = useCallback(() => {
+    if (!shouldShowResponsePayloadBlock || !hasResponseSearchablePayload) {
+      return;
+    }
+    setShowResponseSearch(true);
+  }, [hasResponseSearchablePayload, shouldShowResponsePayloadBlock]);
+
+  const closeResponseSearch = useCallback(() => {
+    setShowResponseSearch(false);
+    setResponseSearchQuery("");
+    setResponseActiveMatch(-1);
+  }, []);
+
+  useEffect(() => {
+    if (!showRequestSearch) {
+      return;
+    }
+    requestSearchInputRef.current?.focus();
+    requestSearchInputRef.current?.select();
+  }, [showRequestSearch]);
+
+  useEffect(() => {
+    if (!showResponseSearch) {
+      return;
+    }
+    responseSearchInputRef.current?.focus();
+    responseSearchInputRef.current?.select();
+  }, [showResponseSearch]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== "f" || (!event.metaKey && !event.ctrlKey)) {
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      const isSnifferSearchInputTarget =
+        target === requestSearchInputRef.current || target === responseSearchInputRef.current;
+      const isEditableTarget =
+        target?.isContentEditable ||
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.tagName === "SELECT";
+      if (isEditableTarget && !isSnifferSearchInputTarget) {
+        return;
+      }
+
+      const preferredTarget = activeSearchTarget;
+      const canOpenRequest = hasRequestSearchablePayload;
+      const canOpenResponse = shouldShowResponsePayloadBlock && hasResponseSearchablePayload;
+      if (!canOpenRequest && !canOpenResponse) {
+        return;
+      }
+
+      event.preventDefault();
+      if (preferredTarget === "response") {
+        if (canOpenResponse) {
+          if (showResponseSearch) {
+            closeResponseSearch();
+          } else {
+            openResponseSearch();
+          }
+        } else if (canOpenRequest) {
+          if (showRequestSearch) {
+            closeRequestSearch();
+          } else {
+            openRequestSearch();
+          }
+        }
+        return;
+      }
+
+      if (canOpenRequest) {
+        if (showRequestSearch) {
+          closeRequestSearch();
+        } else {
+          openRequestSearch();
+        }
+      } else if (canOpenResponse) {
+        if (showResponseSearch) {
+          closeResponseSearch();
+        } else {
+          openResponseSearch();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    activeSearchTarget,
+    closeRequestSearch,
+    closeResponseSearch,
+    hasRequestSearchablePayload,
+    hasResponseSearchablePayload,
+    openRequestSearch,
+    openResponseSearch,
+    showRequestSearch,
+    showResponseSearch,
+    shouldShowResponsePayloadBlock,
+  ]);
+
   return (
     <Box
       sx={{
@@ -1106,6 +1308,8 @@ export const SnifferPage = () => {
       ) : (
         <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0, minHeight: 0 }}>
           <Paper
+            onMouseDownCapture={() => setActiveSearchTarget("request")}
+            onFocusCapture={() => setActiveSearchTarget("request")}
             sx={{
               overflow: "hidden",
               borderRadius: `0 0 0 ${RADIUS_PX}`,
@@ -1135,18 +1339,12 @@ export const SnifferPage = () => {
                     size="small"
                     onClick={() => {
                       if (showRequestSearch) {
-                        setShowRequestSearch(false);
-                        setRequestSearchQuery("");
-                        setRequestActiveMatch(-1);
+                        closeRequestSearch();
                       } else {
-                        setShowRequestSearch(true);
+                        openRequestSearch();
                       }
                     }}
-                    sx={{
-                      border: "1px solid",
-                      borderColor: showRequestSearch ? "primary.main" : "divider",
-                      borderRadius: 1,
-                    }}
+                    sx={searchHeaderButtonSx}
                   >
                     <SearchRoundedIcon fontSize="small" />
                   </IconButton>
@@ -1157,32 +1355,22 @@ export const SnifferPage = () => {
             {showRequestSearch && hasRequestSearchablePayload ? (
               <>
                 <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 0.75,
-                    px: 1.25,
-                    py: 0.75,
-                    bgcolor: "#2f3136",
-                    borderBottom: "1px solid",
-                    borderColor: "divider",
-                  }}
+                  sx={compactSearchBarSx}
                 >
                   <TextField
+                    inputRef={requestSearchInputRef}
                     value={requestSearchQuery}
                     onChange={(event) => setRequestSearchQuery(event.target.value)}
                     size="small"
                     fullWidth
                     placeholder="Find"
-                    sx={{
-                      "& .MuiInputBase-root": { bgcolor: "#3a3d42", color: "common.white" },
-                      "& .MuiOutlinedInput-notchedOutline": { borderColor: "#5c6168" },
-                    }}
+                    sx={compactSearchInputSx}
                   />
                   <Button
                     size="small"
                     variant={requestSearchOptions.caseSensitive ? "contained" : "text"}
                     onClick={() => toggleSearchOption("request", "caseSensitive")}
+                    sx={compactSearchToggleButtonSx}
                   >
                     Aa
                   </Button>
@@ -1190,6 +1378,7 @@ export const SnifferPage = () => {
                     size="small"
                     variant={requestSearchOptions.wholeWord ? "contained" : "text"}
                     onClick={() => toggleSearchOption("request", "wholeWord")}
+                    sx={compactSearchToggleButtonSx}
                   >
                     ab
                   </Button>
@@ -1197,25 +1386,35 @@ export const SnifferPage = () => {
                     size="small"
                     variant={requestSearchOptions.useRegex ? "contained" : "text"}
                     onClick={() => toggleSearchOption("request", "useRegex")}
+                    sx={compactSearchToggleButtonSx}
                   >
                     .*
                   </Button>
-                  <Typography variant="body2" sx={{ minWidth: 52, textAlign: "center", color: "grey.300" }}>
+                  <Typography variant="body2" sx={compactSearchCounterSx}>
                     {requestMatchCount > 0 ? `${requestActiveMatch + 1} of ${requestMatchCount}` : "0 of 0"}
                   </Typography>
-                  <IconButton size="small" onClick={() => stepRequestMatch(-1)} disabled={requestMatchCount === 0}>
+                  <IconButton
+                    size="small"
+                    onClick={() => stepRequestMatch(-1)}
+                    disabled={requestMatchCount === 0}
+                    sx={compactSearchIconButtonSx}
+                  >
                     <KeyboardArrowUpRoundedIcon fontSize="small" />
                   </IconButton>
-                  <IconButton size="small" onClick={() => stepRequestMatch(1)} disabled={requestMatchCount === 0}>
+                  <IconButton
+                    size="small"
+                    onClick={() => stepRequestMatch(1)}
+                    disabled={requestMatchCount === 0}
+                    sx={compactSearchIconButtonSx}
+                  >
                     <KeyboardArrowDownRoundedIcon fontSize="small" />
                   </IconButton>
                   <IconButton
                     size="small"
                     onClick={() => {
-                      setShowRequestSearch(false);
-                      setRequestSearchQuery("");
-                      setRequestActiveMatch(-1);
+                      closeRequestSearch();
                     }}
+                    sx={compactSearchIconButtonSx}
                   >
                     <CloseRoundedIcon fontSize="small" />
                   </IconButton>
@@ -1230,6 +1429,8 @@ export const SnifferPage = () => {
           </Paper>
 
           <Paper
+            onMouseDownCapture={() => setActiveSearchTarget("response")}
+            onFocusCapture={() => setActiveSearchTarget("response")}
             sx={{
               overflow: "hidden",
               borderRadius: `0 0 ${RADIUS_PX} 0`,
@@ -1261,18 +1462,12 @@ export const SnifferPage = () => {
                     size="small"
                     onClick={() => {
                       if (showResponseSearch) {
-                        setShowResponseSearch(false);
-                        setResponseSearchQuery("");
-                        setResponseActiveMatch(-1);
+                        closeResponseSearch();
                       } else {
-                        setShowResponseSearch(true);
+                        openResponseSearch();
                       }
                     }}
-                    sx={{
-                      border: "1px solid",
-                      borderColor: showResponseSearch ? "primary.main" : "divider",
-                      borderRadius: 1,
-                    }}
+                    sx={searchHeaderButtonSx}
                   >
                     <SearchRoundedIcon fontSize="small" />
                   </IconButton>
@@ -1508,32 +1703,22 @@ export const SnifferPage = () => {
               <Box sx={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
                 {showResponseSearch && hasResponseSearchablePayload ? (
                   <Box
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 0.75,
-                      px: 1.25,
-                      py: 0.75,
-                      bgcolor: "#2f3136",
-                      borderBottom: "1px solid",
-                      borderColor: "divider",
-                    }}
+                    sx={compactSearchBarSx}
                   >
                     <TextField
+                      inputRef={responseSearchInputRef}
                       value={responseSearchQuery}
                       onChange={(event) => setResponseSearchQuery(event.target.value)}
                       size="small"
                       fullWidth
                       placeholder="Find"
-                      sx={{
-                        "& .MuiInputBase-root": { bgcolor: "#3a3d42", color: "common.white" },
-                        "& .MuiOutlinedInput-notchedOutline": { borderColor: "#5c6168" },
-                      }}
+                      sx={compactSearchInputSx}
                     />
                     <Button
                       size="small"
                       variant={responseSearchOptions.caseSensitive ? "contained" : "text"}
                       onClick={() => toggleSearchOption("response", "caseSensitive")}
+                      sx={compactSearchToggleButtonSx}
                     >
                       Aa
                     </Button>
@@ -1541,6 +1726,7 @@ export const SnifferPage = () => {
                       size="small"
                       variant={responseSearchOptions.wholeWord ? "contained" : "text"}
                       onClick={() => toggleSearchOption("response", "wholeWord")}
+                      sx={compactSearchToggleButtonSx}
                     >
                       ab
                     </Button>
@@ -1548,10 +1734,11 @@ export const SnifferPage = () => {
                       size="small"
                       variant={responseSearchOptions.useRegex ? "contained" : "text"}
                       onClick={() => toggleSearchOption("response", "useRegex")}
+                      sx={compactSearchToggleButtonSx}
                     >
                       .*
                     </Button>
-                    <Typography variant="body2" sx={{ minWidth: 52, textAlign: "center", color: "grey.300" }}>
+                    <Typography variant="body2" sx={compactSearchCounterSx}>
                       {responseMatchData.totalMatches > 0
                         ? `${responseActiveMatch + 1} of ${responseMatchData.totalMatches}`
                         : "0 of 0"}
@@ -1560,6 +1747,7 @@ export const SnifferPage = () => {
                       size="small"
                       onClick={() => stepResponseMatch(-1)}
                       disabled={responseMatchData.totalMatches === 0}
+                      sx={compactSearchIconButtonSx}
                     >
                       <KeyboardArrowUpRoundedIcon fontSize="small" />
                     </IconButton>
@@ -1567,16 +1755,16 @@ export const SnifferPage = () => {
                       size="small"
                       onClick={() => stepResponseMatch(1)}
                       disabled={responseMatchData.totalMatches === 0}
+                      sx={compactSearchIconButtonSx}
                     >
                       <KeyboardArrowDownRoundedIcon fontSize="small" />
                     </IconButton>
                     <IconButton
                       size="small"
                       onClick={() => {
-                        setShowResponseSearch(false);
-                        setResponseSearchQuery("");
-                        setResponseActiveMatch(-1);
+                        closeResponseSearch();
                       }}
+                      sx={compactSearchIconButtonSx}
                     >
                       <CloseRoundedIcon fontSize="small" />
                     </IconButton>
