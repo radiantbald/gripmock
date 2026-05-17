@@ -8,7 +8,6 @@ import {
   Edit,
   SimpleForm,
   Toolbar,
-  SaveButton,
   TextInput,
   BooleanInput,
   TopToolbar,
@@ -16,16 +15,12 @@ import {
   CreateButton,
   AutocompleteInput,
   useGetList,
-  NumberInput,
   useDataProvider,
   useNotify,
   useRecordContext,
   useCreatePath,
   useRedirect,
 } from "react-admin";
-import { JsonTextAreaInput } from "./components/json/JsonTextAreaInput";
-import { KeyValueTableInput } from "./components/json/KeyValueTableInput";
-import { StubMatcherInput } from "./components/json/StubMatcherInput";
 import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { useFormContext } from "react-hook-form";
@@ -38,11 +33,10 @@ import { listActionButtonSx } from "./components/table/listActionButtonSx";
 import { ActiveFiltersSummary } from "./components/table/ActiveFiltersSummary";
 import type { StubRecord } from "./types/entities";
 import { StubsDatagrid } from "./features/stubs/components/StubsDatagrid";
+import { StubFormLayout, stubFormSx } from "./features/stubs/components/StubFormLayout";
 import { setStubCreatedSignal, setStubEditedSignal, setStubReplacedSignal } from "./utils/stubEditSignal";
 import { EntityEmptyState } from "./components/empty/EntityEmptyState";
 import { getCurrentRoom, subscribeRoomChanges } from "./utils/room";
-
-const RADIUS_PX = "10px";
 const stubsListSx = {
   ...listContentSx,
   height: "100%",
@@ -188,24 +182,6 @@ const DEFAULT_OUTPUT_TEMPLATE = {
   ],
 };
 
-const OUTPUT_PLACEHOLDER_TEMPLATE = `{
-  "data": {
-    "message": "ok"
-  },
-  "stream": [
-    {
-      "message": "part-1"
-    }
-  ],
-  "details": [
-    {
-      "@type": "type.googleapis.com/google.rpc.ErrorInfo",
-      "reason": "EXAMPLE_REASON",
-      "domain": "example.service"
-    }
-  ]
-}`;
-
 // Service Autocomplete Filter
 const NameFilter = (props: Record<string, unknown>) => {
   const { data: stubs, isLoading } = useGetList<StubRecord>("stubs", {
@@ -295,6 +271,45 @@ const UsedUnusedStubListActions = () => (
   </TopToolbar>
 );
 
+const stubToolbarContainerSx = {
+  width: "100%",
+  display: "flex",
+  alignItems: "center",
+  minHeight: 54,
+  py: 0.625,
+  px: 1.25,
+  gap: 1.5,
+  border: "1px solid",
+  borderColor: "divider",
+  borderRadius: "10px",
+  backgroundColor: "transparent",
+  boxShadow: "0 1px 0 rgba(255, 255, 255, 0.04) inset",
+  "& .ra-input": {
+    my: 0,
+  },
+} as const;
+
+const primaryToolbarButtonSx = {
+  textTransform: "none",
+  px: 2.25,
+  minWidth: 90,
+  fontWeight: 600,
+} as const;
+
+const secondaryToolbarButtonSx = {
+  textTransform: "none",
+  px: 2,
+  minWidth: 84,
+  borderColor: "divider",
+} as const;
+
+const deleteToolbarButtonSx = {
+  textTransform: "none",
+  px: 2,
+  minWidth: 90,
+  borderColor: "error.main",
+} as const;
+
 const CreateStubToolbar = () => (
   <CreateStubToolbarImpl />
 );
@@ -303,22 +318,17 @@ const CreateStubToolbarImpl = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const createPath = useCreatePath();
+  const {
+    formState: { isSubmitting },
+  } = useFormContext();
   const stubsListPath = createPath({ resource: "stubs", type: "list" });
   const returnPath = resolveReturnPathFromLocationState(location.state, stubsListPath);
 
   return (
     <Toolbar
     sx={{
-      width: "100%",
-      display: "flex",
-      justifyContent: "flex-start",
-      alignItems: "center",
-      height: 72,
-      py: 0,
-      gap: 2,
-      "& .ra-input": {
-        my: 0,
-      },
+      ...stubToolbarContainerSx,
+      justifyContent: "space-between",
       "& .ra-input-enable": {
         my: 0,
         display: "flex",
@@ -339,25 +349,43 @@ const CreateStubToolbarImpl = () => {
       },
     }}
   >
-    <BooleanInput
-      source="enabled"
-      label="Enable Stub"
-      helperText={false}
-      defaultValue
-      sx={{ my: 0 }}
-    />
-    <SaveButton
-      label="Save"
-      icon={<SaveIcon />}
-      sx={{ ml: 0 }}
-    />
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+      <BooleanInput
+        source="enabled"
+        label="Enable Stub"
+        helperText={false}
+        defaultValue
+        sx={{ my: 0 }}
+      />
+      <Button
+        type="submit"
+        variant="contained"
+        disabled={isSubmitting}
+        sx={primaryToolbarButtonSx}
+        startIcon={<SaveIcon />}
+      >
+        Save
+      </Button>
+      <Button
+        type="button"
+        variant="outlined"
+        disabled={isSubmitting}
+        sx={secondaryToolbarButtonSx}
+        onClick={() => navigate(returnPath)}
+      >
+        Cancel
+      </Button>
+    </Box>
     <Button
       type="button"
       variant="outlined"
-      sx={{ textTransform: "none", px: 3 }}
-      onClick={() => navigate(returnPath)}
+      color="error"
+      disabled
+      aria-hidden="true"
+      tabIndex={-1}
+      sx={{ ...deleteToolbarButtonSx, visibility: "hidden", pointerEvents: "none" }}
     >
-      Cancel
+      Delete
     </Button>
   </Toolbar>
   );
@@ -430,19 +458,11 @@ const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }
   return (
     <Toolbar
       sx={{
-        width: "100%",
-        display: "flex",
+        ...stubToolbarContainerSx,
         justifyContent: "space-between",
-        alignItems: "center",
-        minHeight: 56,
-        py: 0,
-        gap: 2,
-        "& .ra-input": {
-          my: 0,
-        },
       }}
     >
-      <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
         <BooleanInput
           source="enabled"
           label="Enable Stub"
@@ -454,7 +474,7 @@ const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }
           type="button"
           variant="contained"
           disabled={saving || deleting}
-          sx={{ textTransform: "none", px: 3 }}
+          sx={primaryToolbarButtonSx}
           startIcon={<SaveIcon />}
           onClick={() => {
             void handleSave();
@@ -466,7 +486,7 @@ const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }
           type="button"
           variant="outlined"
           disabled={saving || deleting}
-          sx={{ textTransform: "none", px: 3 }}
+          sx={secondaryToolbarButtonSx}
           onClick={() => {
             const values = getValues() as Record<string, unknown>;
             rememberStubsSelection(values.service, values.method);
@@ -481,7 +501,7 @@ const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }
         variant="outlined"
         color="error"
         disabled={saving || deleting}
-        sx={{ textTransform: "none", px: 3 }}
+        sx={deleteToolbarButtonSx}
         onClick={async () => {
           const id = record?.id;
           if (id === undefined || id === null) {
@@ -612,6 +632,7 @@ export const StubCreate = () => {
 
   return (
     <Create
+      className="RaEdit-main"
       redirect={false}
       mutationOptions={{
         onSuccess: async (data, variables) => {
@@ -680,172 +701,19 @@ export const StubCreate = () => {
       }}
     >
       <SimpleForm
-        toolbar={<CreateStubToolbar />}
+        toolbar={false}
         transform={normalizeStubDelay}
         warnWhenUnsavedChanges
         defaultValues={{
           service: prefillService,
           method: prefillMethod,
           output: DEFAULT_OUTPUT_TEMPLATE,
+          enabled: true,
         }}
-        sx={{
-          height: "100%",
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-          gap: 1,
-        }}
+        sx={stubFormSx}
       >
-        <Box
-          sx={{
-            width: "100%",
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(220px, 320px))" },
-            gap: 2,
-            alignItems: "start",
-            justifyContent: "start",
-          }}
-        >
-          <TextInput source="name" label="Stub Name" fullWidth />
-          <TextInput source="service" fullWidth />
-          <TextInput source="method" fullWidth />
-        </Box>
-        <Box
-          sx={{
-            flex: 1,
-            minHeight: 0,
-            width: "100%",
-            display: "grid",
-            gridTemplateRows: "auto 1fr",
-            gap: 1,
-          }}
-        >
-        <Box
-          sx={{
-            width: "100%",
-            border: "1px solid",
-            borderColor: "divider",
-            borderRadius: RADIUS_PX,
-            p: 1.5,
-            minHeight: 0,
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-            alignSelf: "start",
-          }}
-        >
-          <Box sx={{ width: "100%", fontSize: 16, fontWeight: 600, color: "#FF6C37", mb: 1 }}>
-            Request Match
-          </Box>
-          <Box
-            sx={{
-              width: "100%",
-              display: "grid",
-              gridTemplateColumns: { xs: "1fr", md: "2fr 3fr" },
-              gap: 2,
-              alignItems: "start",
-              minHeight: 0,
-              "& > *": { minHeight: 0 },
-            }}
-          >
-            <KeyValueTableInput
-              source="headers.equals"
-              label="Request headers"
-              helperText="Matcher for incoming request metadata."
-              maxTableHeight={140}
-            />
-            <StubMatcherInput
-              mode="create"
-              minRows={8}
-            />
-          </Box>
-        </Box>
-        <Box
-          sx={{
-            width: "100%",
-            border: "1px solid",
-            borderColor: "divider",
-            borderRadius: RADIUS_PX,
-            p: 1.5,
-            minHeight: 0,
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-            alignSelf: "start",
-          }}
-        >
-          <Box sx={{ width: "100%", fontSize: 16, fontWeight: 600, color: "#FF6C37", mb: 1 }}>
-            Response Stub
-          </Box>
-          <Box
-            sx={{
-              width: "100%",
-              display: "flex",
-              flexDirection: "column",
-              gap: 2,
-              minHeight: 0,
-            }}
-          >
-            <Box
-              sx={{
-                width: "100%",
-                display: "grid",
-                gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(180px, 1fr))" },
-                gap: 2,
-                alignItems: "start",
-              }}
-            >
-              <NumberInput
-                source="output.code"
-                label="gRPC status code"
-                min={0}
-                max={16}
-                step={1}
-                helperText="Optional status code (0..16). Use non-zero with error responses."
-                fullWidth
-              />
-              <TextInput
-                source="output.error"
-                label="gRPC error"
-                helperText="Optional error text (for non-zero status codes)."
-                fullWidth
-              />
-              <TextInput
-                source="output.delay"
-                label="Delay"
-                helperText="Optional response delay in milliseconds (e.g. 100)."
-                fullWidth
-              />
-            </Box>
-            <Box
-              sx={{
-                width: "100%",
-                display: "grid",
-                gridTemplateColumns: { xs: "1fr", md: "2fr 3fr" },
-                gap: 2,
-                alignItems: "start",
-                minHeight: 0,
-                "& > *": { minHeight: 0 },
-              }}
-            >
-            <KeyValueTableInput
-              source="output.headers"
-              label="Response headers"
-              helperText="Metadata returned to client."
-              maxTableHeight={140}
-            />
-            <JsonTextAreaInput
-              source="output"
-              label="Data / Stream / Details"
-              minRows={8}
-              syncNestedFields={["code", "error", "delay", "headers"]}
-              visibleKeys={["data", "stream", "details"]}
-              placeholder={OUTPUT_PLACEHOLDER_TEMPLATE}
-            />
-            </Box>
-          </Box>
-        </Box>
-        </Box>
+        <StubFormLayout mode="create" />
+        <CreateStubToolbar />
       </SimpleForm>
     </Create>
   );
@@ -860,167 +728,16 @@ export const StubEdit = () => {
   return (
     <Edit>
       <SimpleForm
-        toolbar={<EditStubToolbar canToggleEnabled={canToggleEnabled} />}
+        toolbar={false}
         transform={normalizeStubDelay}
         warnWhenUnsavedChanges
-        sx={{
-          height: "100%",
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-          gap: 1,
-        }}
+        sx={stubFormSx}
       >
-        <Box
-          sx={{
-            width: "100%",
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", md: "repeat(4, minmax(180px, 1fr))" },
-            gap: 2,
-            alignItems: "start",
-            justifyContent: "start",
-          }}
-        >
-          <TextInput source="id" label="Stub ID" fullWidth disabled />
-          <TextInput source="name" label="Stub Name" fullWidth />
-          <TextInput source="service" fullWidth />
-          <TextInput source="method" fullWidth />
-        </Box>
-        <Box
-          sx={{
-            flex: 1,
-            minHeight: 0,
-            width: "100%",
-            display: "grid",
-            gridTemplateRows: "auto 1fr",
-            gap: 1,
-          }}
-        >
-        <Box
-          sx={{
-            width: "100%",
-            border: "1px solid",
-            borderColor: "divider",
-            borderRadius: RADIUS_PX,
-            p: 1.5,
-            minHeight: 0,
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-          }}
-        >
-          <Box sx={{ width: "100%", fontSize: 16, fontWeight: 600, color: "#FF6C37", mb: 1 }}>
-            Request Match
-          </Box>
-          <Box
-            sx={{
-              width: "100%",
-              display: "grid",
-              gridTemplateColumns: { xs: "1fr", md: "2fr 3fr" },
-              gap: 2,
-              alignItems: "start",
-              minHeight: 0,
-              "& > *": { minHeight: 0 },
-            }}
-          >
-            <KeyValueTableInput
-              source="headers.equals"
-              label="Request headers"
-              helperText="Matcher for incoming request metadata."
-              maxTableHeight={140}
-            />
-            <StubMatcherInput
-              mode="edit"
-              minRows={8}
-            />
-          </Box>
-        </Box>
-        <Box
-          sx={{
-            width: "100%",
-            border: "1px solid",
-            borderColor: "divider",
-            borderRadius: RADIUS_PX,
-            p: 1.5,
-            minHeight: 0,
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-            alignSelf: "start",
-          }}
-        >
-          <Box sx={{ width: "100%", fontSize: 16, fontWeight: 600, color: "#FF6C37", mb: 1 }}>
-            Response Stub
-          </Box>
-          <Box
-            sx={{
-              width: "100%",
-              display: "flex",
-              flexDirection: "column",
-              gap: 2,
-              minHeight: 0,
-            }}
-          >
-            <Box
-              sx={{
-                width: "100%",
-                display: "grid",
-                gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(180px, 1fr))" },
-                gap: 2,
-                alignItems: "start",
-              }}
-            >
-              <NumberInput
-                source="output.code"
-                label="gRPC status code"
-                min={0}
-                max={16}
-                step={1}
-                helperText="Optional status code (0..16). Use non-zero with error responses."
-                fullWidth
-              />
-              <TextInput
-                source="output.error"
-                label="gRPC error"
-                helperText="Optional error text (for non-zero status codes)."
-                fullWidth
-              />
-              <TextInput
-                source="output.delay"
-                label="Delay"
-                helperText="Optional response delay in milliseconds (e.g. 100)."
-                fullWidth
-              />
-            </Box>
-            <Box
-              sx={{
-                width: "100%",
-                display: "grid",
-                gridTemplateColumns: { xs: "1fr", md: "2fr 3fr" },
-                gap: 2,
-                alignItems: "start",
-                minHeight: 0,
-                "& > *": { minHeight: 0 },
-              }}
-            >
-              <KeyValueTableInput
-                source="output.headers"
-                label="Response headers"
-                helperText="Metadata returned to client."
-                maxTableHeight={140}
-              />
-              <JsonTextAreaInput
-                source="output"
-                label="Data / Stream / Details"
-                minRows={8}
-                syncNestedFields={["code", "error", "delay", "headers"]}
-                visibleKeys={["data", "stream", "details"]}
-                placeholder={OUTPUT_PLACEHOLDER_TEMPLATE}
-              />
-            </Box>
-          </Box>
-        </Box>
-        </Box>
+        <StubFormLayout
+          mode="edit"
+          showId
+        />
+        <EditStubToolbar canToggleEnabled={canToggleEnabled} />
       </SimpleForm>
     </Edit>
   );

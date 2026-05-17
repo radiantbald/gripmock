@@ -50,8 +50,6 @@ const baseComponents = {
         paddingRight: "0 !important",
       },
       ".RaCreate-main.RaCreate-noActions": {
-        paddingTop: 6,
-        paddingBottom: 6,
         height: "100%",
         minHeight: 0,
         display: "flex",
@@ -66,7 +64,7 @@ const baseComponents = {
         flexDirection: "column",
         overflow: "hidden",
       },
-      ".RaEdit-main .RaEdit-card": {
+      ".RaEdit-main .RaEdit-card, .RaEdit-main .RaCreate-card": {
         flex: 1,
         minHeight: 0,
         display: "flex",
@@ -75,12 +73,16 @@ const baseComponents = {
       },
       ".RaCreate-main.RaCreate-noActions .RaSimpleForm-form": {
         gap: 8,
+        display: "flex",
+        flexDirection: "column",
         flex: 1,
         minHeight: 0,
         overflow: "hidden",
       },
       ".RaEdit-main .RaSimpleForm-form": {
         gap: 8,
+        display: "flex",
+        flexDirection: "column",
         flex: 1,
         minHeight: 0,
         overflow: "hidden",
@@ -96,7 +98,7 @@ const baseComponents = {
         marginTop: 4,
         marginBottom: 0,
       },
-      ".RaToolbar-desktopToolbar": {
+      ".RaList-actions .RaToolbar-desktopToolbar": {
         minHeight: "40px !important",
         height: "40px !important",
         padding: "0 12px !important",
