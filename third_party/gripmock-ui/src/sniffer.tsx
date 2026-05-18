@@ -638,7 +638,7 @@ const nextResponseDropdownSx = {
   "& .MuiSelect-iconOpen": { transform: "rotate(180deg)" },
 } as const;
 const nextResponseTextInputSx = {
-  width: "min(100%, 280px)",
+  width: { xs: "100%", sm: 280 },
   maxWidth: "100%",
   minWidth: 0,
   position: "relative",
@@ -792,14 +792,28 @@ const reflectionHostSetErrorSx = {
   },
 } as const;
 const nextResponseReflectionHostSx = {
-  width: "100%",
-  minWidth: 0,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  gap: 1,
-  flexWrap: "wrap",
-  overflowX: "hidden",
+  columnGap: 1,
+  rowGap: 0.75,
+  width: "100%",
+  maxWidth: "100%",
+  flex: "1 1 100%",
+  minWidth: 0,
+  flexWrap: "nowrap",
+  overflowX: "visible",
+  mx: "auto",
+  "@media (min-width: 600px)": {
+    maxWidth: 700,
+  },
+} as const;
+const nextResponseReflectionHostInputSx = {
+  ...nextResponseTextInputSx,
+  width: "auto",
+  maxWidth: 280,
+  minWidth: 0,
+  flex: "1 1 280px",
 } as const;
 const nextResponseProtoActionsRowSx = {
   ...nextResponseReflectionHostSx,
@@ -851,6 +865,22 @@ const nextResponseStubControlSx = {
   overflowX: "hidden",
 } as const;
 const nextResponseActionsSx = {
+  ...stateBlockActionsSx,
+  mt: 0.75,
+  gap: 0.75,
+} as const;
+const reflectionHostControlContainerSx = {
+  ...nextResponseControlsSx,
+  mt: 0,
+  gap: 0,
+} as const;
+const responseStateCardSx = {
+  ...stateBlockCardSx,
+  gap: 0.75,
+  px: 0.25,
+  pr: 0.5,
+} as const;
+const responseStateActionsSx = {
   ...stateBlockActionsSx,
   mt: 0.75,
   gap: 0.75,
@@ -3081,41 +3111,130 @@ export const SnifferPage = () => {
     }
   };
 
+  const reflectionHostOptions = Array.from(
+    new Set(
+      reflectionHosts
+        .map((item) => item.source || item.host || "")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  );
+
   const reflectionHostControl = (
-    <Box
-      sx={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 1,
-        flexWrap: "wrap",
-        width: "100%",
-      }}
-    >
-      <TextField
-        size="small"
-        label="Reflection host"
-        placeholder="localhost:50051"
-        value={reflectionHost}
-        onChange={(event) => setReflectionHost(event.target.value)}
-        inputProps={{ list: "reflection-host-options" }}
-        sx={{ width: { xs: "100%", sm: 280 }, maxWidth: "100%" }}
+    <Box sx={nextResponseReflectionHostSx}>
+      <Autocomplete
+        freeSolo
+        disableClearable
+        options={reflectionHostOptions}
+        inputValue={reflectionHost}
+        onInputChange={(_, value) => {
+          setReflectionHost(value);
+          if (reflectionHostError) {
+            setReflectionHostError("");
+          }
+          if (reflectionHostSetError) {
+            setReflectionHostSetError(false);
+          }
+          if (reflectionHostSetSuccess) {
+            setReflectionHostSetSuccess(false);
+          }
+          if (reflectionHostSuccessPulse) {
+            setReflectionHostSuccessPulse(0);
+          }
+        }}
+        sx={[
+          nextResponseReflectionHostInputSx,
+          reflectionHostError ? reflectionHostPulseSx : null,
+          !reflectionHostError && reflectionHostSuccessPulse
+            ? reflectionHostSuccessPulseSx
+            : null,
+          !reflectionHostError && reflectionHostSetSuccess
+            ? reflectionHostSetSx
+            : null,
+          reflectionHostSetError ? reflectionHostSetErrorSx : null,
+        ]}
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            key={`${reflectionHostErrorPulse}:${reflectionHostSuccessPulse}`}
+            size="small"
+            variant="outlined"
+            label="Reflection host"
+            placeholder="localhost:50051"
+            error={Boolean(reflectionHostError)}
+            helperText={reflectionHostError}
+            InputProps={{
+              ...params.InputProps,
+              endAdornment: (
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.25,
+                  }}
+                >
+                  {params.InputProps.endAdornment}
+                  <IconButton
+                    onClick={handleCheckReflection}
+                    disabled={
+                      isCheckingReflection ||
+                      isSettingReflection ||
+                      !reflectionHost.trim()
+                    }
+                    sx={nextResponseCheckIconButtonSx}
+                  >
+                    <Box
+                      sx={{
+                        position: "relative",
+                        width: 16,
+                        height: 16,
+                      }}
+                    >
+                      <SearchRoundedIcon
+                        sx={{
+                          fontSize: 16,
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                        }}
+                      />
+                      <Box
+                        component="span"
+                        sx={{
+                          position: "absolute",
+                          right: -1,
+                          top: -4,
+                          fontSize: 9,
+                          fontWeight: 700,
+                          lineHeight: 1,
+                        }}
+                      >
+                        ?
+                      </Box>
+                    </Box>
+                  </IconButton>
+                </Box>
+              ),
+            }}
+          />
+        )}
       />
-      <datalist id="reflection-host-options">
-        {reflectionHosts.map((item) => {
-          const option = item.source || item.host || "";
-          return option ? <option key={option} value={option} /> : null;
-        })}
-      </datalist>
       <Button
         variant="contained"
         onClick={handleSetReflection}
-        disabled={isSettingReflection || !reflectionHost.trim()}
-        sx={stateBlockActionButtonSx}
+        disabled={
+          isSettingReflection ||
+          isCheckingReflection ||
+          !reflectionHost.trim()
+        }
+        sx={nextResponseSetButtonSx}
       >
-        {isSettingReflection ? "Setting..." : "Set reflection"}
+        {isSettingReflection ? "..." : "Set"}
       </Button>
     </Box>
+  );
+  const reflectionHostControlBlock = (
+    <Box sx={reflectionHostControlContainerSx}>{reflectionHostControl}</Box>
   );
 
   const protoUploadControl = (
@@ -3127,15 +3246,6 @@ export const SnifferPage = () => {
     >
       {isUploadingProto ? "Uploading..." : "Upload proto"}
     </Button>
-  );
-
-  const reflectionHostOptions = Array.from(
-    new Set(
-      reflectionHosts
-        .map((item) => item.source || item.host || "")
-        .map((item) => item.trim())
-        .filter(Boolean),
-    ),
   );
 
   const nextResponseStubControl = (
@@ -3319,117 +3429,7 @@ export const SnifferPage = () => {
               </>
             ) : (
               <>
-                <Box sx={nextResponseReflectionHostSx}>
-                  <Autocomplete
-                    freeSolo
-                    disableClearable
-                    options={reflectionHostOptions}
-                    inputValue={reflectionHost}
-                    onInputChange={(_, value) => {
-                      setReflectionHost(value);
-                      if (reflectionHostError) {
-                        setReflectionHostError("");
-                      }
-                      if (reflectionHostSetError) {
-                        setReflectionHostSetError(false);
-                      }
-                      if (reflectionHostSetSuccess) {
-                        setReflectionHostSetSuccess(false);
-                      }
-                      if (reflectionHostSuccessPulse) {
-                        setReflectionHostSuccessPulse(0);
-                      }
-                    }}
-                    sx={[
-                      nextResponseTextInputSx,
-                      reflectionHostError ? reflectionHostPulseSx : null,
-                      !reflectionHostError && reflectionHostSuccessPulse
-                        ? reflectionHostSuccessPulseSx
-                        : null,
-                      !reflectionHostError && reflectionHostSetSuccess
-                        ? reflectionHostSetSx
-                        : null,
-                      reflectionHostSetError ? reflectionHostSetErrorSx : null,
-                    ]}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        key={`${reflectionHostErrorPulse}:${reflectionHostSuccessPulse}`}
-                        size="small"
-                        variant="outlined"
-                        label="Reflection host"
-                        placeholder="localhost:50051"
-                        error={Boolean(reflectionHostError)}
-                        helperText={reflectionHostError}
-                        InputProps={{
-                          ...params.InputProps,
-                          endAdornment: (
-                            <Box
-                              sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 0.25,
-                              }}
-                            >
-                              {params.InputProps.endAdornment}
-                              <IconButton
-                                onClick={handleCheckReflection}
-                                disabled={
-                                  isCheckingReflection ||
-                                  isSettingReflection ||
-                                  !reflectionHost.trim()
-                                }
-                                sx={nextResponseCheckIconButtonSx}
-                              >
-                                <Box
-                                  sx={{
-                                    position: "relative",
-                                    width: 16,
-                                    height: 16,
-                                  }}
-                                >
-                                  <SearchRoundedIcon
-                                    sx={{
-                                      fontSize: 16,
-                                      position: "absolute",
-                                      top: 0,
-                                      left: 0,
-                                    }}
-                                  />
-                                  <Box
-                                    component="span"
-                                    sx={{
-                                      position: "absolute",
-                                      right: -1,
-                                      top: -4,
-                                      fontSize: 9,
-                                      fontWeight: 700,
-                                      lineHeight: 1,
-                                    }}
-                                  >
-                                    ?
-                                  </Box>
-                                </Box>
-                              </IconButton>
-                            </Box>
-                          ),
-                        }}
-                      />
-                    )}
-                  />
-                  <Button
-                    variant="contained"
-                    onClick={handleSetReflection}
-                    disabled={
-                      isSettingReflection ||
-                      isCheckingReflection ||
-                      !reflectionHost.trim()
-                    }
-                    sx={nextResponseSetButtonSx}
-                  >
-                    {isSettingReflection ? "..." : "Set"}
-                  </Button>
-                </Box>
+                {reflectionHostControlBlock}
                 <FormControl size="small" sx={nextResponseDropdownSx}>
                   <Select
                     value={selectedReflectionServedBy}
@@ -4417,7 +4417,7 @@ export const SnifferPage = () => {
           sx={{
             position: "relative",
             display: "grid",
-            gridTemplateColumns: `minmax(220px, ${requestPanelRatio}fr) minmax(220px, ${1 - requestPanelRatio}fr)`,
+            gridTemplateColumns: `minmax(0, ${requestPanelRatio}fr) minmax(0, ${1 - requestPanelRatio}fr)`,
             gap: 0,
             minHeight: 0,
           }}
@@ -4433,6 +4433,7 @@ export const SnifferPage = () => {
               borderRight: 0,
               display: "flex",
               flexDirection: "column",
+              minWidth: 0,
               minHeight: 0,
               boxShadow: "0 10px 28px rgba(0,0,0,0.16)",
             }}
@@ -4441,10 +4442,28 @@ export const SnifferPage = () => {
               <Typography variant="subtitle2" sx={panelTitleSx}>
                 Request
               </Typography>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.75,
+                  minWidth: 0,
+                  flex: 1,
+                  justifyContent: "flex-end",
+                  overflow: "hidden",
+                }}
+              >
                 <Chip
                   size="small"
                   variant="outlined"
+                  sx={{
+                    maxWidth: "100%",
+                    "& .MuiChip-label": {
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    },
+                  }}
                   label={
                     selectedService && selectedMethod
                       ? `${selectedService}.${selectedMethod}`
@@ -4595,6 +4614,7 @@ export const SnifferPage = () => {
               borderColor: "divider",
               display: "flex",
               flexDirection: "column",
+              minWidth: 0,
               minHeight: 0,
               boxShadow: "0 10px 28px rgba(0,0,0,0.16)",
             }}
@@ -4627,7 +4647,18 @@ export const SnifferPage = () => {
                 </Select>
               </FormControl>
               {isResponseViewMode ? (
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.75,
+                  minWidth: 0,
+                  flex: 1,
+                  justifyContent: "flex-end",
+                  overflowX: "auto",
+                  overflowY: "hidden",
+                }}
+              >
                 <Chip
                   size="small"
                   color={codeToChipColor(selectedCode)}
@@ -4715,7 +4746,7 @@ export const SnifferPage = () => {
             ) : shouldPromptEnterRoomToSetup ? (
               <Box sx={stateBlockContainerSx}>
                 <Box
-                  sx={[stateBlockCardSx, { maxWidth: { xs: "100%", sm: 540 } }]}
+                  sx={[responseStateCardSx, { maxWidth: { xs: "100%", sm: 540 } }]}
                 >
                   <LockOutlinedIcon
                     sx={{
@@ -4724,18 +4755,18 @@ export const SnifferPage = () => {
                       mb: 0.75,
                     }}
                   />
-                  <Typography variant="h5" sx={stateBlockTitleSx}>
+                  <Typography variant="h5" sx={nextResponseTitleSx}>
                     Enter the room to set up
                   </Typography>
-                  <Typography variant="body1" sx={stateBlockBodySx}>
+                  <Typography variant="body1" sx={nextResponseBodySx}>
                     This request belongs to room {selectedSetupRoom}. Enter this
                     room first, then continue setup.
                   </Typography>
-                  <Box sx={stateBlockActionsSx}>
+                  <Box sx={responseStateActionsSx}>
                     <Button
                       variant="contained"
                       onClick={handleEnterSelectedRoomForSetup}
-                      sx={stateBlockActionButtonSx}
+                      sx={nextResponseActionButtonSx}
                     >
                       {`Enter room ${selectedSetupRoom}`}
                     </Button>
@@ -4744,7 +4775,7 @@ export const SnifferPage = () => {
               </Box>
             ) : shouldHideResponsePayload ? (
               <Box sx={stateBlockContainerSx}>
-                <Box sx={stateBlockCardSx}>
+                <Box sx={responseStateCardSx}>
                   <LockOutlinedIcon
                     sx={{
                       fontSize: { xs: 36, sm: 44 },
@@ -4752,13 +4783,13 @@ export const SnifferPage = () => {
                       mb: 0.75,
                     }}
                   />
-                  <Typography variant="h5" sx={stateBlockTitleSx}>
+                  <Typography variant="h5" sx={nextResponseTitleSx}>
                     Response payload locked
                   </Typography>
-                  <Typography variant="body1" sx={stateBlockBodySx}>
+                  <Typography variant="body1" sx={nextResponseBodySx}>
                     This response cannot be decoded yet.
                   </Typography>
-                  <Typography variant="body1" sx={stateBlockBodySx}>
+                  <Typography variant="body1" sx={nextResponseBodySx}>
                     {selectedResponseSource === "proto"
                       ? hasProtoForSelectedCall
                         ? "Route the peer to a room to view the content."
@@ -4769,12 +4800,13 @@ export const SnifferPage = () => {
                   </Typography>
                   <Box
                     sx={{
-                      mt: 2.25,
+                      mt: 0.75,
                       display: "flex",
                       flexDirection: "column",
                       justifyContent: "center",
                       alignItems: "center",
                       gap: 0.85,
+                      width: "100%",
                     }}
                   >
                     <Box
@@ -4782,8 +4814,9 @@ export const SnifferPage = () => {
                         display: "flex",
                         justifyContent: "center",
                         alignItems: "center",
-                        gap: 1.25,
+                        gap: 0.75,
                         flexWrap: "wrap",
+                        width: "100%",
                       }}
                     >
                       {shouldShowCombinedAttachAndProtoHint ? (
@@ -4819,6 +4852,7 @@ export const SnifferPage = () => {
                               flexDirection: "column",
                               alignItems: "center",
                               gap: 0.85,
+                              width: "100%",
                             }}
                           >
                             {isInGlobalScope ? (
@@ -4897,7 +4931,7 @@ export const SnifferPage = () => {
                             >
                               {selectedNextResponseSource === "proto"
                                 ? protoUploadControl
-                                : reflectionHostControl}
+                                : reflectionHostControlBlock}
                             </Box>
                           )}
                         </Box>
@@ -4916,7 +4950,7 @@ export const SnifferPage = () => {
                       ) : selectedNextResponseSource === "proto" ? (
                         protoUploadControl
                       ) : (
-                        reflectionHostControl
+                        reflectionHostControlBlock
                       )}
                     </Box>
                   </Box>
@@ -4924,7 +4958,7 @@ export const SnifferPage = () => {
               </Box>
             ) : shouldShowInvalidStubBlock ? (
               <Box sx={stateBlockContainerSx}>
-                <Box sx={stateBlockCardSx}>
+                <Box sx={responseStateCardSx}>
                   <ErrorOutlineRoundedIcon
                     sx={{
                       fontSize: { xs: 36, sm: 44 },
@@ -4933,16 +4967,16 @@ export const SnifferPage = () => {
                       color: "error.main",
                     }}
                   />
-                  <Typography variant="h5" sx={stateBlockTitleSx}>
+                  <Typography variant="h5" sx={nextResponseTitleSx}>
                     Invalid stub response
                   </Typography>
-                  <Typography variant="body1" sx={stateBlockBodySx}>
+                  <Typography variant="body1" sx={nextResponseBodySx}>
                     Selected stub response does not match the proto schema.
                   </Typography>
-                  <Typography variant="body1" sx={stateBlockBodySx}>
+                  <Typography variant="body1" sx={nextResponseBodySx}>
                     Open the selected stub and fix its output payload.
                   </Typography>
-                  <Box sx={stateBlockActionsSx}>
+                  <Box sx={responseStateActionsSx}>
                     {shouldShowResolvedReplacedHint ? (
                       <Typography
                         variant="body2"
@@ -4965,7 +4999,7 @@ export const SnifferPage = () => {
                         component={RouterLink}
                         to={selectedStubEditPath}
                         state={{ returnTo: snifferPath }}
-                        sx={stateBlockActionButtonSx}
+                        sx={nextResponseActionButtonSx}
                       >
                         Edit selected stub
                       </Button>
@@ -4976,7 +5010,7 @@ export const SnifferPage = () => {
                         component={RouterLink}
                         to={stubsListPath}
                         disabled={!canCreateStubFromSelectedCall}
-                        sx={stateBlockActionButtonSx}
+                        sx={nextResponseActionButtonSx}
                       >
                         Select another stub
                       </Button>
@@ -4986,7 +5020,7 @@ export const SnifferPage = () => {
               </Box>
             ) : shouldShowMissingStubBlock ? (
               <Box sx={stateBlockContainerSx}>
-                <Box sx={stateBlockCardSx}>
+                <Box sx={responseStateCardSx}>
                   <SearchOffRoundedIcon
                     sx={{
                       fontSize: { xs: 36, sm: 44 },
@@ -4994,22 +5028,22 @@ export const SnifferPage = () => {
                       mb: 0.75,
                     }}
                   />
-                  <Typography variant="h5" sx={stateBlockTitleSx}>
+                  <Typography variant="h5" sx={nextResponseTitleSx}>
                     {hasAnyMatchingStubs
                       ? "Stub did not match request"
                       : "No stub assigned"}
                   </Typography>
-                  <Typography variant="body1" sx={stateBlockBodySx}>
+                  <Typography variant="body1" sx={nextResponseBodySx}>
                     {hasAnyMatchingStubs
                       ? "A stub exists for this route, but this request did not match its input or headers."
                       : "No stub is assigned for this call."}
                   </Typography>
-                  <Typography variant="body1" sx={stateBlockBodySx}>
+                  <Typography variant="body1" sx={nextResponseBodySx}>
                     {hasAnyMatchingStubs
                       ? "Edit the route stub or select another stub for this request."
                       : "No stubs exist for this service/method yet. Create one for this call."}
                   </Typography>
-                  <Box sx={stateBlockActionsSx}>
+                  <Box sx={responseStateActionsSx}>
                     {shouldShowStubCreatedAndAssignedRetryHint ? (
                       <Typography
                         variant="body2"
@@ -5043,7 +5077,7 @@ export const SnifferPage = () => {
                             component={RouterLink}
                             to={routeStubEditPath}
                             state={{ returnTo: snifferPath }}
-                            sx={stateBlockActionButtonSx}
+                            sx={nextResponseActionButtonSx}
                           >
                             Edit stub
                           </Button>
@@ -5054,7 +5088,7 @@ export const SnifferPage = () => {
                             component={RouterLink}
                             to={stubsListPath}
                             disabled={!canCreateStubFromSelectedCall}
-                            sx={stateBlockActionButtonSx}
+                            sx={nextResponseActionButtonSx}
                           >
                             Select another stub
                           </Button>
@@ -5069,7 +5103,7 @@ export const SnifferPage = () => {
                               prefillService: selectedService,
                               prefillMethod: selectedMethod,
                             }}
-                            sx={stateBlockActionButtonSx}
+                            sx={nextResponseActionButtonSx}
                           >
                             Create stub
                           </Button>
