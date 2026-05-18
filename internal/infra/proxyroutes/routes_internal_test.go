@@ -66,6 +66,134 @@ func TestNewFirstSourceWinsPerService(t *testing.T) {
 	require.Nil(t, r.RouteByMethod("/unknown/Method"))
 }
 
+func TestRegisterDescriptorSetReplacesRuntimeRoute(t *testing.T) {
+	t.Parallel()
+
+	r := NewEmpty()
+	t.Cleanup(r.Close)
+
+	first := &protosetdom.Source{ReflectAddress: "first:123"}
+	second := &protosetdom.Source{ReflectAddress: "second:456"}
+	fds := buildDescriptorSet(map[string][]string{"greeter": {"Ping"}})
+
+	require.NoError(t, r.RegisterDescriptorSet(first, fds, ModeReplay))
+	require.Equal(t, ModeReplay, r.RouteByMethod("/greeter/Ping").Mode)
+	require.Equal(t, "first:123", r.RouteByMethod("/greeter/Ping").Source.ReflectAddress)
+
+	require.NoError(t, r.RegisterDescriptorSet(second, fds, ModeReplay))
+	require.Equal(t, "second:456", r.RouteByMethod("/greeter/Ping").Source.ReflectAddress)
+}
+
+func TestDisableMethodRemovesRuntimeRoute(t *testing.T) {
+	t.Parallel()
+
+	r := NewEmpty()
+	t.Cleanup(r.Close)
+
+	require.NoError(t, r.RegisterDescriptorSet(
+		&protosetdom.Source{ReflectAddress: "proxy:123"},
+		buildDescriptorSet(map[string][]string{"greeter": {"Ping", "Pong"}}),
+		ModeReplay,
+	))
+	require.NotNil(t, r.RouteByMethod("/greeter/Ping"))
+	require.NotNil(t, r.RouteByMethod("/greeter/Pong"))
+
+	r.DisableMethod("/greeter/Ping")
+
+	require.Nil(t, r.RouteByMethod("/greeter/Ping"))
+	require.NotNil(t, r.RouteByMethod("/greeter/Pong"))
+}
+
+func TestSetMethodModeOverridesSingleRuntimeRoute(t *testing.T) {
+	t.Parallel()
+
+	r := NewEmpty()
+	t.Cleanup(r.Close)
+
+	require.NoError(t, r.RegisterDescriptorSet(
+		&protosetdom.Source{ReflectAddress: "proxy:123"},
+		buildDescriptorSet(map[string][]string{"greeter": {"Ping", "Pong"}}),
+		ModeReplay,
+	))
+
+	require.True(t, r.SetMethodMode("/greeter/Ping", ModeProxy))
+
+	require.Equal(t, ModeProxy, r.RouteByMethod("/greeter/Ping").Mode)
+	require.Equal(t, ModeReplay, r.RouteByMethod("/greeter/Pong").Mode)
+}
+
+func TestSetMethodModeForRoomOverridesOnlyThatRoom(t *testing.T) {
+	t.Parallel()
+
+	r := NewEmpty()
+	t.Cleanup(r.Close)
+
+	require.NoError(t, r.RegisterDescriptorSet(
+		&protosetdom.Source{ReflectAddress: "proxy:123"},
+		buildDescriptorSet(map[string][]string{"greeter": {"Ping"}}),
+		ModeReplay,
+	))
+
+	require.True(t, r.SetMethodModeForRoom("room-a", "/greeter/Ping", ModeProxy))
+
+	require.Equal(t, ModeProxy, r.RouteByMethodForRoom("room-a", "/greeter/Ping").Mode)
+	require.Equal(t, ModeReplay, r.RouteByMethodForRoom("room-b", "/greeter/Ping").Mode)
+	require.Equal(t, ModeReplay, r.RouteByMethod("/greeter/Ping").Mode)
+}
+
+func TestDisableMethodForRoomDisablesOnlyThatRoom(t *testing.T) {
+	t.Parallel()
+
+	r := NewEmpty()
+	t.Cleanup(r.Close)
+
+	require.NoError(t, r.RegisterDescriptorSet(
+		&protosetdom.Source{ReflectAddress: "proxy:123"},
+		buildDescriptorSet(map[string][]string{"greeter": {"Ping"}}),
+		ModeReplay,
+	))
+
+	require.True(t, r.DisableMethodForRoom("room-a", "/greeter/Ping"))
+
+	require.Nil(t, r.RouteByMethodForRoom("room-a", "/greeter/Ping"))
+	require.NotNil(t, r.RouteByMethodForRoom("room-b", "/greeter/Ping"))
+	require.NotNil(t, r.RouteByMethod("/greeter/Ping"))
+}
+
+func TestSetMethodModeAppliesToFutureRuntimeRoute(t *testing.T) {
+	t.Parallel()
+
+	r := NewEmpty()
+	t.Cleanup(r.Close)
+
+	require.False(t, r.SetMethodMode("/greeter/Ping", ModeProxy))
+	require.NoError(t, r.RegisterDescriptorSet(
+		&protosetdom.Source{ReflectAddress: "proxy:123"},
+		buildDescriptorSet(map[string][]string{"greeter": {"Ping", "Pong"}}),
+		ModeReplay,
+	))
+
+	require.Equal(t, ModeProxy, r.RouteByMethod("/greeter/Ping").Mode)
+	require.Equal(t, ModeReplay, r.RouteByMethod("/greeter/Pong").Mode)
+}
+
+func TestSetMethodModeForRoomAppliesToFutureRuntimeRoute(t *testing.T) {
+	t.Parallel()
+
+	r := NewEmpty()
+	t.Cleanup(r.Close)
+
+	require.False(t, r.SetMethodModeForRoom("room-a", "/greeter/Ping", ModeProxy))
+	require.NoError(t, r.RegisterDescriptorSet(
+		&protosetdom.Source{ReflectAddress: "proxy:123"},
+		buildDescriptorSet(map[string][]string{"greeter": {"Ping"}}),
+		ModeReplay,
+	))
+
+	require.Equal(t, ModeProxy, r.RouteByMethodForRoom("room-a", "/greeter/Ping").Mode)
+	require.Equal(t, ModeReplay, r.RouteByMethodForRoom("room-b", "/greeter/Ping").Mode)
+}
+
 func buildDescriptorSet(services map[string][]string) *descriptorpb.FileDescriptorSet {
 	fileName := new(string)
 	*fileName = "test.proto"

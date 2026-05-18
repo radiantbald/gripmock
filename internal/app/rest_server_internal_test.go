@@ -27,6 +27,7 @@ import (
 	"github.com/bavix/gripmock/v3/internal/domain/rest"
 	"github.com/bavix/gripmock/v3/internal/infra/muxmiddleware"
 	pgprotometadata "github.com/bavix/gripmock/v3/internal/infra/postgres/protometadata"
+	"github.com/bavix/gripmock/v3/internal/infra/proxyroutes"
 	"github.com/bavix/gripmock/v3/internal/infra/room"
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
 )
@@ -549,6 +550,168 @@ func (s *RestServerTestSuite) TestAddDescriptorsFromReflectionWithDependency() {
 	s.Equal("reflection.test:50051", client.sourceSeen.ReflectAddress)
 	s.Contains(server.restDescriptors.ServiceIDs(), "reflectdep.ReflectionService")
 	s.True(strings.HasPrefix(server.restDescriptors.Source("reflectdep/service.proto"), descriptorSourceReflectPrefix))
+}
+
+func (s *RestServerTestSuite) TestAddDescriptorsFromReflectionRegistersReplayProxyRoute() {
+	server, err := NewRestServer(s.T().Context(), stuber.NewBudgerigar(), &mockExtender{}, nil, nil, nil)
+	s.Require().NoError(err)
+
+	routes := proxyroutes.NewEmpty()
+	s.T().Cleanup(routes.Close)
+	server.SetProxyRoutes(routes)
+	server.SetRemoteClient(&restReflectionClientMock{fds: reflectionDescriptorSetWithDependency()})
+
+	body := strings.NewReader(`{"source":"grpc://reflection.test:50051?timeout=1s"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/descriptors/reflection", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.AddDescriptorsFromReflection(w, req)
+
+	s.Equal(http.StatusOK, w.Code, w.Body.String())
+
+	route := routes.RouteByMethod("/reflectdep.ReflectionService/Echo")
+	s.Require().NotNil(route)
+	s.Equal(proxyroutes.ModeReplay, route.Mode)
+	s.Equal("reflection.test:50051", route.Source.ReflectAddress)
+}
+
+func (s *RestServerTestSuite) TestSnifferRouteSourceProtoDisablesReplayProxyRoute() {
+	server, err := NewRestServer(s.T().Context(), stuber.NewBudgerigar(), &mockExtender{}, nil, nil, nil)
+	s.Require().NoError(err)
+
+	routes := proxyroutes.NewEmpty()
+	s.T().Cleanup(routes.Close)
+	server.SetProxyRoutes(routes)
+	s.Require().NoError(routes.RegisterDescriptorSet(
+		&protoset.Source{ReflectAddress: "reflection.test:50051"},
+		reflectionDescriptorSetWithDependency(),
+		proxyroutes.ModeReplay,
+	))
+	s.Require().NotNil(routes.RouteByMethod("/reflectdep.ReflectionService/Echo"))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/sniffer/route-source",
+		strings.NewReader(`{"service":"reflectdep.ReflectionService","method":"Echo","source":"proto"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.SnifferRouteSource(w, req)
+
+	s.Equal(http.StatusOK, w.Code, w.Body.String())
+	s.Nil(routes.RouteByMethod("/reflectdep.ReflectionService/Echo"))
+}
+
+func (s *RestServerTestSuite) TestSnifferRouteSourceReflectionCanUseProxyOnly() {
+	server, err := NewRestServer(s.T().Context(), stuber.NewBudgerigar(), &mockExtender{}, nil, nil, nil)
+	s.Require().NoError(err)
+
+	routes := proxyroutes.NewEmpty()
+	s.T().Cleanup(routes.Close)
+	server.SetProxyRoutes(routes)
+	s.Require().NoError(routes.RegisterDescriptorSet(
+		&protoset.Source{ReflectAddress: "reflection.test:50051"},
+		reflectionDescriptorSetWithDependency(),
+		proxyroutes.ModeReplay,
+	))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/sniffer/route-source",
+		strings.NewReader(`{"service":"reflectdep.ReflectionService","method":"Echo","source":"reflection","servedBy":"proxy"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.SnifferRouteSource(w, req)
+
+	s.Equal(http.StatusOK, w.Code, w.Body.String())
+	s.Equal(proxyroutes.ModeProxy, routes.RouteByMethod("/reflectdep.ReflectionService/Echo").Mode)
+}
+
+func (s *RestServerTestSuite) TestSnifferRouteSourceReflectionCanUseStubOnly() {
+	server, err := NewRestServer(s.T().Context(), stuber.NewBudgerigar(), &mockExtender{}, nil, nil, nil)
+	s.Require().NoError(err)
+
+	routes := proxyroutes.NewEmpty()
+	s.T().Cleanup(routes.Close)
+	server.SetProxyRoutes(routes)
+	s.Require().NoError(routes.RegisterDescriptorSet(
+		&protoset.Source{ReflectAddress: "reflection.test:50051"},
+		reflectionDescriptorSetWithDependency(),
+		proxyroutes.ModeReplay,
+	))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/sniffer/route-source",
+		strings.NewReader(`{"service":"reflectdep.ReflectionService","method":"Echo","source":"reflection","servedBy":"stub"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.SnifferRouteSource(w, req)
+
+	s.Equal(http.StatusOK, w.Code, w.Body.String())
+	s.Nil(routes.RouteByMethod("/reflectdep.ReflectionService/Echo"))
+}
+
+func (s *RestServerTestSuite) TestSnifferRouteSourceReflectionServedByIsRoomScoped() {
+	server, err := NewRestServer(s.T().Context(), stuber.NewBudgerigar(), &mockExtender{}, nil, nil, nil)
+	s.Require().NoError(err)
+
+	routes := proxyroutes.NewEmpty()
+	s.T().Cleanup(routes.Close)
+	server.SetProxyRoutes(routes)
+	s.Require().NoError(routes.RegisterDescriptorSet(
+		&protoset.Source{ReflectAddress: "reflection.test:50051"},
+		reflectionDescriptorSetWithDependency(),
+		proxyroutes.ModeReplay,
+	))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/sniffer/route-source",
+		strings.NewReader(`{"room":"room-a","service":"reflectdep.ReflectionService","method":"Echo","source":"reflection","servedBy":"proxy"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.SnifferRouteSource(w, req)
+
+	s.Equal(http.StatusOK, w.Code, w.Body.String())
+	s.Equal(proxyroutes.ModeProxy, routes.RouteByMethodForRoom("room-a", "/reflectdep.ReflectionService/Echo").Mode)
+	s.Equal(proxyroutes.ModeReplay, routes.RouteByMethodForRoom("room-b", "/reflectdep.ReflectionService/Echo").Mode)
+}
+
+func (s *RestServerTestSuite) TestSnifferRouteSourceProtoIsRoomScoped() {
+	server, err := NewRestServer(s.T().Context(), stuber.NewBudgerigar(), &mockExtender{}, nil, nil, nil)
+	s.Require().NoError(err)
+
+	routes := proxyroutes.NewEmpty()
+	s.T().Cleanup(routes.Close)
+	server.SetProxyRoutes(routes)
+	s.Require().NoError(routes.RegisterDescriptorSet(
+		&protoset.Source{ReflectAddress: "reflection.test:50051"},
+		reflectionDescriptorSetWithDependency(),
+		proxyroutes.ModeReplay,
+	))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/sniffer/route-source",
+		strings.NewReader(`{"room":"room-a","service":"reflectdep.ReflectionService","method":"Echo","source":"proto"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.SnifferRouteSource(w, req)
+
+	s.Equal(http.StatusOK, w.Code, w.Body.String())
+	s.Nil(routes.RouteByMethodForRoom("room-a", "/reflectdep.ReflectionService/Echo"))
+	s.NotNil(routes.RouteByMethodForRoom("room-b", "/reflectdep.ReflectionService/Echo"))
 }
 
 func (s *RestServerTestSuite) TestMcpDescriptorsReflectTool() {

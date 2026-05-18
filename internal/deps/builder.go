@@ -25,6 +25,7 @@ import (
 	pgreflectionhosts "github.com/bavix/gripmock/v3/internal/infra/postgres/reflectionhosts"
 	pgrooms "github.com/bavix/gripmock/v3/internal/infra/postgres/rooms"
 	pgusers "github.com/bavix/gripmock/v3/internal/infra/postgres/users"
+	"github.com/bavix/gripmock/v3/internal/infra/proxyroutes"
 	reflectclient "github.com/bavix/gripmock/v3/internal/infra/reflectclient"
 	sourceclient "github.com/bavix/gripmock/v3/internal/infra/sourceclient"
 	"github.com/bavix/gripmock/v3/internal/infra/storage"
@@ -53,6 +54,9 @@ type Builder struct {
 
 	descriptorRegistry     *descriptors.Registry
 	descriptorRegistryOnce sync.Once
+
+	proxyRoutes     *proxyroutes.Registry
+	proxyRoutesOnce sync.Once
 
 	bufClient     protosetdom.BSRClient
 	bufClientOnce sync.Once
@@ -221,6 +225,14 @@ func (b *Builder) DescriptorRegistry() *descriptors.Registry {
 	})
 
 	return b.descriptorRegistry
+}
+
+func (b *Builder) ProxyRoutes() *proxyroutes.Registry {
+	b.proxyRoutesOnce.Do(func() {
+		b.proxyRoutes = proxyroutes.NewEmpty()
+	})
+
+	return b.proxyRoutes
 }
 
 //nolint:ireturn

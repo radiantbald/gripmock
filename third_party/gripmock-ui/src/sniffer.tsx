@@ -74,7 +74,13 @@ type StreamHandlers = {
   onError: () => void;
 };
 
-type CallTableFilterField = "client" | "service" | "method" | "code" | "room";
+type CallTableFilterField =
+  | "client"
+  | "service"
+  | "method"
+  | "code"
+  | "servedBy"
+  | "room";
 type CallTableFilterValue = {
   query: string;
   selected: string[];
@@ -85,6 +91,7 @@ type CallTableFilterMenuState = {
   anchorEl: HTMLElement;
 };
 type SnifferSource = "proto" | "reflection";
+type ReflectionServedBy = "stub" | "proxy";
 type ReflectionHostRecord = {
   id?: string | number;
   host?: string;
@@ -100,8 +107,8 @@ type SnifferRecord = HistoryRecord & {
 };
 
 const SNIFFER_ROUTE_SOURCES_KEY = "gripmock.sniffer.routeSources";
-const SNIFFER_ROUTE_SOURCE_CHANGES_KEY =
-  "gripmock.sniffer.routeSourceChanges";
+const SNIFFER_ROUTE_SOURCE_CHANGES_KEY = "gripmock.sniffer.routeSourceChanges";
+const SNIFFER_REFLECTION_SERVED_BY_KEY = "gripmock.sniffer.reflectionServedBy";
 
 const RADIUS_PX = "10px";
 const RESIZE_HANDLE_SIZE_PX = 10;
@@ -451,6 +458,7 @@ const callTableFilterLabels: Record<CallTableFilterField, string> = {
   service: "service",
   method: "method",
   code: "code",
+  servedBy: "served by",
   room: "room",
 };
 
@@ -460,6 +468,7 @@ const EMPTY_CALL_TABLE_FILTERS: CallTableFilters = {
   service: { query: "", selected: [] },
   method: { query: "", selected: [] },
   code: { query: "", selected: [] },
+  servedBy: { query: "", selected: [] },
   room: { query: "", selected: [] },
 };
 const codeToChipColor = (code?: number) =>
@@ -487,6 +496,25 @@ const defaultSnifferSource: SnifferSource = "reflection";
 const snifferSourceLabels: Record<SnifferSource, string> = {
   proto: "proto",
   reflection: "reflection",
+};
+const servedByLabels = {
+  proxy: "proxy",
+  stub: "stub",
+} as const;
+type ServedBy = keyof typeof servedByLabels;
+const getServedBy = (record: HistoryRecord): ServedBy => {
+  if (record.transport === "proxy") {
+    return "proxy";
+  }
+
+  return "stub";
+};
+const servedByChipColor = (servedBy: ServedBy) => {
+  if (servedBy === "proxy") {
+    return "info";
+  }
+
+  return "success";
 };
 const normalizeReflectionSource = (value: string): string => {
   const normalized = value.trim();
@@ -565,6 +593,52 @@ const writeSnifferRouteSources = (
     // Ignore storage failures (private mode, quota, etc.).
   }
 };
+const readReflectionServedByRoutes = (): Record<string, ReflectionServedBy> => {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(SNIFFER_REFLECTION_SERVED_BY_KEY);
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return Object.entries(parsed).reduce<Record<string, ReflectionServedBy>>(
+      (acc, [key, value]) => {
+        if (value === "stub" || value === "proxy") {
+          acc[key] = value;
+        }
+
+        return acc;
+      },
+      {},
+    );
+  } catch {
+    return {};
+  }
+};
+const writeReflectionServedByRoutes = (
+  routes: Record<string, ReflectionServedBy>,
+): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      SNIFFER_REFLECTION_SERVED_BY_KEY,
+      JSON.stringify(routes),
+    );
+  } catch {
+    // Ignore storage failures (private mode, quota, etc.).
+  }
+};
 const serverTimestampFormatter = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
   month: "2-digit",
@@ -615,8 +689,7 @@ const parseSnifferSourceChange = (
     typeof row.changedAtMs === "number" && Number.isFinite(row.changedAtMs)
       ? row.changedAtMs
       : null;
-  const recordId =
-    typeof row.recordId === "string" ? row.recordId.trim() : "";
+  const recordId = typeof row.recordId === "string" ? row.recordId.trim() : "";
 
   return {
     source,
@@ -699,7 +772,10 @@ const findSourceChangeForRecord = (
   }
 
   return changes.reduce<SnifferSourceChange | undefined>((latest, change) => {
-    if (change.changedAtMs === null || change.changedAtMs >= recordReceivedAtMs) {
+    if (
+      change.changedAtMs === null ||
+      change.changedAtMs >= recordReceivedAtMs
+    ) {
       return latest;
     }
 
@@ -1163,6 +1239,9 @@ export const SnifferPage = () => {
   const [routeSources, setRouteSources] = useState<
     Record<string, SnifferSource>
   >(() => readSnifferRouteSources());
+  const [reflectionServedByRoutes, setReflectionServedByRoutes] = useState<
+    Record<string, ReflectionServedBy>
+  >(() => readReflectionServedByRoutes());
   const [sourceChangeMarkers, setSourceChangeMarkers] = useState<
     Record<string, SnifferSourceChange[]>
   >(() => readSnifferRouteSourceChanges());
@@ -1181,6 +1260,10 @@ export const SnifferPage = () => {
   const detailsLayoutRef = useRef<HTMLDivElement | null>(null);
   const activeResizeRef = useRef<"rows" | "columns" | null>(null);
   const sourceChangeMarkersRef = useRef(sourceChangeMarkers);
+  const autoConfiguredReflectionRoutesRef = useRef<Record<string, string>>({});
+  const syncedReflectionServedByRef = useRef<
+    Record<string, ReflectionServedBy>
+  >({});
 
   useEffect(() => {
     sourceChangeMarkersRef.current = sourceChangeMarkers;
@@ -1344,6 +1427,7 @@ export const SnifferPage = () => {
   const selectedService = String(selected?.service || "").trim();
   const selectedMethod = String(selected?.method || "").trim();
   const selectedCode = selected?.code;
+  const selectedServedBy = selected ? getServedBy(selected) : "stub";
   const selectedRouteKey = buildSnifferRouteKey(
     selectedRoom,
     selectedService,
@@ -1354,6 +1438,13 @@ export const SnifferPage = () => {
     (selectedRouteKey ? routeSources[selectedRouteKey] : undefined) ||
     selectedHistorySource;
   const selectedResponseSource = selectedHistorySource;
+  const selectedReflectionServedBy =
+    (selectedRouteKey
+      ? reflectionServedByRoutes[selectedRouteKey]
+      : undefined) || "stub";
+  const shouldShowReflectionServedBySelect =
+    selectedResponseSource === "reflection" ||
+    selectedNextResponseSource === "reflection";
   const hasSelectedSourceChanged =
     selectedRouteKey.length > 0 &&
     selectedNextResponseSource !== selectedHistorySource;
@@ -1539,6 +1630,9 @@ export const SnifferPage = () => {
       code: buildDistinctFilterOptions(
         records.map((record) => String(record.code ?? 0)),
       ),
+      servedBy: buildDistinctFilterOptions(
+        records.map((record) => servedByLabels[getServedBy(record)]),
+      ),
       room: buildDistinctFilterOptions(
         records.map(
           (record) => String(record.room || "global").trim() || "global",
@@ -1552,6 +1646,7 @@ export const SnifferPage = () => {
     const serviceQuery = normalizeFilterQuery(callTableFilters.service.query);
     const methodQuery = normalizeFilterQuery(callTableFilters.method.query);
     const codeQuery = normalizeFilterQuery(callTableFilters.code.query);
+    const servedByQuery = normalizeFilterQuery(callTableFilters.servedBy.query);
     const roomQuery = normalizeFilterQuery(callTableFilters.room.query);
     const selectedClients =
       callTableFilters.client.selected.map(normalizeFilterQuery);
@@ -1561,6 +1656,8 @@ export const SnifferPage = () => {
       callTableFilters.method.selected.map(normalizeFilterQuery);
     const selectedCodes =
       callTableFilters.code.selected.map(normalizeFilterQuery);
+    const selectedServedBy =
+      callTableFilters.servedBy.selected.map(normalizeFilterQuery);
     const selectedRooms =
       callTableFilters.room.selected.map(normalizeFilterQuery);
 
@@ -1605,6 +1702,20 @@ export const SnifferPage = () => {
       if (
         selectedCodes.length > 0 &&
         !selectedCodes.includes(normalizeFilterQuery(codeValue))
+      ) {
+        return false;
+      }
+
+      const servedByValue = servedByLabels[getServedBy(record)];
+      if (
+        servedByQuery &&
+        !servedByValue.toLowerCase().includes(servedByQuery)
+      ) {
+        return false;
+      }
+      if (
+        selectedServedBy.length > 0 &&
+        !selectedServedBy.includes(normalizeFilterQuery(servedByValue))
       ) {
         return false;
       }
@@ -2089,9 +2200,25 @@ export const SnifferPage = () => {
     notify(`Entered room ${selectedSetupRoom}`, { type: "info" });
   }, [notify, selectedSetupRoom]);
 
-  const handleResponseSourceChange = (source: SnifferSource) => {
+  const handleResponseSourceChange = async (
+    source: SnifferSource,
+    servedBy?: ReflectionServedBy,
+  ) => {
     if (!selectedRouteKey) {
       return;
+    }
+
+    if (selectedService && selectedMethod) {
+      await apiClient.request("/sniffer/route-source", {
+        method: "POST",
+        body: JSON.stringify({
+          service: selectedService,
+          method: selectedMethod,
+          room: selectedRoom,
+          source,
+          ...(source === "reflection" ? { servedBy: servedBy || "stub" } : {}),
+        }),
+      });
     }
 
     const nextChange: SnifferSourceChange = {
@@ -2118,6 +2245,32 @@ export const SnifferPage = () => {
     sourceChangeMarkersRef.current = nextSourceChangeMarkers;
     writeSnifferRouteSourceChanges(nextSourceChangeMarkers);
     setSourceChangeMarkers(nextSourceChangeMarkers);
+  };
+
+  const persistReflectionServedByRoute = (
+    routeKey: string,
+    servedBy: ReflectionServedBy,
+  ) => {
+    setReflectionServedByRoutes((current) => {
+      const next = {
+        ...current,
+        [routeKey]: servedBy,
+      };
+      writeReflectionServedByRoutes(next);
+
+      return next;
+    });
+  };
+
+  const handleReflectionServedByChange = async (
+    servedBy: ReflectionServedBy,
+  ) => {
+    if (!selectedRouteKey) {
+      return;
+    }
+
+    persistReflectionServedByRoute(selectedRouteKey, servedBy);
+    await handleResponseSourceChange("reflection", servedBy);
   };
 
   const handleSetReflection = async () => {
@@ -2158,7 +2311,10 @@ export const SnifferPage = () => {
         // Keep current snapshot on refresh failure.
       });
       setStreamRevision((current) => current + 1);
-      handleResponseSourceChange("reflection");
+      await handleResponseSourceChange(
+        "reflection",
+        selectedReflectionServedBy,
+      );
       notify("Reflection source set.", { type: "success" });
     } catch (error) {
       notify((error as Error).message || "Failed to set reflection source", {
@@ -2168,6 +2324,76 @@ export const SnifferPage = () => {
       setIsSettingReflection(false);
     }
   };
+
+  useEffect(() => {
+    if (
+      selectedNextResponseSource !== "reflection" ||
+      !selectedRouteKey ||
+      !reflectionHost.trim()
+    ) {
+      return;
+    }
+
+    const source = normalizeReflectionSource(reflectionHost);
+    if (!source) {
+      return;
+    }
+
+    const autoConfigKey = `${selectedRouteKey}|${source}|${selectedReflectionServedBy}`;
+    if (autoConfiguredReflectionRoutesRef.current[autoConfigKey]) {
+      return;
+    }
+
+    autoConfiguredReflectionRoutesRef.current[autoConfigKey] = source;
+    void handleSetReflection();
+  }, [
+    reflectionHost,
+    selectedNextResponseSource,
+    selectedReflectionServedBy,
+    selectedRouteKey,
+  ]);
+
+  useEffect(() => {
+    if (
+      selectedNextResponseSource !== "reflection" ||
+      !selectedRouteKey ||
+      !selectedService ||
+      !selectedMethod
+    ) {
+      return;
+    }
+
+    if (
+      syncedReflectionServedByRef.current[selectedRouteKey] ===
+      selectedReflectionServedBy
+    ) {
+      return;
+    }
+
+    syncedReflectionServedByRef.current[selectedRouteKey] =
+      selectedReflectionServedBy;
+    void apiClient
+      .request("/sniffer/route-source", {
+        method: "POST",
+        body: JSON.stringify({
+          service: selectedService,
+          method: selectedMethod,
+          room: selectedRoom,
+          source: "reflection",
+          servedBy: selectedReflectionServedBy,
+        }),
+      })
+      .catch(() => {
+        delete syncedReflectionServedByRef.current[selectedRouteKey];
+      });
+  }, [
+    selectedMethod,
+    selectedNextResponseSource,
+    selectedReflectionServedBy,
+    selectedRoom,
+    selectedRouteKey,
+    selectedService,
+  ]);
 
   const handleProtoSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -2184,7 +2410,7 @@ export const SnifferPage = () => {
       );
       setHasMethodFromApi(hasMethod);
       setHasProtoFromApi(hasProto);
-      handleResponseSourceChange("proto");
+      await handleResponseSourceChange("proto");
       notify("Descriptor uploaded.", { type: "success" });
       await loadHistorySnapshot().catch(() => {
         // Keep current snapshot on refresh failure.
@@ -2641,6 +2867,16 @@ export const SnifferPage = () => {
                   </Button>
                 </TableCell>
                 <TableCell>
+                  <Button
+                    size="small"
+                    endIcon={<KeyboardArrowDownRoundedIcon fontSize="small" />}
+                    onClick={openCallTableFilterMenu("servedBy")}
+                    sx={tableFilterTriggerButtonSx}
+                  >
+                    {`${callTableFilterLabels.servedBy}${isCallTableFilterFieldActive("servedBy") ? " *" : ""}`}
+                  </Button>
+                </TableCell>
+                <TableCell>
                   <Typography
                     component="span"
                     sx={{
@@ -2672,6 +2908,7 @@ export const SnifferPage = () => {
                 const selectedRow =
                   !!id && id === (selected?.callId || selected?.id);
                 const recordSource = record.source || defaultSnifferSource;
+                const servedBy = getServedBy(record);
                 return (
                   <TableRow
                     hover
@@ -2717,6 +2954,14 @@ export const SnifferPage = () => {
                       <Chip
                         size="small"
                         variant="outlined"
+                        color={servedByChipColor(servedBy)}
+                        label={servedByLabels[servedBy]}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        variant="outlined"
                         color={
                           recordSource === "reflection" ? "info" : "default"
                         }
@@ -2731,7 +2976,7 @@ export const SnifferPage = () => {
               })}
               {hasActiveCallTableFilters && filteredRecords.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7}>
+                  <TableCell colSpan={8}>
                     <Typography variant="body2" color="text.secondary">
                       No calls match current filters.
                     </Typography>
@@ -3156,11 +3401,23 @@ export const SnifferPage = () => {
                 <FormControl size="small" sx={{ minWidth: 132 }}>
                   <Select
                     value={selectedResponseSource}
-                    onChange={(event) =>
-                      handleResponseSourceChange(
-                        event.target.value as SnifferSource,
-                      )
-                    }
+                    onChange={(event) => {
+                      const nextSource = event.target.value as SnifferSource;
+                      if (nextSource === "reflection") {
+                        void handleSetReflection();
+                        return;
+                      }
+
+                      void handleResponseSourceChange(nextSource).catch(
+                        (error) => {
+                          notify(
+                            (error as Error).message ||
+                              "Failed to set response source",
+                            { type: "error" },
+                          );
+                        },
+                      );
+                    }}
                     sx={{
                       height: 26,
                       fontSize: 12,
@@ -3174,11 +3431,48 @@ export const SnifferPage = () => {
                     <MenuItem value="reflection">server reflection</MenuItem>
                   </Select>
                 </FormControl>
+                {shouldShowReflectionServedBySelect ? (
+                  <FormControl size="small" sx={{ minWidth: 86 }}>
+                    <Select
+                      value={selectedReflectionServedBy}
+                      onChange={(event) => {
+                        const servedBy = event.target
+                          .value as ReflectionServedBy;
+                        void handleReflectionServedByChange(servedBy).catch(
+                          (error) => {
+                            notify(
+                              (error as Error).message ||
+                                "Failed to set reflection mode",
+                              { type: "error" },
+                            );
+                          },
+                        );
+                      }}
+                      sx={{
+                        height: 26,
+                        fontSize: 12,
+                        "& .MuiSelect-select": {
+                          py: 0.25,
+                          px: 1,
+                        },
+                      }}
+                    >
+                      <MenuItem value="stub">stub</MenuItem>
+                      <MenuItem value="proxy">proxy</MenuItem>
+                    </Select>
+                  </FormControl>
+                ) : null}
                 <Chip
                   size="small"
                   color={codeToChipColor(selectedCode)}
                   variant="outlined"
                   label={`Code: ${selectedCode ?? 0}`}
+                />
+                <Chip
+                  size="small"
+                  color={servedByChipColor(selectedServedBy)}
+                  variant="outlined"
+                  label={`Served: ${servedByLabels[selectedServedBy]}`}
                 />
                 {isSingleResponseView ? (
                   <Typography
@@ -3542,32 +3836,9 @@ export const SnifferPage = () => {
                   </Typography>
                   <Typography variant="body1" sx={stateBlockBodySx}>
                     {hasAnyMatchingStubs
-                      ? "Edit the route stub or create a more specific stub for this request."
+                      ? "Edit the route stub or select another stub for this request."
                       : "No stubs exist for this service/method yet. Create one for this call."}
                   </Typography>
-                  {hasAnyMatchingStubs && selected?.error ? (
-                    <Box
-                      component="pre"
-                      sx={{
-                        mt: 1,
-                        maxWidth: "min(720px, 100%)",
-                        maxHeight: 220,
-                        overflow: "auto",
-                        whiteSpace: "pre-wrap",
-                        textAlign: "left",
-                        color: "text.secondary",
-                        bgcolor: "rgba(255,255,255,0.04)",
-                        border: "1px solid",
-                        borderColor: "divider",
-                        borderRadius: 1,
-                        p: 1.25,
-                        fontFamily: "monospace",
-                        fontSize: "0.75rem",
-                      }}
-                    >
-                      {selected.error}
-                    </Box>
-                  ) : null}
                   <Box sx={stateBlockActionsSx}>
                     {shouldShowStubCreatedAndAssignedRetryHint ? (
                       <Typography
@@ -3598,7 +3869,7 @@ export const SnifferPage = () => {
                       <>
                         {hasAnyMatchingStubs ? (
                           <Button
-                            variant="outlined"
+                            variant="contained"
                             component={RouterLink}
                             to={routeStubEditPath}
                             state={{ returnTo: snifferPath }}
@@ -3607,7 +3878,17 @@ export const SnifferPage = () => {
                             Edit route stub
                           </Button>
                         ) : null}
-                        {shouldShowStubCreatedHint ? null : (
+                        {hasAnyMatchingStubs ? (
+                          <Button
+                            variant="outlined"
+                            component={RouterLink}
+                            to={stubsListPath}
+                            disabled={!hasMethodFromApi}
+                            sx={stateBlockActionButtonSx}
+                          >
+                            Select another stub
+                          </Button>
+                        ) : shouldShowStubCreatedHint ? null : (
                           <Button
                             variant="contained"
                             component={RouterLink}

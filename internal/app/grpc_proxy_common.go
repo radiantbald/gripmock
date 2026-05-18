@@ -15,16 +15,16 @@ const (
 )
 
 type captureRequestContext struct {
-	headers   map[string]any
-	roomID string
+	headers map[string]any
+	roomID  string
 }
 
-func (m *grpcMocker) proxyRoute() *proxyroutes.Route {
+func (m *grpcMocker) proxyRoute(ctx context.Context) *proxyroutes.Route {
 	if m.proxies == nil {
 		return nil
 	}
 
-	return m.proxies.RouteByMethod(m.fullMethod)
+	return m.proxies.RouteByMethodForRoom(roomFromContext(ctx), m.fullMethod)
 }
 
 func (m *grpcMocker) roomFromContext(ctx context.Context) string {
@@ -35,8 +35,8 @@ func (m *grpcMocker) newCaptureRequestContext(ctx context.Context) captureReques
 	md, _ := metadata.FromIncomingContext(ctx)
 
 	return captureRequestContext{
-		headers:   requestHeadersFromMetadata(md),
-		roomID: m.roomFromContext(ctx),
+		headers: requestHeadersFromMetadata(md),
+		roomID:  m.roomFromContext(ctx),
 	}
 }
 

@@ -110,6 +110,7 @@ func (b *Builder) RestServe(
 		apiServer.SetReflectionHostsRepository(reflectionHostsRepository)
 	}
 	apiServer.SetRemoteClient(b.RemoteClient())
+	apiServer.SetProxyRoutes(b.ProxyRoutes())
 
 	ui, err := b.ui(ctx)
 	if err != nil {
@@ -185,6 +186,9 @@ func (b *Builder) RestServe(
 	)
 	router.Path("/api/reflection-hosts").Methods(http.MethodPost).Handler(
 		withMCPMiddlewares(http.HandlerFunc(apiServer.ReflectionHostsUpsert)),
+	)
+	router.Path("/api/sniffer/route-source").Methods(http.MethodPost).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.SnifferRouteSource)),
 	)
 	router.Path("/api/stubs/{uuid}").Methods(http.MethodPut).Handler(
 		withMCPMiddlewares(http.HandlerFunc(apiServer.PatchStubByID)),

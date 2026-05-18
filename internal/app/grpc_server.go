@@ -242,6 +242,19 @@ func (s *bidiRecordingStream) setStubID(id uint64) { s.stubID = id }
 
 func (s *bidiRecordingStream) getStubID() uint64 { return s.stubID }
 
+func (m *grpcMocker) shouldSkipFallbackStubMissHistory(ctx context.Context, stubID uint64, code uint32) bool {
+	if stubID != 0 || code != uint32(codes.NotFound) {
+		return false
+	}
+
+	behavior := newProxyBehavior(m.proxyRoute(ctx))
+	if behavior == nil {
+		return false
+	}
+
+	return behavior.canFallback(status.Error(codes.NotFound, "stub miss"))
+}
+
 func (m *grpcMocker) recordCall(
 	ctx context.Context,
 	stubID uint64,
@@ -253,6 +266,10 @@ func (m *grpcMocker) recordCall(
 	errMsg string,
 ) {
 	if m.recorder == nil || len(requests) == 0 {
+		return
+	}
+
+	if m.shouldSkipFallbackStubMissHistory(ctx, stubID, code) {
 		return
 	}
 
@@ -376,7 +393,7 @@ func (m *grpcMocker) streamHandler(srv any, stream grpc.ServerStream) error {
 	}
 
 	handler := func(_ any, stream grpc.ServerStream) error {
-		route := m.proxyRoute()
+		route := m.proxyRoute(stream.Context())
 		behavior := newProxyBehavior(route)
 
 		if behavior != nil && behavior.proxyOnly() {
@@ -1049,7 +1066,7 @@ func (m *grpcMocker) unaryHandler() grpc.MethodHandler {
 }
 
 func (m *grpcMocker) handleUnaryWithProxy(ctx context.Context, req *dynamicpb.Message) (*dynamicpb.Message, error) {
-	route := m.proxyRoute()
+	route := m.proxyRoute(ctx)
 	behavior := newProxyBehavior(route)
 
 	if behavior == nil {
@@ -1928,6 +1945,10 @@ func (s *GRPCServer) SetProtoMetadataWriter(writer ProtoMetadataWriter) {
 	s.protoMetadata = writer
 }
 
+func (s *GRPCServer) SetProxyRoutes(routes *proxyroutes.Registry) {
+	s.proxies = routes
+}
+
 func (s *GRPCServer) SetStrictPersistedDescriptorStartup(strict bool) {
 	s.strictPersistedDescriptorStartup = strict
 }
@@ -1943,8 +1964,10 @@ func (s *GRPCServer) Build(ctx context.Context) (*grpc.Server, error) {
 		protoPaths = s.params.ProtoPath()
 	}
 
-	s.proxies, err = proxyroutes.New(ctx, protoPaths, s.remoteClient)
-	if err != nil {
+	if s.proxies == nil {
+		s.proxies = proxyroutes.NewEmpty()
+	}
+	if err = s.proxies.RegisterSources(ctx, protoPaths, s.remoteClient); err != nil {
 		return nil, errors.Wrap(err, "failed to initialize proxy routes")
 	}
 
@@ -2286,7 +2309,7 @@ func (s *GRPCServer) handleUnknownService(_ any, stream grpc.ServerStream) error
 		return err
 	}
 
-	resp, err := mocker.handleUnary(stream.Context(), req)
+	resp, err := mocker.handleUnaryWithProxy(stream.Context(), req)
 	if err != nil {
 		return err
 	}

@@ -3,18 +3,27 @@ package app
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/descriptorpb"
+	"google.golang.org/protobuf/types/dynamicpb"
 
 	"github.com/bavix/gripmock/v3/internal/domain/descriptors"
+	"github.com/bavix/gripmock/v3/internal/domain/history"
 	"github.com/bavix/gripmock/v3/internal/domain/protoset"
+	protosetdom "github.com/bavix/gripmock/v3/internal/domain/protoset"
+	"github.com/bavix/gripmock/v3/internal/infra/proxyroutes"
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
 )
 
@@ -97,6 +106,156 @@ func TestGRPCServerFindMethodDescriptorFromDynamicRegistry(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "helloworld.HelloRequest", string(method.Input().FullName()))
 	require.Equal(t, "helloworld.HelloReply", string(method.Output().FullName()))
+}
+
+//nolint:paralleltest
+func TestReflectionReplayRouteFallsBackToUpstreamOnStubMiss(t *testing.T) {
+	ctx := t.Context()
+	protoPath := filepath.Join("..", "..", "examples", "projects", "greeter", "service.proto")
+	fdsSlice, err := protoset.Build(ctx, nil, []string{protoPath}, nil)
+	require.NoError(t, err)
+	require.NotEmpty(t, fdsSlice)
+
+	files, err := protodesc.NewFiles(fdsSlice[0])
+	require.NoError(t, err)
+	method := findMethodInFiles(t, files, "helloworld.Greeter", "SayHello")
+
+	upstreamStubs := stuber.NewBudgerigar()
+	upstreamStubs.PutMany(&stuber.Stub{
+		Service: "helloworld.Greeter",
+		Method:  "SayHello",
+		Input:   stuber.InputData{Contains: map[string]any{}},
+		Output:  stuber.Output{Data: map[string]any{"message": "from upstream"}},
+	})
+	upstreamServer, err := BuildFromDescriptorSet(ctx, fdsSlice[0], upstreamStubs, NewInstantExtender(), nil)
+	require.NoError(t, err)
+	defer upstreamServer.GracefulStop()
+	upstreamAddr := serveTestGRPCServer(t, ctx, upstreamServer)
+
+	registry := descriptors.NewRegistry()
+	files.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+		registry.Register(fd)
+		return true
+	})
+
+	routes := proxyroutes.NewEmpty()
+	t.Cleanup(routes.Close)
+	require.NoError(t, routes.RegisterDescriptorSet(
+		&protosetdom.Source{ReflectAddress: upstreamAddr},
+		fdsSlice[0],
+		proxyroutes.ModeReplay,
+	))
+
+	recorder := history.NewMemoryStore(0)
+	mockServer := NewGRPCServer(
+		"tcp",
+		":0",
+		nil,
+		stuber.NewBudgerigar(),
+		NewInstantExtender(),
+		recorder,
+		registry,
+		nil,
+		nil,
+		false,
+		nil,
+	)
+	mockServer.SetProxyRoutes(routes)
+	grpcServer, err := mockServer.Build(ctx)
+	require.NoError(t, err)
+	defer grpcServer.GracefulStop()
+	mockAddr := serveTestGRPCServer(t, ctx, grpcServer)
+
+	conn, err := grpc.NewClient(mockAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, conn.Close()) }()
+
+	req := dynamicpb.NewMessage(method.Input())
+	resp := dynamicpb.NewMessage(method.Output())
+	require.NoError(t, conn.Invoke(ctx, "/helloworld.Greeter/SayHello", req, resp))
+	require.Equal(t, "from upstream", resp.Get(method.Output().Fields().ByName("message")).String())
+
+	calls := recorder.All()
+	require.Len(t, calls, 1)
+	require.Equal(t, "proxy", calls[0].Transport)
+	require.Equal(t, uint32(0), calls[0].Code)
+}
+
+//nolint:paralleltest
+func TestReflectionRouteModeOverrideIsRoomScoped(t *testing.T) {
+	ctx := t.Context()
+	protoPath := filepath.Join("..", "..", "examples", "projects", "greeter", "service.proto")
+	fdsSlice, err := protoset.Build(ctx, nil, []string{protoPath}, nil)
+	require.NoError(t, err)
+	require.NotEmpty(t, fdsSlice)
+
+	registry := descriptors.NewRegistry()
+	files, err := protodesc.NewFiles(fdsSlice[0])
+	require.NoError(t, err)
+	files.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+		registry.Register(fd)
+		return true
+	})
+
+	routes := proxyroutes.NewEmpty()
+	t.Cleanup(routes.Close)
+	require.NoError(t, routes.RegisterDescriptorSet(
+		&protosetdom.Source{ReflectAddress: "upstream.test:50051"},
+		fdsSlice[0],
+		proxyroutes.ModeReplay,
+	))
+	require.True(t, routes.SetMethodModeForRoom("proxy-room", "/helloworld.Greeter/SayHello", proxyroutes.ModeProxy))
+
+	mocker := &grpcMocker{
+		fullMethod: "/helloworld.Greeter/SayHello",
+		proxies:    routes,
+	}
+
+	stubRoomCtx := metadata.NewIncomingContext(ctx, metadata.Pairs(roomHeaderKey, "stub-room"))
+	require.Equal(t, proxyroutes.ModeReplay, mocker.proxyRoute(stubRoomCtx).Mode)
+
+	proxyRoomCtx := metadata.NewIncomingContext(ctx, metadata.Pairs(roomHeaderKey, "proxy-room"))
+	require.Equal(t, proxyroutes.ModeProxy, mocker.proxyRoute(proxyRoomCtx).Mode)
+}
+
+func findMethodInFiles(
+	t *testing.T,
+	files *protoregistry.Files,
+	serviceName string,
+	methodName string,
+) protoreflect.MethodDescriptor {
+	t.Helper()
+
+	desc, err := files.FindDescriptorByName(protoreflect.FullName(serviceName))
+	require.NoError(t, err)
+	service, ok := desc.(protoreflect.ServiceDescriptor)
+	require.True(t, ok)
+	method := service.Methods().ByName(protoreflect.Name(methodName))
+	require.NotNil(t, method)
+
+	return method
+}
+
+func serveTestGRPCServer(t *testing.T, ctx context.Context, server *grpc.Server) string {
+	t.Helper()
+
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.Serve(listener)
+	}()
+
+	t.Cleanup(func() {
+		server.Stop()
+		err := <-errCh
+		if err != nil {
+			require.ErrorIs(t, err, grpc.ErrServerStopped)
+		}
+	})
+
+	return listener.Addr().String()
 }
 
 //nolint:paralleltest

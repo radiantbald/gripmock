@@ -52,6 +52,7 @@ import (
 	pgrooms "github.com/bavix/gripmock/v3/internal/infra/postgres/rooms"
 	pgusers "github.com/bavix/gripmock/v3/internal/infra/postgres/users"
 	protosetinfra "github.com/bavix/gripmock/v3/internal/infra/protoset"
+	"github.com/bavix/gripmock/v3/internal/infra/proxyroutes"
 	roominfra "github.com/bavix/gripmock/v3/internal/infra/room"
 	"github.com/bavix/gripmock/v3/internal/infra/stuber"
 	"github.com/bavix/gripmock/v3/internal/pbs"
@@ -102,6 +103,7 @@ type RestServer struct {
 	protoMetadata   ProtoMetadataWriter
 	remoteClient    protosetdom.RemoteClient
 	reflectionHosts *pgreflectionhosts.Repository
+	proxies         *proxyroutes.Registry
 }
 
 var _ rest.ServerInterface = &RestServer{}
@@ -186,6 +188,10 @@ func (h *RestServer) SetProtoMetadataWriter(writer ProtoMetadataWriter) {
 
 func (h *RestServer) SetRemoteClient(client protosetdom.RemoteClient) {
 	h.remoteClient = client
+}
+
+func (h *RestServer) SetProxyRoutes(routes *proxyroutes.Registry) {
+	h.proxies = routes
 }
 
 func (h *RestServer) SetReflectionHostsRepository(repository *pgreflectionhosts.Repository) {
@@ -644,6 +650,78 @@ func (h *RestServer) ReflectionHostsUpsert(w http.ResponseWriter, r *http.Reques
 		"createdAt": row.CreatedAt,
 		"updatedAt": row.UpdatedAt,
 	})
+}
+
+func (h *RestServer) SnifferRouteSource(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Service  string  `json:"service"`
+		Method   string  `json:"method"`
+		Room     *string `json:"room"`
+		Source   string  `json:"source"`
+		ServedBy string  `json:"servedBy"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.validationError(r.Context(), w, errors.Wrap(err, "invalid sniffer route source request"))
+		return
+	}
+
+	service := strings.TrimSpace(req.Service)
+	method := strings.TrimSpace(req.Method)
+	roomID := strings.TrimSpace(muxmiddleware.FromRequest(r))
+	if req.Room != nil {
+		roomID = normalizeRouteRoom(*req.Room)
+	}
+	source := strings.TrimSpace(req.Source)
+	servedBy := strings.TrimSpace(req.ServedBy)
+	if service == "" || method == "" {
+		h.validationError(r.Context(), w, errors.New("service and method are required"))
+		return
+	}
+
+	fullMethod := "/" + service + "/" + method
+	switch source {
+	case "proto":
+		if h.proxies != nil {
+			h.proxies.DisableMethodForRoom(roomID, fullMethod)
+		}
+	case "reflection":
+		if servedBy == "" {
+			servedBy = "stub"
+		}
+		switch servedBy {
+		case "stub":
+			if h.proxies != nil {
+				h.proxies.DisableMethodForRoom(roomID, fullMethod)
+			}
+		case "proxy":
+			if h.proxies != nil {
+				h.proxies.SetMethodModeForRoom(roomID, fullMethod, proxyroutes.ModeProxy)
+			}
+		default:
+			h.validationError(r.Context(), w, errors.New("servedBy must be stub or proxy"))
+			return
+		}
+	default:
+		h.validationError(r.Context(), w, errors.New("source must be proto or reflection"))
+		return
+	}
+
+	h.writeResponse(r.Context(), w, map[string]any{
+		"service":  service,
+		"method":   method,
+		"room":     roomID,
+		"source":   source,
+		"servedBy": servedBy,
+	})
+}
+
+func normalizeRouteRoom(room string) string {
+	normalized := strings.TrimSpace(room)
+	if strings.EqualFold(normalized, "global") {
+		return ""
+	}
+
+	return normalized
 }
 
 func normalizeReflectionHostRequest(host string, source string) (string, string, error) {
@@ -2651,31 +2729,42 @@ func registerReflectionDescriptors(ctx context.Context, h *RestServer, rawSource
 		return nil, errors.New("reflection client is not configured")
 	}
 
-	fds, err := fetchReflectionDescriptorSetWithFallbacks(ctx, h, source)
+	fds, routeSource, err := fetchReflectionDescriptorSetWithFallbacks(ctx, h, source)
 	if err != nil {
 		return nil, err
 	}
 
-	return registerDescriptorSet(ctx, h, fds, reflectionDescriptorSource(rawSource))
+	serviceIDs, err := registerDescriptorSet(ctx, h, fds, reflectionDescriptorSource(rawSource))
+	if err != nil {
+		return nil, err
+	}
+
+	if h.proxies != nil {
+		if err := h.proxies.RegisterDescriptorSet(routeSource, fds, proxyroutes.ModeReplay); err != nil {
+			return nil, err
+		}
+	}
+
+	return serviceIDs, nil
 }
 
 func fetchReflectionDescriptorSetWithFallbacks(
 	ctx context.Context,
 	h *RestServer,
 	source *protosetdom.Source,
-) (*descriptorpb.FileDescriptorSet, error) {
+) (*descriptorpb.FileDescriptorSet, *protosetdom.Source, error) {
 	var failures []string
 
 	for _, candidate := range reflectionSourceCandidates(source) {
 		fds, err := h.remoteClient.FetchDescriptorSet(ctx, candidate)
 		if err == nil {
-			return fds, nil
+			return fds, candidate, nil
 		}
 
 		failures = append(failures, fmt.Sprintf("%s: %v", candidate.ReflectAddress, err))
 	}
 
-	return nil, errors.New("failed to fetch descriptors from gRPC reflection: " + strings.Join(failures, "; "))
+	return nil, nil, errors.New("failed to fetch descriptors from gRPC reflection: " + strings.Join(failures, "; "))
 }
 
 func reflectionSourceCandidates(source *protosetdom.Source) []*protosetdom.Source {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog"
@@ -11,6 +12,7 @@ import (
 	"github.com/bavix/gripmock/v3/internal/app"
 	"github.com/bavix/gripmock/v3/internal/domain/history"
 	"github.com/bavix/gripmock/v3/internal/domain/proto"
+	protosetdom "github.com/bavix/gripmock/v3/internal/domain/protoset"
 )
 
 //nolint:funlen,cyclop
@@ -63,7 +65,25 @@ func (b *Builder) GRPCServe(ctx context.Context, param *proto.Arguments) error {
 		b.config.OtelEnabled,
 		b.StubValidator(),
 	)
+	grpcServer.SetProxyRoutes(b.ProxyRoutes())
 	grpcServer.SetStrictPersistedDescriptorStartup(b.config.GRPCStrictPersistedDescriptors)
+
+	if reflectionHostsRepository, reflectionHostsErr := b.ReflectionHostsRepository(ctx); reflectionHostsErr == nil {
+		hosts, listErr := reflectionHostsRepository.List(ctx)
+		if listErr == nil {
+			proxySources := make([]string, 0, len(hosts))
+			for _, host := range hosts {
+				if source := replayProxySource(host.Source); source != "" {
+					proxySources = append(proxySources, source)
+				}
+			}
+			if len(proxySources) > 0 {
+				if err := b.ProxyRoutes().RegisterSources(ctx, proxySources, b.RemoteClient()); err != nil {
+					logger.Warn().Err(err).Msg("Failed to restore reflection replay routes")
+				}
+			}
+		}
+	}
 
 	if protoMetadataRepo, protoMetadataErr := b.ProtoMetadataRepository(ctx); protoMetadataErr == nil {
 		grpcServer.SetProtoMetadataWriter(protoMetadataRepo)
@@ -107,4 +127,21 @@ func (b *Builder) GRPCServe(ctx context.Context, param *proto.Arguments) error {
 	}
 
 	return nil
+}
+
+func replayProxySource(source string) string {
+	source = strings.TrimSpace(source)
+	parsed, err := protosetdom.ParseSource(source)
+	if err != nil || parsed.Type != protosetdom.SourceReflect || parsed.ProxyMode != "" {
+		return ""
+	}
+
+	switch {
+	case strings.HasPrefix(source, "grpc://"):
+		return "grpc+replay://" + strings.TrimPrefix(source, "grpc://")
+	case strings.HasPrefix(source, "grpcs://"):
+		return "grpcs+replay://" + strings.TrimPrefix(source, "grpcs://")
+	default:
+		return ""
+	}
 }
