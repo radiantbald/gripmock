@@ -812,20 +812,43 @@ func (h *RestServer) ProtofilesList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	items := make([]map[string]any, 0, len(protofiles))
+	serviceFilter := strings.TrimSpace(r.URL.Query().Get("service"))
+	methodFilter := strings.TrimSpace(r.URL.Query().Get("method"))
 	for _, item := range protofiles {
 		name := strings.TrimSpace(item.Name)
 		if name == "" {
 			continue
 		}
 
+		serviceMethods := make([]map[string]string, 0, len(item.ServiceMethods))
+		matchesFilter := serviceFilter == "" && methodFilter == ""
+		for _, ref := range item.ServiceMethods {
+			serviceID := strings.TrimSpace(ref.ServiceID)
+			methodID := strings.TrimSpace(ref.MethodID)
+			if serviceID == "" || methodID == "" {
+				continue
+			}
+			serviceMethods = append(serviceMethods, map[string]string{
+				"service": serviceID,
+				"method":  methodID,
+			})
+			if (serviceFilter == "" || serviceID == serviceFilter) && (methodFilter == "" || methodID == methodFilter) {
+				matchesFilter = true
+			}
+		}
+		if !matchesFilter {
+			continue
+		}
+
 		items = append(items, map[string]any{
-			"id":        name,
-			"name":      name,
-			"hash":      item.Hash,
-			"version":   item.Version,
-			"source":    item.Source,
-			"createdAt": item.CreatedAt,
-			"updatedAt": item.UpdatedAt,
+			"id":             name,
+			"name":           name,
+			"hash":           item.Hash,
+			"version":        item.Version,
+			"source":         item.Source,
+			"serviceMethods": serviceMethods,
+			"createdAt":      item.CreatedAt,
+			"updatedAt":      item.UpdatedAt,
 		})
 	}
 

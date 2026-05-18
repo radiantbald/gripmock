@@ -5,6 +5,7 @@ import {
   ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -15,6 +16,7 @@ import {
   AccordionSummary,
   Alert,
   alpha,
+  Autocomplete,
   Box,
   Button,
   Checkbox,
@@ -92,9 +94,16 @@ type CallTableFilterMenuState = {
 };
 type SnifferSource = "proto" | "reflection";
 type ReflectionServedBy = "stub" | "proxy";
+type ResponsePanelMode = "response" | "nextResponse";
 type ReflectionHostRecord = {
   id?: string | number;
   host?: string;
+  source?: string;
+};
+type ProtofileRecord = {
+  id?: string | number;
+  name?: string;
+  version?: number;
   source?: string;
 };
 type SnifferSourceChange = {
@@ -131,6 +140,57 @@ const panelHeaderSx = {
 };
 
 const panelTitleSx = { fontSize: 13, fontWeight: 700, letterSpacing: 0.15 };
+const postmanLikeSelectSx = {
+  width: "auto",
+  minWidth: 0,
+  "& .MuiInputBase-root": {
+    width: "auto",
+    color: "#FF6C37",
+    backgroundColor: "transparent",
+    borderRadius: 0,
+    fontSize: 13,
+    fontWeight: 700,
+    letterSpacing: 0.15,
+    lineHeight: 1.4,
+    transition: "color 120ms ease",
+  },
+  "& .MuiInputBase-root:hover": {
+    color: "#FF6C37",
+    backgroundColor: "transparent !important",
+  },
+  "& .Mui-focused": {
+    color: "#FF6C37",
+    backgroundColor: "transparent !important",
+  },
+  "& .MuiInputBase-root::before, & .MuiInputBase-root::after": {
+    borderBottom: "none !important",
+  },
+  "& .MuiInputBase-root:hover:not(.Mui-disabled)::before": {
+    borderBottom: "none !important",
+  },
+  "& .MuiOutlinedInput-notchedOutline": {
+    border: "none",
+  },
+  "& .MuiSelect-select": {
+    width: "auto",
+    minWidth: "unset !important",
+    padding: "0 20px 0 0 !important",
+    display: "inline-flex",
+    alignItems: "center",
+    backgroundColor: "transparent !important",
+    boxShadow: "none",
+  },
+  "& .MuiSelect-select:focus": {
+    backgroundColor: "transparent !important",
+  },
+  "& .MuiSelect-icon": {
+    right: 0,
+    color: "#FF6C37",
+    fontSize: 16,
+    transition: "color 120ms ease, transform 120ms ease",
+  },
+  "& .MuiSelect-iconOpen": { transform: "rotate(180deg)" },
+} as const;
 const jsonTextSx = {
   m: 0,
   p: 0,
@@ -327,7 +387,7 @@ const roomAssignButtonSx = {
 const stateBlockContainerSx = {
   flex: 1,
   display: "flex",
-  alignItems: { xs: "flex-start", sm: "center" },
+  alignItems: "center",
   justifyContent: "center",
   textAlign: "center",
   px: { xs: 1.25, sm: 2 },
@@ -354,12 +414,18 @@ const stateBlockTitleSx = {
   mb: 1,
   fontSize: "clamp(1.05rem, 1.6vw, 1.5rem)",
   lineHeight: 1.25,
+  "@container response-panel (max-height: 340px)": {
+    display: "none",
+  },
 } as const;
 const stateBlockBodySx = {
   opacity: 0.85,
   fontSize: "clamp(0.85rem, 1.25vw, 1rem)",
   lineHeight: 1.35,
   overflowWrap: "anywhere",
+  "@container response-panel (max-height: 340px)": {
+    display: "none",
+  },
 } as const;
 const stateBlockActionsSx = {
   mt: 2.25,
@@ -369,6 +435,9 @@ const stateBlockActionsSx = {
   gap: { xs: 0.75, sm: 1.25 },
   flexWrap: "wrap",
   width: "100%",
+  "@container response-panel (max-height: 340px)": {
+    mt: 0.5,
+  },
 } as const;
 const stateBlockHintSx = {
   fontWeight: 700,
@@ -387,6 +456,292 @@ const stateBlockActionButtonSx = {
   lineHeight: 1.2,
   whiteSpace: "normal",
   overflowWrap: "anywhere",
+} as const;
+const nextResponseContainerSx = {
+  ...stateBlockContainerSx,
+  flexDirection: "column",
+  alignItems: "stretch",
+  justifyContent: "flex-start",
+  px: 1,
+  py: 0,
+  overflowY: "auto",
+  overflowX: "hidden",
+} as const;
+const nextResponseViewportSx = {
+  minHeight: "100%",
+  minWidth: 0,
+  width: "100%",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+} as const;
+const nextResponseCardSx = {
+  ...stateBlockCardSx,
+  maxWidth: 460,
+  width: "100%",
+  maxHeight: "none",
+  boxSizing: "border-box",
+  overflow: "visible",
+  overflowY: "visible",
+  gap: 0.75,
+  px: 0.25,
+  pr: 0.5,
+} as const;
+const nextResponseTitleSx = {
+  ...stateBlockTitleSx,
+  mb: 0,
+  fontSize: "clamp(1rem, 1.25vw, 1.15rem)",
+  lineHeight: 1.2,
+} as const;
+const nextResponseBodySx = {
+  ...stateBlockBodySx,
+  fontSize: "clamp(0.78rem, 1vw, 0.875rem)",
+  lineHeight: 1.25,
+} as const;
+const nextResponseControlsSx = {
+  mt: 0.75,
+  width: "100%",
+  minWidth: 0,
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: 1,
+  overflowX: "hidden",
+} as const;
+const nextResponseControlSx = {
+  width: "min(100%, 260px)",
+  maxWidth: "100%",
+  minWidth: 0,
+  "& .MuiInputBase-root": {
+    height: 34,
+    minHeight: 34,
+    backgroundColor: alpha("#ffffff", 0.06),
+    borderRadius: 1,
+    fontSize: 13,
+    boxSizing: "border-box",
+  },
+  "& .MuiSelect-select": {
+    minHeight: "unset !important",
+    py: "0 !important",
+    pl: "10px !important",
+    pr: "32px !important",
+    lineHeight: "34px",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  "& .MuiOutlinedInput-input": {
+    py: "0 !important",
+    px: "10px !important",
+    height: 34,
+    lineHeight: "34px",
+    boxSizing: "border-box",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+} as const;
+const nextResponseDropdownSx = {
+  width: "fit-content",
+  maxWidth: "100%",
+  minWidth: 0,
+  display: "inline-flex",
+  "& .MuiInputBase-root": {
+    width: "auto",
+    maxWidth: "100%",
+    color: "#FF6C37",
+    backgroundColor: "transparent",
+    borderRadius: 0,
+    fontSize: 13,
+    fontWeight: 700,
+    letterSpacing: 0.15,
+    lineHeight: 1.4,
+    transition: "color 120ms ease",
+  },
+  "& .MuiInputBase-root:hover": {
+    color: "#FF6C37",
+    backgroundColor: "transparent !important",
+  },
+  "& .Mui-focused": {
+    color: "#FF6C37",
+    backgroundColor: "transparent !important",
+  },
+  "& .MuiInputBase-root::before, & .MuiInputBase-root::after": {
+    borderBottom: "none !important",
+  },
+  "& .MuiInputBase-root:hover:not(.Mui-disabled)::before": {
+    borderBottom: "none !important",
+  },
+  "& .MuiOutlinedInput-notchedOutline": {
+    border: "none",
+  },
+  "& .MuiSelect-select": {
+    width: "auto",
+    minWidth: 0,
+    maxWidth: "100%",
+    padding: "0 20px 0 0 !important",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    backgroundColor: "transparent !important",
+    boxShadow: "none",
+  },
+  "& .MuiSelect-select:focus": {
+    backgroundColor: "transparent !important",
+  },
+  "& .MuiSelect-icon": {
+    right: 0,
+    color: "#FF6C37",
+    fontSize: 16,
+    transition: "color 120ms ease, transform 120ms ease",
+  },
+  "& .MuiSelect-iconOpen": { transform: "rotate(180deg)" },
+} as const;
+const nextResponseTextInputSx = {
+  width: "min(100%, 280px)",
+  maxWidth: "100%",
+  minWidth: 0,
+  position: "relative",
+  "& .MuiInputBase-root": {
+    minHeight: 40,
+    height: 40,
+    fontSize: 13,
+    fontWeight: 500,
+    lineHeight: 1.3,
+    borderRadius: 1,
+    bgcolor: alpha("#ffffff", 0.03),
+    alignItems: "center",
+  },
+  "& .MuiInputBase-input": {
+    py: 0.55,
+    px: 1,
+    fontSize: 13,
+    fontWeight: 500,
+    lineHeight: 1.3,
+    letterSpacing: 0,
+    fontFamily: "inherit",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    "&::placeholder": {
+      opacity: 1,
+      color: "text.secondary",
+    },
+  },
+  "& .MuiInputLabel-root": {
+    fontSize: 13,
+    color: "text.secondary",
+  },
+  "& .MuiOutlinedInput-notchedOutline": {
+    borderColor: alpha("#ffffff", 0.16),
+  },
+  "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
+    borderColor: alpha("#ffffff", 0.28),
+  },
+  "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
+    borderColor: "#FF6C37",
+    borderWidth: 2,
+  },
+  "& .MuiOutlinedInput-root.Mui-error .MuiOutlinedInput-notchedOutline": {
+    borderColor: "error.main",
+  },
+  "& .MuiInputLabel-root.Mui-focused": {
+    color: "#FF6C37",
+  },
+  "& .MuiInputLabel-root.Mui-error": {
+    color: "error.main",
+  },
+  "& .MuiFormHelperText-root": {
+    position: "absolute",
+    left: 0,
+    top: "100%",
+    mx: 0,
+    mt: 0.25,
+    fontSize: 12,
+    lineHeight: 1.2,
+    textAlign: "left",
+    whiteSpace: "nowrap",
+    pointerEvents: "none",
+  },
+} as const;
+const reflectionHostPulseSx = {
+  "@keyframes reflectionHostErrorPulse": {
+    "0%, 100%": {
+      borderColor: "error.main",
+    },
+    "50%": {
+      borderColor: "#ff8a80",
+    },
+  },
+  "& .MuiOutlinedInput-root.Mui-error .MuiOutlinedInput-notchedOutline": {
+    animation: "reflectionHostErrorPulse 240ms ease-in-out 0s 3",
+  },
+} as const;
+const reflectionHostSuccessPulseSx = {
+  "@keyframes reflectionHostSuccessPulse": {
+    "0%, 100%": {
+      borderColor: "success.main",
+    },
+    "50%": {
+      borderColor: "#7ae7b0",
+    },
+  },
+  "& .MuiOutlinedInput-root .MuiOutlinedInput-notchedOutline": {
+    animation: "reflectionHostSuccessPulse 240ms ease-in-out 0s 3",
+  },
+} as const;
+const nextResponseReflectionHostSx = {
+  width: "100%",
+  minWidth: 0,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 1,
+  flexWrap: "wrap",
+  overflowX: "hidden",
+} as const;
+const nextResponseActionButtonSx = {
+  ...stateBlockActionButtonSx,
+  minHeight: 34,
+  py: 0.6,
+  px: 1.5,
+  fontSize: 13,
+  flexShrink: 0,
+} as const;
+const nextResponseCheckIconButtonSx = {
+  width: 28,
+  height: 28,
+  borderRadius: 1,
+  color: "text.secondary",
+  transition: "color 120ms ease",
+  "&:hover": {
+    color: "#FF6C37",
+    backgroundColor: "transparent",
+  },
+  "&.Mui-disabled": {
+    color: "text.disabled",
+  },
+} as const;
+const nextResponseSetButtonSx = {
+  ...nextResponseActionButtonSx,
+  minWidth: 56,
+  px: 1.15,
+} as const;
+const nextResponseStubControlSx = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: 0.75,
+  width: "100%",
+  minWidth: 0,
+  overflowX: "hidden",
+} as const;
+const nextResponseActionsSx = {
+  ...stateBlockActionsSx,
+  mt: 0.75,
+  gap: 0.75,
 } as const;
 const tableFilterInputSx = {
   "& .MuiInputBase-root": {
@@ -496,6 +851,10 @@ const defaultSnifferSource: SnifferSource = "reflection";
 const snifferSourceLabels: Record<SnifferSource, string> = {
   proto: "proto",
   reflection: "reflection",
+};
+const responsePanelModeLabels: Record<ResponsePanelMode, string> = {
+  response: "Response",
+  nextResponse: "Set next response",
 };
 const servedByLabels = {
   proxy: "proxy",
@@ -1231,6 +1590,8 @@ export const SnifferPage = () => {
   >("request");
   const [topPanelRatio, setTopPanelRatio] = useState(0.5);
   const [requestPanelRatio, setRequestPanelRatio] = useState(0.5);
+  const [responsePanelMode, setResponsePanelMode] =
+    useState<ResponsePanelMode>("response");
   const [callTableFilters, setCallTableFilters] = useState<CallTableFilters>(
     EMPTY_CALL_TABLE_FILTERS,
   );
@@ -1246,9 +1607,21 @@ export const SnifferPage = () => {
     Record<string, SnifferSourceChange[]>
   >(() => readSnifferRouteSourceChanges());
   const [reflectionHost, setReflectionHost] = useState("");
+  const [reflectionHostError, setReflectionHostError] = useState("");
+  const [reflectionHostErrorPulse, setReflectionHostErrorPulse] = useState(0);
+  const [reflectionHostSuccessPulse, setReflectionHostSuccessPulse] =
+    useState(0);
   const [reflectionHosts, setReflectionHosts] = useState<
     ReflectionHostRecord[]
   >([]);
+  const [availableProtofiles, setAvailableProtofiles] = useState<
+    ProtofileRecord[]
+  >([]);
+  const [isLoadingProtofiles, setIsLoadingProtofiles] = useState(false);
+  const [selectedProtofilesByRoute, setSelectedProtofilesByRoute] = useState<
+    Record<string, string>
+  >({});
+  const [isCheckingReflection, setIsCheckingReflection] = useState(false);
   const [isSettingReflection, setIsSettingReflection] = useState(false);
   const [isUploadingProto, setIsUploadingProto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1258,9 +1631,9 @@ export const SnifferPage = () => {
   const responseSearchContainerRef = useRef<HTMLDivElement | null>(null);
   const rootLayoutRef = useRef<HTMLDivElement | null>(null);
   const detailsLayoutRef = useRef<HTMLDivElement | null>(null);
+  const [viewportBoundHeightPx, setViewportBoundHeightPx] = useState<number>(0);
   const activeResizeRef = useRef<"rows" | "columns" | null>(null);
   const sourceChangeMarkersRef = useRef(sourceChangeMarkers);
-  const autoConfiguredReflectionRoutesRef = useRef<Record<string, string>>({});
   const syncedReflectionServedByRef = useRef<
     Record<string, ReflectionServedBy>
   >({});
@@ -1300,6 +1673,37 @@ export const SnifferPage = () => {
           : false;
 
       return { hasMethod, hasProto };
+    },
+    [],
+  );
+
+  const loadAvailableProtofiles = useCallback(
+    async (service: string, method: string): Promise<ProtofileRecord[]> => {
+      const normalizedService = service.trim();
+      const normalizedMethod = method.trim();
+      if (!normalizedService || !normalizedMethod) {
+        setAvailableProtofiles([]);
+        return [];
+      }
+
+      const query = new URLSearchParams();
+      query.set("service", normalizedService);
+      query.set("method", normalizedMethod);
+
+      setIsLoadingProtofiles(true);
+      try {
+        const payload = await apiClient.request<ProtofileRecord[]>(
+          `/protofiles?${query.toString()}`,
+        );
+        const next = Array.isArray(payload) ? payload : [];
+        setAvailableProtofiles(next);
+        return next;
+      } catch {
+        setAvailableProtofiles([]);
+        return [];
+      } finally {
+        setIsLoadingProtofiles(false);
+      }
     },
     [],
   );
@@ -1442,9 +1846,6 @@ export const SnifferPage = () => {
     (selectedRouteKey
       ? reflectionServedByRoutes[selectedRouteKey]
       : undefined) || "stub";
-  const shouldShowReflectionServedBySelect =
-    selectedResponseSource === "reflection" ||
-    selectedNextResponseSource === "reflection";
   const hasSelectedSourceChanged =
     selectedRouteKey.length > 0 &&
     selectedNextResponseSource !== selectedHistorySource;
@@ -1587,6 +1988,8 @@ export const SnifferPage = () => {
       },
     );
   const hasAnyMatchingStubs = (matchingStubsTotal ?? matchingStubs.length) > 0;
+  const selectedProtofileName =
+    (selectedRouteKey ? selectedProtofilesByRoute[selectedRouteKey] : "") || "";
   const routeStubId = String(matchingStubs[0]?.id || "").trim();
   const routeStubEditPath = useMemo(() => {
     if (!routeStubId) {
@@ -1981,6 +2384,7 @@ export const SnifferPage = () => {
         singleResponseEntry?.timestamp || selected?.timestamp,
       )
     : undefined;
+  const isResponseViewMode = responsePanelMode === "response";
 
   useEffect(() => {
     setExpandedResponseKeys(() => {
@@ -1996,6 +2400,7 @@ export const SnifferPage = () => {
     setResponseSearchQuery("");
     setRequestActiveMatch(-1);
     setResponseActiveMatch(-1);
+    setResponsePanelMode("response");
   }, [selected?.callId, selected?.id]);
 
   useEffect(() => {
@@ -2133,6 +2538,70 @@ export const SnifferPage = () => {
       cancelled = true;
     };
   }, [checkProtoStatus, selectedMethod, selectedService]);
+
+  useEffect(() => {
+    const service = selectedService.trim();
+    const method = selectedMethod.trim();
+    if (!service || !method) {
+      setAvailableProtofiles([]);
+      setIsLoadingProtofiles(false);
+      return;
+    }
+
+    const query = new URLSearchParams();
+    query.set("service", service);
+    query.set("method", method);
+
+    let cancelled = false;
+    setIsLoadingProtofiles(true);
+    apiClient
+      .request<ProtofileRecord[]>(`/protofiles?${query.toString()}`)
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        setAvailableProtofiles(Array.isArray(payload) ? payload : []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAvailableProtofiles([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingProtofiles(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMethod, selectedService]);
+
+  useEffect(() => {
+    if (!selectedRouteKey || availableProtofiles.length === 0) {
+      return;
+    }
+
+    const current = selectedProtofilesByRoute[selectedRouteKey];
+    const hasCurrent = availableProtofiles.some(
+      (item) => String(item.name || item.id || "").trim() === current,
+    );
+    if (current && hasCurrent) {
+      return;
+    }
+
+    const firstName = String(
+      availableProtofiles[0]?.name || availableProtofiles[0]?.id || "",
+    ).trim();
+    if (!firstName) {
+      return;
+    }
+    setSelectedProtofilesByRoute((currentByRoute) => ({
+      ...currentByRoute,
+      [selectedRouteKey]: firstName,
+    }));
+  }, [availableProtofiles, selectedProtofilesByRoute, selectedRouteKey]);
 
   useEffect(() => {
     const peer = selectedPeer.trim();
@@ -2273,29 +2742,44 @@ export const SnifferPage = () => {
     await handleResponseSourceChange("reflection", servedBy);
   };
 
-  const handleSetReflection = async () => {
+  const runReflectionWithMode = async (persistHost: boolean) => {
     if (!selectedRouteKey) {
       return;
     }
 
     const source = normalizeReflectionSource(reflectionHost);
     if (!source) {
-      notify("Enter reflection host first", { type: "warning" });
+      setReflectionHostError("Enter reflection host");
+      setReflectionHostErrorPulse((current) => current + 1);
       return;
     }
 
-    setIsSettingReflection(true);
+    setReflectionHostError("");
+    setReflectionHostSuccessPulse(0);
+    if (persistHost) {
+      setIsSettingReflection(true);
+    } else {
+      setIsCheckingReflection(true);
+    }
     try {
-      const saved = await apiClient.request<ReflectionHostRecord>(
-        "/reflection-hosts",
-        {
-          method: "POST",
-          body: JSON.stringify({ host: reflectionHost.trim(), source }),
-        },
-      );
+      let configuredSource = source;
+      if (persistHost) {
+        const saved = await apiClient.request<ReflectionHostRecord>(
+          "/reflection-hosts",
+          {
+            method: "POST",
+            body: JSON.stringify({ host: reflectionHost.trim(), source }),
+          },
+        );
+        configuredSource = saved.source || source;
+        setReflectionHost(configuredSource);
+        await loadReflectionHosts().catch(() => {
+          // Keep the manually entered host if refreshing the list fails.
+        });
+      }
 
       await dataProvider.create("descriptors", {
-        data: { source: saved.source || source },
+        data: { source: configuredSource },
       });
       const { hasMethod, hasProto } = await checkProtoStatus(
         selectedService,
@@ -2303,10 +2787,6 @@ export const SnifferPage = () => {
       );
       setHasMethodFromApi(hasMethod);
       setHasProtoFromApi(hasProto);
-      setReflectionHost(saved.source || source);
-      await loadReflectionHosts().catch(() => {
-        // Keep the manually entered host if refreshing the list fails.
-      });
       await loadHistorySnapshot().catch(() => {
         // Keep current snapshot on refresh failure.
       });
@@ -2315,43 +2795,20 @@ export const SnifferPage = () => {
         "reflection",
         selectedReflectionServedBy,
       );
-      notify("Reflection source set.", { type: "success" });
-    } catch (error) {
-      notify((error as Error).message || "Failed to set reflection source", {
-        type: "error",
-      });
+      setReflectionHostSuccessPulse((current) => current + 1);
+    } catch {
+      setReflectionHostError("Reflection host/port is unavailable");
+      setReflectionHostErrorPulse((current) => current + 1);
     } finally {
-      setIsSettingReflection(false);
+      if (persistHost) {
+        setIsSettingReflection(false);
+      } else {
+        setIsCheckingReflection(false);
+      }
     }
   };
-
-  useEffect(() => {
-    if (
-      selectedNextResponseSource !== "reflection" ||
-      !selectedRouteKey ||
-      !reflectionHost.trim()
-    ) {
-      return;
-    }
-
-    const source = normalizeReflectionSource(reflectionHost);
-    if (!source) {
-      return;
-    }
-
-    const autoConfigKey = `${selectedRouteKey}|${source}|${selectedReflectionServedBy}`;
-    if (autoConfiguredReflectionRoutesRef.current[autoConfigKey]) {
-      return;
-    }
-
-    autoConfiguredReflectionRoutesRef.current[autoConfigKey] = source;
-    void handleSetReflection();
-  }, [
-    reflectionHost,
-    selectedNextResponseSource,
-    selectedReflectionServedBy,
-    selectedRouteKey,
-  ]);
+  const handleCheckReflection = async () => runReflectionWithMode(false);
+  const handleSetReflection = async () => runReflectionWithMode(true);
 
   useEffect(() => {
     if (
@@ -2410,6 +2867,7 @@ export const SnifferPage = () => {
       );
       setHasMethodFromApi(hasMethod);
       setHasProtoFromApi(hasProto);
+      await loadAvailableProtofiles(selectedService, selectedMethod);
       await handleResponseSourceChange("proto");
       notify("Descriptor uploaded.", { type: "success" });
       await loadHistorySnapshot().catch(() => {
@@ -2474,6 +2932,325 @@ export const SnifferPage = () => {
     >
       {isUploadingProto ? "Uploading..." : "Upload proto"}
     </Button>
+  );
+
+  const reflectionHostOptions = Array.from(
+    new Set(
+      reflectionHosts
+        .map((item) => item.source || item.host || "")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  );
+
+  const nextResponseStubControl = (
+    <Box sx={nextResponseStubControlSx}>
+      <Typography variant="h6" sx={nextResponseTitleSx}>
+        Stub for next response
+      </Typography>
+      <Typography variant="body1" sx={nextResponseBodySx}>
+        Choose the stub that should serve the next request, or edit the selected
+        one.
+      </Typography>
+      <Box sx={nextResponseActionsSx}>
+        {selectedStubId ? (
+          <Button
+            variant="contained"
+            component={RouterLink}
+            to={selectedStubEditPath}
+            state={{ returnTo: snifferPath }}
+            sx={nextResponseActionButtonSx}
+          >
+            Edit selected stub
+          </Button>
+        ) : hasAnyMatchingStubs ? (
+          <Button
+            variant="outlined"
+            component={RouterLink}
+            to={stubsListPath}
+            disabled={!hasMethodFromApi}
+            sx={nextResponseActionButtonSx}
+          >
+            Select stub
+          </Button>
+        ) : (
+          <Button
+            variant="contained"
+            component={RouterLink}
+            to={stubCreatePath}
+            disabled={!canCreateStubFromSelectedCall}
+            state={{
+              returnTo: snifferPath,
+              prefillService: selectedService,
+              prefillMethod: selectedMethod,
+            }}
+            sx={nextResponseActionButtonSx}
+          >
+            Create stub
+          </Button>
+        )}
+        {selectedStubId || !hasAnyMatchingStubs ? null : (
+          <Button
+            variant="contained"
+            component={RouterLink}
+            to={routeStubEditPath}
+            state={{ returnTo: snifferPath }}
+            sx={nextResponseActionButtonSx}
+          >
+            Edit route stub
+          </Button>
+        )}
+        {selectedStubId && hasAnyMatchingStubs ? (
+          <Button
+            variant="outlined"
+            component={RouterLink}
+            to={stubsListPath}
+            disabled={!hasMethodFromApi}
+            sx={nextResponseActionButtonSx}
+          >
+            Select another stub
+          </Button>
+        ) : null}
+      </Box>
+    </Box>
+  );
+
+  const nextResponseSetupBlock = (
+    <Box sx={nextResponseContainerSx}>
+      <Box sx={nextResponseViewportSx}>
+        <Box sx={nextResponseCardSx}>
+          <Typography variant="h5" sx={nextResponseTitleSx}>
+            Set next response
+          </Typography>
+          <Typography variant="body1" sx={nextResponseBodySx}>
+            Configure what will serve the next call for the selected
+            service/method.
+          </Typography>
+          <Box sx={nextResponseControlsSx}>
+            <FormControl size="small" sx={nextResponseDropdownSx}>
+              <Select
+                value={selectedNextResponseSource}
+                onChange={(event) => {
+                  const nextSource = event.target.value as SnifferSource;
+                  const servedBy =
+                    nextSource === "reflection"
+                      ? selectedReflectionServedBy
+                      : undefined;
+                  void handleResponseSourceChange(nextSource, servedBy).catch(
+                    (error) => {
+                      notify(
+                        (error as Error).message ||
+                          "Failed to set response source",
+                        { type: "error" },
+                      );
+                    },
+                  );
+                }}
+                displayEmpty
+              >
+                <MenuItem value="proto">proto</MenuItem>
+                <MenuItem value="reflection">server reflection</MenuItem>
+              </Select>
+            </FormControl>
+
+            {selectedNextResponseSource === "proto" ? (
+              <>
+                {availableProtofiles.length > 0 ? (
+                  <FormControl size="small" sx={nextResponseDropdownSx}>
+                    <Select
+                      value={selectedProtofileName}
+                      onChange={(event) => {
+                        const protofileName = String(event.target.value || "");
+                        if (!selectedRouteKey || !protofileName) {
+                          return;
+                        }
+                        setSelectedProtofilesByRoute((current) => ({
+                          ...current,
+                          [selectedRouteKey]: protofileName,
+                        }));
+                      }}
+                      displayEmpty
+                    >
+                      <MenuItem value="" disabled>
+                        Select protofile
+                      </MenuItem>
+                      {availableProtofiles.map((item) => {
+                        const name = String(item.name || item.id || "").trim();
+                        if (!name) {
+                          return null;
+                        }
+                        const version =
+                          typeof item.version === "number" && item.version > 0
+                            ? ` v${item.version}`
+                            : "";
+                        return (
+                          <MenuItem key={name} value={name}>
+                            {`${name}${version}`}
+                          </MenuItem>
+                        );
+                      })}
+                    </Select>
+                  </FormControl>
+                ) : isLoadingProtofiles ? (
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={stateBlockHintSx}
+                  >
+                    Loading protofiles...
+                  </Typography>
+                ) : (
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={stateBlockHintSx}
+                  >
+                    No protofiles for selected method
+                  </Typography>
+                )}
+                {hasProtoForSelectedCall ? null : protoUploadControl}
+                {nextResponseStubControl}
+              </>
+            ) : (
+              <>
+                <Box sx={nextResponseReflectionHostSx}>
+                  <Autocomplete
+                    freeSolo
+                    disableClearable
+                    options={reflectionHostOptions}
+                    inputValue={reflectionHost}
+                    onInputChange={(_, value) => {
+                      setReflectionHost(value);
+                      if (reflectionHostError) {
+                        setReflectionHostError("");
+                      }
+                      if (reflectionHostSuccessPulse) {
+                        setReflectionHostSuccessPulse(0);
+                      }
+                    }}
+                    sx={[
+                      nextResponseTextInputSx,
+                      reflectionHostError ? reflectionHostPulseSx : null,
+                      !reflectionHostError && reflectionHostSuccessPulse
+                        ? reflectionHostSuccessPulseSx
+                        : null,
+                    ]}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        key={`${reflectionHostErrorPulse}:${reflectionHostSuccessPulse}`}
+                        size="small"
+                        variant="outlined"
+                        label="Reflection host"
+                        placeholder="localhost:50051"
+                        error={Boolean(reflectionHostError)}
+                        helperText={reflectionHostError}
+                        InputProps={{
+                          ...params.InputProps,
+                          endAdornment: (
+                            <Box
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 0.25,
+                              }}
+                            >
+                              {params.InputProps.endAdornment}
+                              <IconButton
+                                onClick={handleCheckReflection}
+                                disabled={
+                                  isCheckingReflection ||
+                                  isSettingReflection ||
+                                  !reflectionHost.trim()
+                                }
+                                sx={nextResponseCheckIconButtonSx}
+                              >
+                                <Box
+                                  sx={{
+                                    position: "relative",
+                                    width: 16,
+                                    height: 16,
+                                  }}
+                                >
+                                  <SearchRoundedIcon
+                                    sx={{
+                                      fontSize: 16,
+                                      position: "absolute",
+                                      top: 0,
+                                      left: 0,
+                                    }}
+                                  />
+                                  <Box
+                                    component="span"
+                                    sx={{
+                                      position: "absolute",
+                                      right: -1,
+                                      top: -4,
+                                      fontSize: 9,
+                                      fontWeight: 700,
+                                      lineHeight: 1,
+                                    }}
+                                  >
+                                    ?
+                                  </Box>
+                                </Box>
+                              </IconButton>
+                            </Box>
+                          ),
+                        }}
+                      />
+                    )}
+                  />
+                  <Button
+                    variant="contained"
+                    onClick={handleSetReflection}
+                    disabled={
+                      isSettingReflection ||
+                      isCheckingReflection ||
+                      !reflectionHost.trim()
+                    }
+                    sx={nextResponseSetButtonSx}
+                  >
+                    {isSettingReflection ? "..." : "Set"}
+                  </Button>
+                </Box>
+                <FormControl size="small" sx={nextResponseDropdownSx}>
+                  <Select
+                    value={selectedReflectionServedBy}
+                    onChange={(event) => {
+                      const servedBy = event.target.value as ReflectionServedBy;
+                      void handleReflectionServedByChange(servedBy).catch(
+                        (error) => {
+                          notify(
+                            (error as Error).message ||
+                              "Failed to set reflection mode",
+                            { type: "error" },
+                          );
+                        },
+                      );
+                    }}
+                  >
+                    <MenuItem value="stub">stub</MenuItem>
+                    <MenuItem value="proxy">proxy</MenuItem>
+                  </Select>
+                </FormControl>
+                {selectedReflectionServedBy === "stub" ? (
+                  nextResponseStubControl
+                ) : (
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={stateBlockHintSx}
+                  >
+                    The next response will be served by proxy.
+                  </Typography>
+                )}
+              </>
+            )}
+          </Box>
+        </Box>
+      </Box>
+    </Box>
   );
 
   const handleClearCurrentRoomRequests = useCallback(() => {
@@ -2727,6 +3504,37 @@ export const SnifferPage = () => {
     };
   }, []);
 
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    let frameId = 0;
+    const updateViewportBoundHeight = () => {
+      cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        const root = rootLayoutRef.current;
+        if (!root) {
+          return;
+        }
+        const rect = root.getBoundingClientRect();
+        const top = Number.isFinite(rect.top) ? Math.max(rect.top, 0) : 0;
+        const next = Math.max(0, Math.floor(window.innerHeight - top));
+        setViewportBoundHeightPx((current) => (current === next ? current : next));
+      });
+    };
+
+    updateViewportBoundHeight();
+    window.addEventListener("resize", updateViewportBoundHeight);
+    window.addEventListener("scroll", updateViewportBoundHeight, true);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", updateViewportBoundHeight);
+      window.removeEventListener("scroll", updateViewportBoundHeight, true);
+    };
+  }, []);
+
   return (
     <Box
       ref={rootLayoutRef}
@@ -2734,9 +3542,16 @@ export const SnifferPage = () => {
         position: "relative",
         display: "grid",
         gridTemplateRows: `minmax(150px, ${topPanelRatio}fr) minmax(150px, ${1 - topPanelRatio}fr)`,
+        flex: 1,
+        boxSizing: "border-box",
         p: 0,
-        height: "100%",
+        pb: 0,
+        mb: 0,
+        height: viewportBoundHeightPx > 0 ? `${viewportBoundHeightPx}px` : "100%",
+        maxHeight:
+          viewportBoundHeightPx > 0 ? `${viewportBoundHeightPx}px` : "100%",
         minHeight: 0,
+        overflow: "hidden",
       }}
     >
       <Paper
@@ -3383,6 +4198,8 @@ export const SnifferPage = () => {
             onMouseDownCapture={() => setActiveSearchTarget("response")}
             onFocusCapture={() => setActiveSearchTarget("response")}
             sx={{
+              containerType: "size",
+              containerName: "response-panel",
               overflow: "hidden",
               borderRadius: 0,
               border: "1px solid",
@@ -3394,74 +4211,29 @@ export const SnifferPage = () => {
             }}
           >
             <Box sx={panelHeaderSx}>
-              <Typography variant="subtitle2" sx={panelTitleSx}>
-                {isSingleResponseView ? "Response" : "Responses"}
-              </Typography>
+              <FormControl size="small" sx={postmanLikeSelectSx}>
+                <Select
+                  value={responsePanelMode}
+                  onChange={(event) => {
+                    setResponsePanelMode(event.target.value as ResponsePanelMode);
+                    if (event.target.value === "nextResponse") {
+                      closeResponseSearch();
+                    }
+                  }}
+                  variant="outlined"
+                >
+                  <MenuItem value="response">
+                    {isSingleResponseView
+                      ? responsePanelModeLabels.response
+                      : "Responses"}
+                  </MenuItem>
+                  <MenuItem value="nextResponse">
+                    {responsePanelModeLabels.nextResponse}
+                  </MenuItem>
+                </Select>
+              </FormControl>
+              {isResponseViewMode ? (
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-                <FormControl size="small" sx={{ minWidth: 132 }}>
-                  <Select
-                    value={selectedResponseSource}
-                    onChange={(event) => {
-                      const nextSource = event.target.value as SnifferSource;
-                      if (nextSource === "reflection") {
-                        void handleSetReflection();
-                        return;
-                      }
-
-                      void handleResponseSourceChange(nextSource).catch(
-                        (error) => {
-                          notify(
-                            (error as Error).message ||
-                              "Failed to set response source",
-                            { type: "error" },
-                          );
-                        },
-                      );
-                    }}
-                    sx={{
-                      height: 26,
-                      fontSize: 12,
-                      "& .MuiSelect-select": {
-                        py: 0.25,
-                        px: 1,
-                      },
-                    }}
-                  >
-                    <MenuItem value="proto">proto</MenuItem>
-                    <MenuItem value="reflection">server reflection</MenuItem>
-                  </Select>
-                </FormControl>
-                {shouldShowReflectionServedBySelect ? (
-                  <FormControl size="small" sx={{ minWidth: 86 }}>
-                    <Select
-                      value={selectedReflectionServedBy}
-                      onChange={(event) => {
-                        const servedBy = event.target
-                          .value as ReflectionServedBy;
-                        void handleReflectionServedByChange(servedBy).catch(
-                          (error) => {
-                            notify(
-                              (error as Error).message ||
-                                "Failed to set reflection mode",
-                              { type: "error" },
-                            );
-                          },
-                        );
-                      }}
-                      sx={{
-                        height: 26,
-                        fontSize: 12,
-                        "& .MuiSelect-select": {
-                          py: 0.25,
-                          px: 1,
-                        },
-                      }}
-                    >
-                      <MenuItem value="stub">stub</MenuItem>
-                      <MenuItem value="proxy">proxy</MenuItem>
-                    </Select>
-                  </FormControl>
-                ) : null}
                 <Chip
                   size="small"
                   color={codeToChipColor(selectedCode)}
@@ -3474,7 +4246,7 @@ export const SnifferPage = () => {
                   variant="outlined"
                   label={`Served: ${servedByLabels[selectedServedBy]}`}
                 />
-                {isSingleResponseView ? (
+                {isResponseViewMode && isSingleResponseView ? (
                   <Typography
                     variant="caption"
                     color="text.secondary"
@@ -3482,15 +4254,16 @@ export const SnifferPage = () => {
                   >
                     {responseHeaderTimestamp}
                   </Typography>
-                ) : (
+                ) : isResponseViewMode ? (
                   <Chip
                     size="small"
                     variant="outlined"
                     label={`${orderedResponseEntries.length} items`}
                   />
-                )}
+                ) : null}
                 {shouldShowResponsePayloadBlock &&
-                hasResponseSearchablePayload ? (
+                hasResponseSearchablePayload &&
+                isResponseViewMode ? (
                   <IconButton
                     size="small"
                     onClick={() => {
@@ -3506,6 +4279,7 @@ export const SnifferPage = () => {
                   </IconButton>
                 ) : null}
               </Box>
+              ) : null}
             </Box>
             <Divider />
             {shouldShowSourceChangedRetryBanner ? (
@@ -3542,7 +4316,9 @@ export const SnifferPage = () => {
               style={{ display: "none" }}
               onChange={handleProtoSelect}
             />
-            {shouldPromptEnterRoomToSetup ? (
+            {responsePanelMode === "nextResponse" ? (
+              nextResponseSetupBlock
+            ) : shouldPromptEnterRoomToSetup ? (
               <Box sx={stateBlockContainerSx}>
                 <Box
                   sx={[stateBlockCardSx, { maxWidth: { xs: "100%", sm: 540 } }]}

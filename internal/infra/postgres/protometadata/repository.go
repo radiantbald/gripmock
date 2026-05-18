@@ -61,12 +61,13 @@ type Repository struct {
 }
 
 type ProtofileMeta struct {
-	Name      string
-	Hash      string
-	Version   int64
-	Source    string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	Name           string
+	Hash           string
+	Version        int64
+	Source         string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	ServiceMethods []ServiceMethodRef
 }
 
 type ServiceMethodRef struct {
@@ -87,18 +88,33 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 func (r *Repository) ListProtofiles(ctx context.Context) ([]ProtofileMeta, error) {
 	rows, err := r.pool.Query(
 		ctx,
-		`SELECT p.name, p.hash, p.version, COALESCE(p.source, ''), p.created_at, p.updated_at
-		 FROM protofiles p
-		 ORDER BY p.updated_at DESC, p.name ASC`,
+		`SELECT pf.name,
+		        pf.hash,
+		        pf.version,
+		        COALESCE(pf.source, ''),
+		        pf.created_at,
+		        pf.updated_at,
+		        COALESCE(CASE WHEN p.name = '' THEN s.name ELSE p.name || '.' || s.name END, ''),
+		        COALESCE(m.name, '')
+		 FROM protofiles pf
+		 LEFT JOIN packages p ON p.protofile_id = pf.id
+		 LEFT JOIN services s ON s.package_id = p.id
+		 LEFT JOIN methods m ON m.service_id = s.id
+		 ORDER BY pf.updated_at DESC, pf.name ASC, s.name ASC, m.name ASC`,
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list protofiles")
 	}
 	defer rows.Close()
 
+	byName := make(map[string]int)
 	result := make([]ProtofileMeta, 0)
 	for rows.Next() {
-		var row ProtofileMeta
+		var (
+			row       ProtofileMeta
+			serviceID string
+			methodID  string
+		)
 		if scanErr := rows.Scan(
 			&row.Name,
 			&row.Hash,
@@ -106,10 +122,24 @@ func (r *Repository) ListProtofiles(ctx context.Context) ([]ProtofileMeta, error
 			&row.Source,
 			&row.CreatedAt,
 			&row.UpdatedAt,
+			&serviceID,
+			&methodID,
 		); scanErr != nil {
 			return nil, errors.Wrap(scanErr, "failed to scan protofile")
 		}
-		result = append(result, row)
+
+		index, exists := byName[row.Name]
+		if !exists {
+			byName[row.Name] = len(result)
+			result = append(result, row)
+			index = len(result) - 1
+		}
+		if strings.TrimSpace(serviceID) != "" && strings.TrimSpace(methodID) != "" {
+			result[index].ServiceMethods = append(result[index].ServiceMethods, ServiceMethodRef{
+				ServiceID: serviceID,
+				MethodID:  methodID,
+			})
+		}
 	}
 
 	if rowsErr := rows.Err(); rowsErr != nil {

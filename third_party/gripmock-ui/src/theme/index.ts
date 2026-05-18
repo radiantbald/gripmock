@@ -28,11 +28,13 @@ const baseComponents = {
         overflow: "hidden",
       },
       ".RaLayout-contentWithSidebar": {
-        height: "100%",
+        flex: 1,
+        height: "auto",
         minHeight: 0,
       },
       ".RaLayout-content": {
-        height: "100%",
+        flex: 1,
+        height: "auto",
         minHeight: 0,
         display: "flex",
         flexDirection: "column",
