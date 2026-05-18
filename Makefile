@@ -70,6 +70,7 @@ gen-rest:
 
 PROTOBUF_REPO=/tmp/gm-protobuf-repo
 GOOGLEAPIS_REPO=/tmp/gm-googleapis-sdk
+GRPC_GATEWAY_REPO=/tmp/gm-grpc-gateway
 
 PROTOBUF_EXCLUDE_ARGS=\
 	--exclude 'google/protobuf/compiler/**' \
@@ -83,10 +84,11 @@ GOOGLEAPIS_EXCLUDE_ARGS=\
 	--exclude 'preview/**'
 
 gen-imports:
-	rm -rf $(PROTOBUF_REPO) $(GOOGLEAPIS_REPO)
-	touch internal/pbs/protobuf.pbs internal/pbs/googleapis.pbs
+	rm -rf $(PROTOBUF_REPO) $(GOOGLEAPIS_REPO) $(GRPC_GATEWAY_REPO)
+	touch internal/pbs/protobuf.pbs internal/pbs/googleapis.pbs internal/pbs/grpcgateway.pbs
 	git clone --depth=1 https://github.com/protocolbuffers/protobuf.git $(PROTOBUF_REPO)
 	git clone --depth=1 https://github.com/googleapis/googleapis.git $(GOOGLEAPIS_REPO)
+	git clone --depth=1 https://github.com/grpc-ecosystem/grpc-gateway.git $(GRPC_GATEWAY_REPO)
 	go run main.go proto export \
 		--root $(PROTOBUF_REPO)/src \
 		$(PROTOBUF_EXCLUDE_ARGS) \
@@ -96,7 +98,12 @@ gen-imports:
 		--import-root $(PROTOBUF_REPO)/src \
 		$(GOOGLEAPIS_EXCLUDE_ARGS) \
 		--out internal/pbs/googleapis.pbs
-	rm -rf $(PROTOBUF_REPO) $(GOOGLEAPIS_REPO)
+	go run main.go proto export \
+		--root $(GRPC_GATEWAY_REPO) \
+		--import-root $(PROTOBUF_REPO)/src \
+		--include 'protoc-gen-openapiv2/options/*.proto' \
+		--out internal/pbs/grpcgateway.pbs
+	rm -rf $(PROTOBUF_REPO) $(GOOGLEAPIS_REPO) $(GRPC_GATEWAY_REPO)
 
 gen-sdk-examples:
 	rm -rf pkg/sdk/internal/examplefds/gen

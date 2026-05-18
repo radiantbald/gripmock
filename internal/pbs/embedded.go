@@ -14,6 +14,9 @@ import (
 //go:embed googleapis.pbs
 var googleapis []byte
 
+//go:embed grpcgateway.pbs
+var grpcGateway []byte
+
 //go:embed protobuf.pbs
 var protobuf []byte
 
@@ -23,10 +26,10 @@ type ThirdPartyResolver struct {
 
 func NewResolver() (*ThirdPartyResolver, error) {
 	resolver := &ThirdPartyResolver{
-		items: make([]*descriptorpb.FileDescriptorSet, 0, 2), //nolint:mnd
+		items: make([]*descriptorpb.FileDescriptorSet, 0, 3), //nolint:mnd
 	}
 
-	for _, compressed := range [][]byte{googleapis, protobuf} {
+	for _, compressed := range [][]byte{googleapis, grpcGateway, protobuf} {
 		fds, err := protobundle.Decode(compressed)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to decode embedded descriptor")

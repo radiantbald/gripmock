@@ -3,11 +3,14 @@ package app
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	stderrors "errors"
 	"fmt"
 	"io"
 	"maps"
+	"net"
 	"net/http"
 	"path/filepath"
 	"runtime"
@@ -36,6 +39,7 @@ import (
 	mcpusecase "github.com/bavix/gripmock/v3/internal/app/usecase/mcp"
 	"github.com/bavix/gripmock/v3/internal/domain/descriptors"
 	"github.com/bavix/gripmock/v3/internal/domain/history"
+	protosetdom "github.com/bavix/gripmock/v3/internal/domain/protoset"
 	"github.com/bavix/gripmock/v3/internal/domain/rest"
 	"github.com/bavix/gripmock/v3/internal/infra/build"
 	"github.com/bavix/gripmock/v3/internal/infra/httputil"
@@ -44,6 +48,7 @@ import (
 	pgallowlist "github.com/bavix/gripmock/v3/internal/infra/postgres/allowlist"
 	pgclients "github.com/bavix/gripmock/v3/internal/infra/postgres/clients"
 	pgprotometadata "github.com/bavix/gripmock/v3/internal/infra/postgres/protometadata"
+	pgreflectionhosts "github.com/bavix/gripmock/v3/internal/infra/postgres/reflectionhosts"
 	pgrooms "github.com/bavix/gripmock/v3/internal/infra/postgres/rooms"
 	pgusers "github.com/bavix/gripmock/v3/internal/infra/postgres/users"
 	protosetinfra "github.com/bavix/gripmock/v3/internal/infra/protoset"
@@ -95,6 +100,8 @@ type RestServer struct {
 	roomsRepo       *pgrooms.Repository
 	clientsRepo     *pgclients.Repository
 	protoMetadata   ProtoMetadataWriter
+	remoteClient    protosetdom.RemoteClient
+	reflectionHosts *pgreflectionhosts.Repository
 }
 
 var _ rest.ServerInterface = &RestServer{}
@@ -177,6 +184,14 @@ func (h *RestServer) SetProtoMetadataWriter(writer ProtoMetadataWriter) {
 	h.protoMetadata = writer
 }
 
+func (h *RestServer) SetRemoteClient(client protosetdom.RemoteClient) {
+	h.remoteClient = client
+}
+
+func (h *RestServer) SetReflectionHostsRepository(repository *pgreflectionhosts.Repository) {
+	h.reflectionHosts = repository
+}
+
 func (h *RestServer) ProtoMetadataStatus(w http.ResponseWriter, r *http.Request) {
 	reader, ok := h.protoMetadata.(protoMetadataReader)
 	if !ok {
@@ -213,6 +228,8 @@ const (
 	descriptorUploadFilenameHeader = "X-Gripmock-Descriptor-Filename"
 	descriptorSourceREST           = "rest"
 	descriptorSourceMCP            = "mcp"
+	descriptorSourceReflectPrefix  = "grpc_reflect_"
+	descriptorSourceHashLen        = 12
 )
 
 var (
@@ -562,6 +579,101 @@ func (h *RestServer) ClientsList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.writeResponse(r.Context(), w, items)
+}
+
+// ReflectionHostsList returns configured gRPC reflection upstream hosts.
+func (h *RestServer) ReflectionHostsList(w http.ResponseWriter, r *http.Request) {
+	if h.reflectionHosts == nil {
+		h.writeResponse(r.Context(), w, []map[string]any{})
+		return
+	}
+
+	hosts, err := h.reflectionHosts.List(r.Context())
+	if err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+
+	items := make([]map[string]any, 0, len(hosts))
+	for _, host := range hosts {
+		items = append(items, map[string]any{
+			"id":        host.ID,
+			"host":      host.Host,
+			"source":    host.Source,
+			"createdAt": host.CreatedAt,
+			"updatedAt": host.UpdatedAt,
+		})
+	}
+
+	h.writeResponse(r.Context(), w, items)
+}
+
+// ReflectionHostsUpsert stores a gRPC reflection upstream host.
+func (h *RestServer) ReflectionHostsUpsert(w http.ResponseWriter, r *http.Request) {
+	if h.reflectionHosts == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		h.writeResponseError(r.Context(), w, errors.New("reflection hosts repository is not configured"))
+		return
+	}
+
+	var req struct {
+		Host   string `json:"host"`
+		Source string `json:"source"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.validationError(r.Context(), w, errors.Wrap(err, "invalid reflection host request"))
+		return
+	}
+
+	host, source, err := normalizeReflectionHostRequest(req.Host, req.Source)
+	if err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+
+	row, err := h.reflectionHosts.Upsert(r.Context(), host, source)
+	if err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+
+	h.writeResponse(r.Context(), w, map[string]any{
+		"id":        row.ID,
+		"host":      row.Host,
+		"source":    row.Source,
+		"createdAt": row.CreatedAt,
+		"updatedAt": row.UpdatedAt,
+	})
+}
+
+func normalizeReflectionHostRequest(host string, source string) (string, string, error) {
+	host = strings.TrimSpace(host)
+	source = strings.TrimSpace(source)
+	if source == "" {
+		source = host
+	}
+	if source == "" {
+		return "", "", errors.New("reflection host is required")
+	}
+	if strings.HasPrefix(source, ":") {
+		source = "127.0.0.1" + source
+	}
+	if !strings.Contains(source, "://") {
+		source = "grpc://" + source
+	} else {
+		source = strings.Replace(source, "://:", "://127.0.0.1:", 1)
+	}
+	source = strings.Replace(source, "://localhost:", "://127.0.0.1:", 1)
+
+	parsed, err := protosetdom.ParseSource(source)
+	if err != nil {
+		return "", "", errors.Wrap(err, "invalid reflection source")
+	}
+	if parsed.Type != protosetdom.SourceReflect || parsed.ProxyMode != "" {
+		return "", "", errors.New("reflection source must use grpc:// or grpcs://")
+	}
+
+	return parsed.ReflectAddress, source, nil
 }
 
 func clientFingerprint(peerID string, userAgent string) string {
@@ -918,6 +1030,9 @@ func mcpGeneralToolHandlers(h *RestServer) map[string]mcpusecase.ToolHandler {
 		mcpusecase.ToolReflectInfo:     func(toolArgs map[string]any) (map[string]any, error) { return mcpReflectInfo(h, toolArgs) },
 		mcpusecase.ToolReflectSources:  func(toolArgs map[string]any) (map[string]any, error) { return mcpReflectSources(h, toolArgs) },
 		mcpusecase.ToolDescriptorsAdd:  func(toolArgs map[string]any) (map[string]any, error) { return mcpDescriptorsAdd(h, toolArgs) },
+		mcpusecase.ToolDescriptorsReflect: func(toolArgs map[string]any) (map[string]any, error) {
+			return mcpDescriptorsReflect(h, toolArgs)
+		},
 		mcpusecase.ToolDescriptorsList: func(toolArgs map[string]any) (map[string]any, error) { return mcpDescriptorsList(h, toolArgs) },
 		mcpusecase.ToolHistoryList:     func(toolArgs map[string]any) (map[string]any, error) { return mcpHistoryList(h, toolArgs) },
 		mcpusecase.ToolHistoryErrors:   func(toolArgs map[string]any) (map[string]any, error) { return mcpHistoryErrors(h, toolArgs) },
@@ -1076,7 +1191,7 @@ func mcpReflectInfo(h *RestServer, _ map[string]any) (map[string]any, error) {
 
 func mcpReflectSources(h *RestServer, args map[string]any) (map[string]any, error) {
 	runtimePaths, reflectionPrefixes, _ := runtimeDescriptorStats(h)
-	reflectionPaths, dynamicPaths, _ := splitRuntimeDescriptorPaths(runtimePaths)
+	reflectionPaths, dynamicPaths, _ := splitRuntimeDescriptorPaths(h, runtimePaths)
 
 	kind, _ := args["kind"].(string)
 	if kind == "" {
@@ -1125,31 +1240,26 @@ func mcpReflectSources(h *RestServer, args map[string]any) (map[string]any, erro
 
 func runtimeDescriptorStats(h *RestServer) ([]string, []string, int) {
 	runtimePaths := h.restDescriptors.Paths()
-	reflectionPaths, _, prefixes := splitRuntimeDescriptorPaths(runtimePaths)
+	reflectionPaths, _, prefixes := splitRuntimeDescriptorPaths(h, runtimePaths)
 
 	return runtimePaths, prefixes, len(reflectionPaths)
 }
 
-func splitRuntimeDescriptorPaths(runtimePaths []string) ([]string, []string, []string) {
+func splitRuntimeDescriptorPaths(h *RestServer, runtimePaths []string) ([]string, []string, []string) {
 	reflectionPrefixes := make(map[string]struct{})
 	reflectionPaths := make([]string, 0, len(runtimePaths))
 	dynamicPaths := make([]string, 0, len(runtimePaths))
 
 	for _, path := range runtimePaths {
-		if !strings.HasPrefix(path, "grpc_reflect_") {
+		source := h.restDescriptors.Source(path)
+		if !strings.HasPrefix(source, descriptorSourceReflectPrefix) {
 			dynamicPaths = append(dynamicPaths, path)
 
 			continue
 		}
 
 		reflectionPaths = append(reflectionPaths, path)
-
-		prefix := path
-		if idx := strings.Index(prefix, "/"); idx > 0 {
-			prefix = prefix[:idx]
-		}
-
-		reflectionPrefixes[prefix] = struct{}{}
+		reflectionPrefixes[source] = struct{}{}
 	}
 
 	prefixes := make([]string, 0, len(reflectionPrefixes))
@@ -1197,6 +1307,20 @@ func mcpDescriptorsAdd(h *RestServer, args map[string]any) (map[string]any, erro
 	}
 
 	serviceIDs, err := registerDescriptorBytes(context.Background(), h, payload, "", descriptorSourceMCP)
+	if err != nil {
+		return nil, mcpDescriptorRegistrationArgError(err)
+	}
+
+	return map[string]any{"serviceIDs": serviceIDs}, nil
+}
+
+func mcpDescriptorsReflect(h *RestServer, args map[string]any) (map[string]any, error) {
+	source, _ := args["source"].(string)
+	if source == "" {
+		return nil, mcpRequiredArgError("source")
+	}
+
+	serviceIDs, err := registerReflectionDescriptors(context.Background(), h, source)
 	if err != nil {
 		return nil, mcpDescriptorRegistrationArgError(err)
 	}
@@ -2448,6 +2572,31 @@ func (h *RestServer) AddDescriptors(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// AddDescriptorsFromReflection fetches descriptors from gRPC server reflection and registers them for discovery.
+func (h *RestServer) AddDescriptorsFromReflection(w http.ResponseWriter, r *http.Request) {
+	var req rest.AddDescriptorsFromReflectionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		h.writeResponseError(r.Context(), w, errors.Wrap(err, "invalid reflection descriptor request"))
+
+		return
+	}
+
+	serviceIDs, err := registerReflectionDescriptors(r.Context(), h, req.Source)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		h.writeResponseError(r.Context(), w, err)
+
+		return
+	}
+
+	h.writeResponse(r.Context(), w, rest.AddDescriptorsResponse{
+		Message:    "ok",
+		Time:       time.Now(),
+		ServiceIDs: serviceIDs,
+	})
+}
+
 // DeleteService removes a service added via POST /descriptors.
 // Services from startup (proto path) cannot be removed and return 404.
 func (h *RestServer) DeleteService(w http.ResponseWriter, _ *http.Request, serviceID string) {
@@ -2475,13 +2624,100 @@ func registerDescriptorBytes(
 	sourceName string,
 	source string,
 ) ([]string, error) {
-	h.descriptorOpsMu.Lock()
-	defer h.descriptorOpsMu.Unlock()
-
 	fds, err := decodeDescriptorSet(byt, sourceName)
 	if err != nil {
 		return nil, err
 	}
+
+	return registerDescriptorSet(ctx, h, fds, source)
+}
+
+func registerReflectionDescriptors(ctx context.Context, h *RestServer, rawSource string) ([]string, error) {
+	rawSource = strings.TrimSpace(rawSource)
+	if rawSource == "" {
+		return nil, errors.New("reflection source is required")
+	}
+
+	source, err := protosetdom.ParseSource(rawSource)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid reflection source")
+	}
+
+	if source.Type != protosetdom.SourceReflect || source.ProxyMode != "" {
+		return nil, errors.New("reflection source must use grpc:// or grpcs://")
+	}
+
+	if h.remoteClient == nil {
+		return nil, errors.New("reflection client is not configured")
+	}
+
+	fds, err := fetchReflectionDescriptorSetWithFallbacks(ctx, h, source)
+	if err != nil {
+		return nil, err
+	}
+
+	return registerDescriptorSet(ctx, h, fds, reflectionDescriptorSource(rawSource))
+}
+
+func fetchReflectionDescriptorSetWithFallbacks(
+	ctx context.Context,
+	h *RestServer,
+	source *protosetdom.Source,
+) (*descriptorpb.FileDescriptorSet, error) {
+	var failures []string
+
+	for _, candidate := range reflectionSourceCandidates(source) {
+		fds, err := h.remoteClient.FetchDescriptorSet(ctx, candidate)
+		if err == nil {
+			return fds, nil
+		}
+
+		failures = append(failures, fmt.Sprintf("%s: %v", candidate.ReflectAddress, err))
+	}
+
+	return nil, errors.New("failed to fetch descriptors from gRPC reflection: " + strings.Join(failures, "; "))
+}
+
+func reflectionSourceCandidates(source *protosetdom.Source) []*protosetdom.Source {
+	if source == nil {
+		return nil
+	}
+
+	result := []*protosetdom.Source{source}
+
+	host, port, err := net.SplitHostPort(source.ReflectAddress)
+	if err != nil || port == "" {
+		return result
+	}
+
+	if host != "127.0.0.1" && host != "localhost" && host != "host.docker.internal" {
+		return result
+	}
+
+	seen := map[string]struct{}{source.ReflectAddress: {}}
+	for _, candidateHost := range []string{"host.docker.internal", "127.0.0.1", "localhost"} {
+		address := net.JoinHostPort(candidateHost, port)
+		if _, ok := seen[address]; ok {
+			continue
+		}
+
+		seen[address] = struct{}{}
+		candidate := *source
+		candidate.ReflectAddress = address
+		result = append(result, &candidate)
+	}
+
+	return result
+}
+
+func registerDescriptorSet(
+	ctx context.Context,
+	h *RestServer,
+	fds *descriptorpb.FileDescriptorSet,
+	source string,
+) ([]string, error) {
+	h.descriptorOpsMu.Lock()
+	defer h.descriptorOpsMu.Unlock()
 
 	files, err := decodeDescriptorFiles(fds)
 	if err != nil {
@@ -2497,7 +2733,7 @@ func registerDescriptorBytes(
 	serviceIDs := make([]string, 0)
 
 	for _, fd := range files {
-		h.restDescriptors.Register(fd)
+		h.restDescriptors.RegisterWithSource(fd, source)
 
 		services := fd.Services()
 		for i := range services.Len() {
@@ -2508,6 +2744,12 @@ func registerDescriptorBytes(
 	sort.Strings(serviceIDs)
 
 	return serviceIDs, nil
+}
+
+func reflectionDescriptorSource(rawSource string) string {
+	sum := sha256.Sum256([]byte(rawSource))
+
+	return descriptorSourceReflectPrefix + hex.EncodeToString(sum[:])[:descriptorSourceHashLen]
 }
 
 func decodeDescriptorSet(byt []byte, sourceName string) (*descriptorpb.FileDescriptorSet, error) {
@@ -2551,8 +2793,8 @@ func compileProtoSourceDescriptorSet(byt []byte, sourceName string) (*descriptor
 
 	compiler := protocompile.Compiler{
 		Resolver: protocompile.CompositeResolver{
-			sourceResolver,
 			fallbackResolver,
+			sourceResolver,
 		},
 	}
 
@@ -2561,12 +2803,33 @@ func compileProtoSourceDescriptorSet(byt []byte, sourceName string) (*descriptor
 		return nil, errors.Wrap(err, "failed to compile proto source")
 	}
 
+	seen := make(map[string]struct{})
 	files := make([]*descriptorpb.FileDescriptorProto, 0, len(compiled))
 	for _, file := range compiled {
-		files = append(files, protodesc.ToFileDescriptorProto(file))
+		collectCompiledDescriptorProtos(file, seen, &files)
 	}
 
 	return &descriptorpb.FileDescriptorSet{File: files}, nil
+}
+
+func collectCompiledDescriptorProtos(
+	file protoreflect.FileDescriptor,
+	seen map[string]struct{},
+	files *[]*descriptorpb.FileDescriptorProto,
+) {
+	path := file.Path()
+	if _, ok := seen[path]; ok {
+		return
+	}
+
+	seen[path] = struct{}{}
+
+	imports := file.Imports()
+	for i := range imports.Len() {
+		collectCompiledDescriptorProtos(imports.Get(i).FileDescriptor, seen, files)
+	}
+
+	*files = append(*files, protodesc.ToFileDescriptorProto(file))
 }
 
 func normalizeProtoUploadFileName(sourceName string) string {

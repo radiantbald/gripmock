@@ -12,6 +12,7 @@ import (
 	pgclients "github.com/bavix/gripmock/v3/internal/infra/postgres/clients"
 	pgmigrations "github.com/bavix/gripmock/v3/internal/infra/postgres/migrations"
 	pgprotometadata "github.com/bavix/gripmock/v3/internal/infra/postgres/protometadata"
+	pgreflectionhosts "github.com/bavix/gripmock/v3/internal/infra/postgres/reflectionhosts"
 	pgrooms "github.com/bavix/gripmock/v3/internal/infra/postgres/rooms"
 	pgstubs "github.com/bavix/gripmock/v3/internal/infra/postgres/stubs"
 	pgusers "github.com/bavix/gripmock/v3/internal/infra/postgres/users"
@@ -108,6 +109,21 @@ func (b *Builder) ProtoMetadataRepository(ctx context.Context) (*pgprotometadata
 	})
 
 	return b.protoMetadataRepository, b.protoMetadataRepositoryErr
+}
+
+func (b *Builder) ReflectionHostsRepository(ctx context.Context) (*pgreflectionhosts.Repository, error) {
+	b.reflectionHostsRepositoryOnce.Do(func() {
+		pool, err := b.initPostgresPool(ctx)
+		if err != nil {
+			b.reflectionHostsRepositoryErr = err
+
+			return
+		}
+
+		b.reflectionHostsRepository = pgreflectionhosts.NewRepository(pool)
+	})
+
+	return b.reflectionHostsRepository, b.reflectionHostsRepositoryErr
 }
 
 func (b *Builder) initPostgresPool(ctx context.Context) (*pgxpool.Pool, error) {

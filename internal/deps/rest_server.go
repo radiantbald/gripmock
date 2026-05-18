@@ -106,6 +106,10 @@ func (b *Builder) RestServe(
 	if protoMetadataRepo, protoMetadataErr := b.ProtoMetadataRepository(ctx); protoMetadataErr == nil {
 		apiServer.SetProtoMetadataWriter(protoMetadataRepo)
 	}
+	if reflectionHostsRepository, reflectionHostsErr := b.ReflectionHostsRepository(ctx); reflectionHostsErr == nil {
+		apiServer.SetReflectionHostsRepository(reflectionHostsRepository)
+	}
+	apiServer.SetRemoteClient(b.RemoteClient())
 
 	ui, err := b.ui(ctx)
 	if err != nil {
@@ -175,6 +179,12 @@ func (b *Builder) RestServe(
 	)
 	router.Path("/api/clients").Methods(http.MethodGet).Handler(
 		withMCPMiddlewares(http.HandlerFunc(apiServer.ClientsList)),
+	)
+	router.Path("/api/reflection-hosts").Methods(http.MethodGet).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.ReflectionHostsList)),
+	)
+	router.Path("/api/reflection-hosts").Methods(http.MethodPost).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.ReflectionHostsUpsert)),
 	)
 	router.Path("/api/stubs/{uuid}").Methods(http.MethodPut).Handler(
 		withMCPMiddlewares(http.HandlerFunc(apiServer.PatchStubByID)),

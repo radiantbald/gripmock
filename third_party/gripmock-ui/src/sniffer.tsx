@@ -1,8 +1,19 @@
-import { ChangeEvent, Fragment, MouseEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  Fragment,
+  MouseEvent,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
+  Alert,
   alpha,
   Box,
   Button,
@@ -33,13 +44,22 @@ import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import SearchOffRoundedIcon from "@mui/icons-material/SearchOffRounded";
-import { useCreatePath, useDataProvider, useGetList, useNotify } from "react-admin";
+import {
+  useCreatePath,
+  useDataProvider,
+  useGetList,
+  useNotify,
+} from "react-admin";
 import { Link as RouterLink, useLocation } from "react-router-dom";
 
 import { API_CONFIG } from "./constants/api";
 import { apiClient } from "./dataProvider/apiClient";
 import { resolveRoomRow, type RoomRow } from "./features/room/model";
-import { getCurrentRoom, setCurrentRoom, subscribeRoomChanges } from "./utils/room";
+import {
+  getCurrentRoom,
+  setCurrentRoom,
+  subscribeRoomChanges,
+} from "./utils/room";
 import {
   getStubCreatedHistory,
   getStubEditedHistory,
@@ -64,6 +84,24 @@ type CallTableFilterMenuState = {
   field: CallTableFilterField;
   anchorEl: HTMLElement;
 };
+type SnifferSource = "proto" | "reflection";
+type ReflectionHostRecord = {
+  id?: string | number;
+  host?: string;
+  source?: string;
+};
+type SnifferSourceChange = {
+  source: SnifferSource;
+  changedAtMs: number | null;
+  recordId?: string;
+};
+type SnifferRecord = HistoryRecord & {
+  originalSource?: SnifferSource;
+};
+
+const SNIFFER_ROUTE_SOURCES_KEY = "gripmock.sniffer.routeSources";
+const SNIFFER_ROUTE_SOURCE_CHANGES_KEY =
+  "gripmock.sniffer.routeSourceChanges";
 
 const RADIUS_PX = "10px";
 const RESIZE_HANDLE_SIZE_PX = 10;
@@ -71,7 +109,8 @@ const MIN_TOP_PANEL_RATIO = 0.2;
 const MIN_BOTTOM_PANEL_RATIO = 0.25;
 const MIN_REQUEST_PANEL_RATIO = 0.2;
 const MIN_RESPONSE_PANEL_RATIO = 0.2;
-const clampRatio = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
+const clampRatio = (value: number, min: number, max: number): number =>
+  Math.min(max, Math.max(min, value));
 
 const panelHeaderSx = {
   px: 1.25,
@@ -89,7 +128,8 @@ const jsonTextSx = {
   m: 0,
   p: 0,
   whiteSpace: "pre",
-  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  fontFamily:
+    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
   fontSize: 13,
   lineHeight: 1.28,
   color: "text.primary",
@@ -214,7 +254,10 @@ const compactSearchCounterSx = {
   },
 } as const;
 const ROOM_ASSIGN_CONTROL_WIDTH_PX = 248;
-const roomAssignControlWidthSx = { width: { xs: "100%", sm: ROOM_ASSIGN_CONTROL_WIDTH_PX }, maxWidth: "100%" } as const;
+const roomAssignControlWidthSx = {
+  width: { xs: "100%", sm: ROOM_ASSIGN_CONTROL_WIDTH_PX },
+  maxWidth: "100%",
+} as const;
 const roomAssignSelectorSx = {
   height: 34,
   display: "block",
@@ -419,14 +462,20 @@ const EMPTY_CALL_TABLE_FILTERS: CallTableFilters = {
   code: { query: "", selected: [] },
   room: { query: "", selected: [] },
 };
-const codeToChipColor = (code?: number) => (code === undefined || code === 0 ? "success" : "error");
+const codeToChipColor = (code?: number) =>
+  code === undefined || code === 0 ? "success" : "error";
 const protoMissingErrorMarkers = [
   "unknown service/method",
   "method not found",
   "message descriptor not found",
   "not a message descriptor",
 ];
-const missingStubErrorMarkers = ["no matching stub found", "stub not found", "can't find stub", "no stub found"];
+const missingStubErrorMarkers = [
+  "no matching stub found",
+  "stub not found",
+  "can't find stub",
+  "no stub found",
+];
 const responseSchemaErrorMarkers = [
   "failed to unmarshal json into dynamic message",
   "failed to convert response to dynamic message",
@@ -434,6 +483,88 @@ const responseSchemaErrorMarkers = [
   "proto:",
 ];
 const notFoundCode = 5;
+const defaultSnifferSource: SnifferSource = "reflection";
+const snifferSourceLabels: Record<SnifferSource, string> = {
+  proto: "proto",
+  reflection: "reflection",
+};
+const normalizeReflectionSource = (value: string): string => {
+  const normalized = value.trim();
+  if (!normalized) {
+    return "";
+  }
+
+  if (normalized.startsWith(":")) {
+    return `grpc://127.0.0.1${normalized}`;
+  }
+
+  const withScheme = normalized.includes("://")
+    ? normalized.replace("://:", "://127.0.0.1:")
+    : `grpc://${normalized}`;
+
+  return withScheme.replace("://localhost:", "://127.0.0.1:");
+};
+const buildSnifferRouteKey = (
+  room: string | undefined,
+  service: string | undefined,
+  method: string | undefined,
+): string => {
+  const normalizedRoom = String(room || "").trim() || "global";
+  const normalizedService = String(service || "").trim();
+  const normalizedMethod = String(method || "").trim();
+
+  if (!normalizedService || !normalizedMethod) {
+    return "";
+  }
+
+  return `${normalizedRoom}|${normalizedService}|${normalizedMethod}`;
+};
+const readSnifferRouteSources = (): Record<string, SnifferSource> => {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(SNIFFER_ROUTE_SOURCES_KEY);
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return Object.entries(parsed).reduce<Record<string, SnifferSource>>(
+      (acc, [key, value]) => {
+        if (value === "proto" || value === "reflection") {
+          acc[key] = value;
+        }
+
+        return acc;
+      },
+      {},
+    );
+  } catch {
+    return {};
+  }
+};
+const writeSnifferRouteSources = (
+  sources: Record<string, SnifferSource>,
+): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      SNIFFER_ROUTE_SOURCES_KEY,
+      JSON.stringify(sources),
+    );
+  } catch {
+    // Ignore storage failures (private mode, quota, etc.).
+  }
+};
 const serverTimestampFormatter = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
   month: "2-digit",
@@ -467,30 +598,182 @@ const parseTimestampToMs = (timestamp?: string): number | null => {
   return Number.isNaN(parsed) ? null : parsed;
 };
 
-const toSnifferRecord = (record: HistoryRecord): HistoryRecord => {
+const parseSnifferSourceChange = (
+  value: unknown,
+): SnifferSourceChange | null => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const row = value as Record<string, unknown>;
+  const source = row.source;
+  if (source !== "proto" && source !== "reflection") {
+    return null;
+  }
+
+  const changedAtMs =
+    typeof row.changedAtMs === "number" && Number.isFinite(row.changedAtMs)
+      ? row.changedAtMs
+      : null;
+  const recordId =
+    typeof row.recordId === "string" ? row.recordId.trim() : "";
+
+  return {
+    source,
+    changedAtMs,
+    ...(recordId ? { recordId } : {}),
+  };
+};
+
+const readSnifferRouteSourceChanges = (): Record<
+  string,
+  SnifferSourceChange[]
+> => {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(SNIFFER_ROUTE_SOURCE_CHANGES_KEY);
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return Object.entries(parsed).reduce<Record<string, SnifferSourceChange[]>>(
+      (acc, [key, value]) => {
+        const changes = Array.isArray(value)
+          ? value
+              .map(parseSnifferSourceChange)
+              .filter((item): item is SnifferSourceChange => item !== null)
+          : [parseSnifferSourceChange(value)].filter(
+              (item): item is SnifferSourceChange => item !== null,
+            );
+
+        if (changes.length > 0) {
+          acc[key] = changes;
+        }
+
+        return acc;
+      },
+      {},
+    );
+  } catch {
+    return {};
+  }
+};
+
+const writeSnifferRouteSourceChanges = (
+  changes: Record<string, SnifferSourceChange[]>,
+): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      SNIFFER_ROUTE_SOURCE_CHANGES_KEY,
+      JSON.stringify(changes),
+    );
+  } catch {
+    // Ignore storage failures (private mode, quota, etc.).
+  }
+};
+
+const findSourceChangeForRecord = (
+  record: SnifferRecord | undefined,
+  routeKey: string,
+  changes: SnifferSourceChange[] | undefined,
+): SnifferSourceChange | undefined => {
+  if (!record || !routeKey || !changes || changes.length === 0) {
+    return undefined;
+  }
+
+  const recordReceivedAtMs = parseTimestampToMs(record.timestamp);
+  if (recordReceivedAtMs === null) {
+    return undefined;
+  }
+
+  return changes.reduce<SnifferSourceChange | undefined>((latest, change) => {
+    if (change.changedAtMs === null || change.changedAtMs >= recordReceivedAtMs) {
+      return latest;
+    }
+
+    if (!latest || change.changedAtMs >= (latest.changedAtMs ?? 0)) {
+      return change;
+    }
+
+    return latest;
+  }, undefined);
+};
+
+const applySourceChangesToRecords = (
+  records: SnifferRecord[],
+  changes: Record<string, SnifferSourceChange[]>,
+): SnifferRecord[] =>
+  records.map((record) => {
+    const originalSource =
+      record.originalSource || record.source || defaultSnifferSource;
+    const routeKey = buildSnifferRouteKey(
+      record.room,
+      record.service,
+      record.method,
+    );
+    const change = findSourceChangeForRecord(
+      record,
+      routeKey,
+      routeKey ? changes[routeKey] : undefined,
+    );
+
+    if (!change) {
+      return record.originalSource ? record : { ...record, originalSource };
+    }
+
+    return {
+      ...record,
+      originalSource,
+      source: change.source,
+    };
+  });
+
+const toSnifferRecord = (record: HistoryRecord): SnifferRecord => {
   const callId = String(record.callId || record.id || "").trim();
 
   return {
     ...record,
     callId,
     id: callId || record.id,
+    originalSource: record.source || defaultSnifferSource,
     request:
       record.request ||
-      (Array.isArray(record.requests) && record.requests.length > 0 ? record.requests[0] : undefined),
+      (Array.isArray(record.requests) && record.requests.length > 0
+        ? record.requests[0]
+        : undefined),
     response:
       record.response ||
-      (Array.isArray(record.responses) && record.responses.length > 0 ? record.responses[0] : undefined),
+      (Array.isArray(record.responses) && record.responses.length > 0
+        ? record.responses[0]
+        : undefined),
   };
 };
 
-const pushRecord = (records: HistoryRecord[], nextRecord: HistoryRecord): HistoryRecord[] => {
+const pushRecord = (
+  records: SnifferRecord[],
+  nextRecord: HistoryRecord,
+): SnifferRecord[] => {
   const normalized = toSnifferRecord(nextRecord);
   const dedupeKey = normalized.callId || normalized.id;
   if (!dedupeKey) {
     return [normalized, ...records].slice(0, MAX_ITEMS);
   }
 
-  const filtered = records.filter((item) => (item.callId || item.id) !== dedupeKey);
+  const filtered = records.filter(
+    (item) => (item.callId || item.id) !== dedupeKey,
+  );
   return [normalized, ...filtered].slice(0, MAX_ITEMS);
 };
 
@@ -559,12 +842,19 @@ const formatJsonInlinePayload = (value: unknown, maxLength = 180): string => {
   }
 };
 
-const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const normalizeValue = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
-const normalizeFilterQuery = (value: string): string => value.trim().toLowerCase();
+const escapeRegExp = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const normalizeValue = (value: unknown): string =>
+  typeof value === "string" ? value.trim() : "";
+const normalizeFilterQuery = (value: string): string =>
+  value.trim().toLowerCase();
 const buildDistinctFilterOptions = (values: string[]): string[] =>
-  Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((left, right) =>
-    left.localeCompare(right, undefined, { sensitivity: "base", numeric: true }),
+  Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort(
+    (left, right) =>
+      left.localeCompare(right, undefined, {
+        sensitivity: "base",
+        numeric: true,
+      }),
   );
 const includesNormalized = (values: string[], target: string): boolean => {
   const normalizedTarget = normalizeFilterQuery(target);
@@ -572,9 +862,13 @@ const includesNormalized = (values: string[], target: string): boolean => {
     return false;
   }
 
-  return values.some((value) => normalizeFilterQuery(value) === normalizedTarget);
+  return values.some(
+    (value) => normalizeFilterQuery(value) === normalizedTarget,
+  );
 };
-const shortServiceName = (service: string): { short: string; hasDot: boolean } => {
+const shortServiceName = (
+  service: string,
+): { short: string; hasDot: boolean } => {
   const index = service.lastIndexOf(".");
   if (index === -1) {
     return { short: service, hasDot: false };
@@ -630,13 +924,18 @@ const hasSearchableContent = (value: unknown): boolean => {
   return true;
 };
 
-const buildSearchRegex = (query: string, options: SearchOptions): RegExp | null => {
+const buildSearchRegex = (
+  query: string,
+  options: SearchOptions,
+): RegExp | null => {
   const normalizedQuery = query.trim();
   if (!normalizedQuery) {
     return null;
   }
 
-  const source = options.useRegex ? normalizedQuery : escapeRegExp(normalizedQuery);
+  const source = options.useRegex
+    ? normalizedQuery
+    : escapeRegExp(normalizedQuery);
   const boundedSource = options.wholeWord ? `\\b(?:${source})\\b` : source;
   const flags = options.caseSensitive ? "g" : "gi";
 
@@ -647,13 +946,20 @@ const buildSearchRegex = (query: string, options: SearchOptions): RegExp | null 
   }
 };
 
-const collectMatchRanges = (text: string, matcher: RegExp | null, offset = 0): MatchRange[] => {
+const collectMatchRanges = (
+  text: string,
+  matcher: RegExp | null,
+  offset = 0,
+): MatchRange[] => {
   if (!matcher) {
     return [];
   }
 
   const ranges: MatchRange[] = [];
-  const regex = new RegExp(matcher.source, matcher.flags.includes("g") ? matcher.flags : `${matcher.flags}g`);
+  const regex = new RegExp(
+    matcher.source,
+    matcher.flags.includes("g") ? matcher.flags : `${matcher.flags}g`,
+  );
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
     const start = match.index;
@@ -668,7 +974,11 @@ const collectMatchRanges = (text: string, matcher: RegExp | null, offset = 0): M
   return ranges;
 };
 
-const renderHighlightedJsonText = (text: string, ranges: MatchRange[], activeMatchIndex: number): ReactNode => {
+const renderHighlightedJsonText = (
+  text: string,
+  ranges: MatchRange[],
+  activeMatchIndex: number,
+): ReactNode => {
   if (!ranges.length) {
     return text;
   }
@@ -677,7 +987,11 @@ const renderHighlightedJsonText = (text: string, ranges: MatchRange[], activeMat
   let cursor = 0;
   ranges.forEach((range, idx) => {
     if (range.start > cursor) {
-      nodes.push(<Fragment key={`plain-${idx}`}>{text.slice(cursor, range.start)}</Fragment>);
+      nodes.push(
+        <Fragment key={`plain-${idx}`}>
+          {text.slice(cursor, range.start)}
+        </Fragment>,
+      );
     }
     const isActive = range.index === activeMatchIndex;
     nodes.push(
@@ -716,7 +1030,11 @@ const hasMissingProtoError = (record?: HistoryRecord): boolean => {
 
   // Keep lock screen for any Unimplemented response. This is the most stable
   // signal for "runtime proto is missing/incomplete" flows in sniffer.
-  return protoMissingErrorMarkers.some((marker) => normalizedError.includes(marker)) || normalizedError.length > 0;
+  return (
+    protoMissingErrorMarkers.some((marker) =>
+      normalizedError.includes(marker),
+    ) || normalizedError.length > 0
+  );
 };
 
 const hasMissingStubError = (record?: HistoryRecord): boolean => {
@@ -729,7 +1047,9 @@ const hasMissingStubError = (record?: HistoryRecord): boolean => {
     return false;
   }
 
-  return missingStubErrorMarkers.some((marker) => normalizedError.includes(marker));
+  return missingStubErrorMarkers.some((marker) =>
+    normalizedError.includes(marker),
+  );
 };
 
 const hasResponseSchemaError = (record?: HistoryRecord): boolean => {
@@ -743,20 +1063,30 @@ const hasResponseSchemaError = (record?: HistoryRecord): boolean => {
 
   const normalizedError = String(record.error || "").toLowerCase();
   if (normalizedError) {
-    return responseSchemaErrorMarkers.some((marker) => normalizedError.includes(marker));
+    return responseSchemaErrorMarkers.some((marker) =>
+      normalizedError.includes(marker),
+    );
   }
 
   const response = unwrapRootPayload(record.response);
-  const isEmptyResponseObject = isPlainObject(response) && Object.keys(response).length === 0;
+  const isEmptyResponseObject =
+    isPlainObject(response) && Object.keys(response).length === 0;
   const hasNoResponsePayload = response === undefined || response === null;
 
   // Some invalid stub payload cases come back with stub-defined non-zero
   // gRPC code, no explicit error text and no response payload.
   // The code value itself is not a validator here.
-  return (record.code ?? 0) !== 0 && !normalizedError && (isEmptyResponseObject || hasNoResponsePayload);
+  return (
+    (record.code ?? 0) !== 0 &&
+    !normalizedError &&
+    (isEmptyResponseObject || hasNoResponsePayload)
+  );
 };
 
-const subscribeHistoryStream = (room: string, handlers: StreamHandlers): (() => void) => {
+const subscribeHistoryStream = (
+  room: string,
+  handlers: StreamHandlers,
+): (() => void) => {
   const eventSource = new EventSource(buildStreamUrl(room));
 
   const onMessage = (event: MessageEvent<string>) => {
@@ -765,12 +1095,13 @@ const subscribeHistoryStream = (room: string, handlers: StreamHandlers): (() => 
       handlers.onCall(parsed);
     }
   };
+  const onCall = onMessage as Parameters<EventSource["addEventListener"]>[1];
 
-  eventSource.addEventListener("call", onMessage as EventListener);
+  eventSource.addEventListener("call", onCall);
   eventSource.onerror = () => handlers.onError();
 
   return () => {
-    eventSource.removeEventListener("call", onMessage as EventListener);
+    eventSource.removeEventListener("call", onCall);
     eventSource.close();
   };
 };
@@ -780,41 +1111,67 @@ export const SnifferPage = () => {
   const dataProvider = useDataProvider();
   const createPath = useCreatePath();
   const location = useLocation();
-  const [records, setRecords] = useState<HistoryRecord[]>([]);
+  const [records, setRecords] = useState<SnifferRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [activeRoom, setActiveRoom] = useState(() => getCurrentRoom());
-  const [isUploadingProto, setIsUploadingProto] = useState(false);
   const [hasProtoFromApi, setHasProtoFromApi] = useState(false);
   const [hasMethodFromApi, setHasMethodFromApi] = useState(false);
   const [peerBoundRoom, setPeerBoundRoom] = useState("");
   const [roomForAttachment, setRoomForAttachment] = useState("");
   const [recentlyAttachedPeer, setRecentlyAttachedPeer] = useState("");
   const [streamRevision, setStreamRevision] = useState(0);
-  const [expandedResponseKeys, setExpandedResponseKeys] = useState<Set<string>>(new Set());
-  const [stubCreatedHistory, setStubCreatedHistory] = useState(() => getStubCreatedHistory());
-  const [editedStubHistory, setEditedStubHistory] = useState(() => getStubEditedHistory());
-  const [stubReplacedHistory, setStubReplacedHistory] = useState(() => getStubReplacedHistory());
+  const [expandedResponseKeys, setExpandedResponseKeys] = useState<Set<string>>(
+    new Set(),
+  );
+  const [stubCreatedHistory, setStubCreatedHistory] = useState(() =>
+    getStubCreatedHistory(),
+  );
+  const [editedStubHistory, setEditedStubHistory] = useState(() =>
+    getStubEditedHistory(),
+  );
+  const [stubReplacedHistory, setStubReplacedHistory] = useState(() =>
+    getStubReplacedHistory(),
+  );
   const [showRequestSearch, setShowRequestSearch] = useState(false);
   const [showResponseSearch, setShowResponseSearch] = useState(false);
   const [requestSearchQuery, setRequestSearchQuery] = useState("");
-  const [requestSearchOptions, setRequestSearchOptions] = useState<SearchOptions>({
-    caseSensitive: false,
-    wholeWord: false,
-    useRegex: false,
-  });
+  const [requestSearchOptions, setRequestSearchOptions] =
+    useState<SearchOptions>({
+      caseSensitive: false,
+      wholeWord: false,
+      useRegex: false,
+    });
   const [requestActiveMatch, setRequestActiveMatch] = useState(-1);
   const [responseSearchQuery, setResponseSearchQuery] = useState("");
-  const [responseSearchOptions, setResponseSearchOptions] = useState<SearchOptions>({
-    caseSensitive: false,
-    wholeWord: false,
-    useRegex: false,
-  });
+  const [responseSearchOptions, setResponseSearchOptions] =
+    useState<SearchOptions>({
+      caseSensitive: false,
+      wholeWord: false,
+      useRegex: false,
+    });
   const [responseActiveMatch, setResponseActiveMatch] = useState(-1);
-  const [activeSearchTarget, setActiveSearchTarget] = useState<"request" | "response">("request");
+  const [activeSearchTarget, setActiveSearchTarget] = useState<
+    "request" | "response"
+  >("request");
   const [topPanelRatio, setTopPanelRatio] = useState(0.5);
   const [requestPanelRatio, setRequestPanelRatio] = useState(0.5);
-  const [callTableFilters, setCallTableFilters] = useState<CallTableFilters>(EMPTY_CALL_TABLE_FILTERS);
-  const [callTableFilterMenu, setCallTableFilterMenu] = useState<CallTableFilterMenuState | null>(null);
+  const [callTableFilters, setCallTableFilters] = useState<CallTableFilters>(
+    EMPTY_CALL_TABLE_FILTERS,
+  );
+  const [callTableFilterMenu, setCallTableFilterMenu] =
+    useState<CallTableFilterMenuState | null>(null);
+  const [routeSources, setRouteSources] = useState<
+    Record<string, SnifferSource>
+  >(() => readSnifferRouteSources());
+  const [sourceChangeMarkers, setSourceChangeMarkers] = useState<
+    Record<string, SnifferSourceChange[]>
+  >(() => readSnifferRouteSourceChanges());
+  const [reflectionHost, setReflectionHost] = useState("");
+  const [reflectionHosts, setReflectionHosts] = useState<
+    ReflectionHostRecord[]
+  >([]);
+  const [isSettingReflection, setIsSettingReflection] = useState(false);
+  const [isUploadingProto, setIsUploadingProto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const requestSearchInputRef = useRef<HTMLInputElement | null>(null);
   const responseSearchInputRef = useRef<HTMLInputElement | null>(null);
@@ -823,9 +1180,17 @@ export const SnifferPage = () => {
   const rootLayoutRef = useRef<HTMLDivElement | null>(null);
   const detailsLayoutRef = useRef<HTMLDivElement | null>(null);
   const activeResizeRef = useRef<"rows" | "columns" | null>(null);
+  const sourceChangeMarkersRef = useRef(sourceChangeMarkers);
+
+  useEffect(() => {
+    sourceChangeMarkersRef.current = sourceChangeMarkers;
+  }, [sourceChangeMarkers]);
 
   const checkProtoStatus = useCallback(
-    async (service: string, method: string): Promise<{ hasMethod: boolean; hasProto: boolean }> => {
+    async (
+      service: string,
+      method: string,
+    ): Promise<{ hasMethod: boolean; hasProto: boolean }> => {
       const normalizedService = service.trim();
       const normalizedMethod = method.trim();
       if (!normalizedService || !normalizedMethod) {
@@ -840,18 +1205,45 @@ export const SnifferPage = () => {
         apiClient.request(
           `/services/${encodeURIComponent(normalizedService)}/methods/${encodeURIComponent(normalizedMethod)}`,
         ),
-        apiClient.request<{ exists?: boolean }>(`/proto-metadata/status?${query.toString()}`),
+        apiClient.request<{ exists?: boolean }>(
+          `/proto-metadata/status?${query.toString()}`,
+        ),
       ]);
 
       const hasMethod = methodResult.status === "fulfilled";
-      const hasProto = protoStatusResult.status === "fulfilled" ? Boolean(protoStatusResult.value?.exists) : false;
+      const hasProto =
+        protoStatusResult.status === "fulfilled"
+          ? Boolean(protoStatusResult.value?.exists)
+          : false;
 
       return { hasMethod, hasProto };
     },
     [],
   );
 
-  useEffect(() => subscribeRoomChanges(() => setActiveRoom(getCurrentRoom())), []);
+  useEffect(
+    () => subscribeRoomChanges(() => setActiveRoom(getCurrentRoom())),
+    [],
+  );
+
+  const loadReflectionHosts = useCallback(async () => {
+    const hosts =
+      await apiClient.request<ReflectionHostRecord[]>("/reflection-hosts");
+    setReflectionHosts(hosts);
+    setReflectionHost((current) => {
+      if (current.trim()) {
+        return current;
+      }
+
+      return hosts[0]?.source || hosts[0]?.host || "";
+    });
+  }, []);
+
+  useEffect(() => {
+    loadReflectionHosts().catch(() => {
+      setReflectionHosts([]);
+    });
+  }, [loadReflectionHosts]);
 
   const loadHistorySnapshot = useCallback(async () => {
     const params = new URLSearchParams();
@@ -860,13 +1252,20 @@ export const SnifferPage = () => {
     }
 
     const query = params.toString();
-    const payload = await apiClient.request<HistoryRecord[]>(`/history${query ? `?${query}` : ""}`);
-    const normalized = payload.map(toSnifferRecord).reverse().slice(0, MAX_ITEMS);
+    const payload = await apiClient.request<HistoryRecord[]>(
+      `/history${query ? `?${query}` : ""}`,
+    );
+    const normalized = applySourceChangesToRecords(
+      payload.map(toSnifferRecord).reverse().slice(0, MAX_ITEMS),
+      sourceChangeMarkersRef.current,
+    );
     setRecords(normalized);
     setSelectedId((current) => {
       const normalizedCurrent = String(current || "").trim();
       if (normalizedCurrent) {
-        const stillExists = normalized.some((item) => (item.callId || item.id) === normalizedCurrent);
+        const stillExists = normalized.some(
+          (item) => (item.callId || item.id) === normalizedCurrent,
+        );
         if (stillExists) {
           return normalizedCurrent;
         }
@@ -893,7 +1292,12 @@ export const SnifferPage = () => {
   useEffect(() => {
     const unsubscribe = subscribeHistoryStream(activeRoom, {
       onCall: (record) => {
-        setRecords((current) => pushRecord(current, record));
+        setRecords((current) =>
+          applySourceChangesToRecords(
+            pushRecord(current, record),
+            sourceChangeMarkersRef.current,
+          ),
+        );
         const nextId = String(record.callId || record.id || "").trim();
         if (nextId) {
           // Keep details panel synchronized with the most recent stream item.
@@ -909,19 +1313,27 @@ export const SnifferPage = () => {
   }, [activeRoom, streamRevision]);
 
   const selected = useMemo(
-    () => records.find((item) => (item.callId || item.id) === selectedId) || records[0],
+    () =>
+      records.find((item) => (item.callId || item.id) === selectedId) ||
+      records[0],
     [records, selectedId],
   );
-  const selectedRequestId = String(selected?.callId || selected?.id || "").trim();
+  const selectedRequestId = String(
+    selected?.callId || selected?.id || "",
+  ).trim();
   const showMissingProtoHint = hasMissingProtoError(selected);
   const showMissingStubHint = hasMissingStubError(selected);
   const selectedStubId = String(selected?.stubId || "").trim();
   const showResponseSchemaHint = hasResponseSchemaError(selected);
   const selectedRoom = String(selected?.room || "").trim();
-  const selectedSetupRoom = selectedRoom.toLowerCase() === "global" ? "" : selectedRoom;
+  const selectedSetupRoom =
+    selectedRoom.toLowerCase() === "global" ? "" : selectedRoom;
   const selectedCallReceivedAtMs = parseTimestampToMs(selected?.timestamp);
-  const latestEditedStubEventForSelected = editedStubHistory.find((item) => item.stubId === selectedStubId);
-  const latestEditedStubSavedAt = latestEditedStubEventForSelected?.savedAt ?? 0;
+  const latestEditedStubEventForSelected = editedStubHistory.find(
+    (item) => item.stubId === selectedStubId,
+  );
+  const latestEditedStubSavedAt =
+    latestEditedStubEventForSelected?.savedAt ?? 0;
   const isEditedSignalFreshForSelectedCall =
     latestEditedStubSavedAt === 0 ||
     selectedCallReceivedAtMs === null ||
@@ -932,6 +1344,18 @@ export const SnifferPage = () => {
   const selectedService = String(selected?.service || "").trim();
   const selectedMethod = String(selected?.method || "").trim();
   const selectedCode = selected?.code;
+  const selectedRouteKey = buildSnifferRouteKey(
+    selectedRoom,
+    selectedService,
+    selectedMethod,
+  );
+  const selectedHistorySource = selected?.source || defaultSnifferSource;
+  const selectedResponseSource =
+    (selectedRouteKey ? routeSources[selectedRouteKey] : undefined) ||
+    selectedHistorySource;
+  const hasSelectedSourceChanged =
+    selectedRouteKey.length > 0 &&
+    selectedResponseSource !== selectedHistorySource;
   const resolvedPeerRoom = (selectedPeer ? peerBoundRoom : selectedRoom).trim();
   const isPeerBoundToAnyRoom = resolvedPeerRoom.length > 0;
   const isGlobalRoomCall = !!selected && selectedRoom.length === 0;
@@ -956,33 +1380,51 @@ export const SnifferPage = () => {
     const normalized = roomForAttachment.trim();
     return normalized;
   }, [isInGlobalScope, roomForAttachment, suggestedRoom]);
-  const canAssignPeerRoom = !isPeerBoundToAnyRoom && !!selectedAttachmentRoom && !!selectedPeer;
-  const expectedAttachedRoom = (isInGlobalScope ? selectedAttachmentRoom : suggestedRoom).trim();
-  const isPeerAttachedToExpectedRoom = !!expectedAttachedRoom && resolvedPeerRoom === expectedAttachedRoom;
+  const canAssignPeerRoom =
+    !isPeerBoundToAnyRoom && !!selectedAttachmentRoom && !!selectedPeer;
+  const expectedAttachedRoom = (
+    isInGlobalScope ? selectedAttachmentRoom : suggestedRoom
+  ).trim();
+  const isPeerAttachedToExpectedRoom =
+    !!expectedAttachedRoom && resolvedPeerRoom === expectedAttachedRoom;
   const shouldShowProtoUploadedHint = hasProtoFromApi && showMissingProtoHint;
-  const hasProtoForSelectedCall = Boolean(selectedService && selectedMethod && hasProtoFromApi);
+  const hasProtoForSelectedCall = Boolean(
+    selectedService && selectedMethod && hasProtoFromApi,
+  );
   const shouldShowAttachedRoomInfo =
     isGlobalRoomCall &&
     isPeerBoundToAnyRoom &&
     isPeerAttachedToExpectedRoom &&
     !!selectedPeer &&
     recentlyAttachedPeer === selectedPeer;
-  const shouldShowCombinedAttachAndProtoHint = shouldShowAttachedRoomInfo && shouldShowProtoUploadedHint;
+  const shouldShowCombinedAttachAndProtoHint =
+    shouldShowAttachedRoomInfo && shouldShowProtoUploadedHint;
   const attachedRoomLabel = expectedAttachedRoom || resolvedPeerRoom;
-  const shouldHideResponsePayload = showMissingProtoHint || showMissingRoomHint || shouldShowAttachedRoomInfo;
-  const shouldShowMissingStubBlock = !shouldHideResponsePayload && showMissingStubHint;
-  const shouldShowInvalidStubBlock = !shouldHideResponsePayload && showResponseSchemaHint;
-  const shouldShowResponsePayloadBlock = !shouldHideResponsePayload && !shouldShowInvalidStubBlock && !shouldShowMissingStubBlock;
+  const shouldHideResponsePayload =
+    showMissingProtoHint || showMissingRoomHint || shouldShowAttachedRoomInfo;
+  const shouldShowMissingStubBlock =
+    !shouldHideResponsePayload && showMissingStubHint;
+  const shouldShowInvalidStubBlock =
+    !shouldHideResponsePayload && showResponseSchemaHint;
+  const shouldShowResponsePayloadBlock =
+    !shouldHideResponsePayload &&
+    !shouldShowInvalidStubBlock &&
+    !shouldShowMissingStubBlock;
   const shouldPromptEnterRoomToSetup =
     isInGlobalScope &&
     !!selectedSetupRoom &&
     (showMissingProtoHint || showMissingStubHint || showResponseSchemaHint);
+  const shouldShowSourceChangedRetryBanner =
+    hasSelectedSourceChanged &&
+    !shouldHideResponsePayload &&
+    !shouldPromptEnterRoomToSetup;
   const latestReplacedSignalForSelectedCall = stubReplacedHistory.find(
     (item) =>
       sameServiceAlias(item.service, selectedService) &&
       normalizeValue(item.method) === normalizeValue(selectedMethod),
   );
-  const latestReplacedSavedAt = latestReplacedSignalForSelectedCall?.savedAt ?? 0;
+  const latestReplacedSavedAt =
+    latestReplacedSignalForSelectedCall?.savedAt ?? 0;
   const shouldShowStubEditedRetryHint =
     shouldShowInvalidStubBlock &&
     isEditedSignalFreshForSelectedCall &&
@@ -990,24 +1432,37 @@ export const SnifferPage = () => {
   const shouldShowStubReplacedRetryHint =
     shouldShowInvalidStubBlock &&
     latestReplacedSavedAt > 0 &&
-    (selectedCallReceivedAtMs === null || latestReplacedSavedAt >= selectedCallReceivedAtMs);
+    (selectedCallReceivedAtMs === null ||
+      latestReplacedSavedAt >= selectedCallReceivedAtMs);
   const persistedResolutionKind = getStubCallResolutionKind(selectedRequestId);
   const resolvedRetryHintKind =
     persistedResolutionKind ||
-    (shouldShowStubReplacedRetryHint ? "replaced" : shouldShowStubEditedRetryHint ? "edited" : "");
-  const shouldShowResolvedReplacedHint = shouldShowInvalidStubBlock && resolvedRetryHintKind === "replaced";
-  const shouldShowResolvedEditedHint = shouldShowInvalidStubBlock && resolvedRetryHintKind === "edited";
-  const shouldHideSelectAnotherStubButton = shouldShowResolvedReplacedHint || shouldShowResolvedEditedHint;
+    (shouldShowStubReplacedRetryHint
+      ? "replaced"
+      : shouldShowStubEditedRetryHint
+        ? "edited"
+        : "");
+  const shouldShowResolvedReplacedHint =
+    shouldShowInvalidStubBlock && resolvedRetryHintKind === "replaced";
+  const shouldShowResolvedEditedHint =
+    shouldShowInvalidStubBlock && resolvedRetryHintKind === "edited";
+  const shouldHideSelectAnotherStubButton =
+    shouldShowResolvedReplacedHint || shouldShowResolvedEditedHint;
   const stubsListPath = useMemo(() => {
     const basePath = createPath({ resource: "stubs", type: "list" });
     if (!selectedService || !selectedMethod) {
       return basePath;
     }
 
-    const filter = encodeURIComponent(JSON.stringify({ service: selectedService, method: selectedMethod }));
+    const filter = encodeURIComponent(
+      JSON.stringify({ service: selectedService, method: selectedMethod }),
+    );
     return `${basePath}?filter=${filter}`;
   }, [createPath, selectedMethod, selectedService]);
-  const snifferPath = useMemo(() => createPath({ resource: "sniffer", type: "list" }), [createPath]);
+  const snifferPath = useMemo(
+    () => createPath({ resource: "sniffer", type: "list" }),
+    [createPath],
+  );
   const selectedStubEditPath = useMemo(() => {
     if (!selectedStubId) {
       return createPath({ resource: "stubs", type: "list" });
@@ -1015,23 +1470,42 @@ export const SnifferPage = () => {
 
     return createPath({ resource: "stubs", type: "edit", id: selectedStubId });
   }, [createPath, selectedStubId]);
-  const stubCreatePath = useMemo(() => createPath({ resource: "stubs", type: "create" }), [createPath]);
+  const stubCreatePath = useMemo(
+    () => createPath({ resource: "stubs", type: "create" }),
+    [createPath],
+  );
   const selectedServiceAndMethodFilter = useMemo(
     () => ({ service: selectedService, method: selectedMethod }),
     [selectedMethod, selectedService],
   );
   const shouldFetchMatchingStubs = Boolean(selectedService && selectedMethod);
-  const { data: matchingStubs = [], total: matchingStubsTotal } = useGetList<StubRecord>(
-    "stubs",
-    {
-      pagination: { page: 1, perPage: 1 },
-      sort: { field: "id", order: "DESC" },
-      filter: selectedServiceAndMethodFilter,
-    },
-    { enabled: shouldFetchMatchingStubs, retry: false, staleTime: 30_000, refetchOnWindowFocus: false },
-  );
+  const { data: matchingStubs = [], total: matchingStubsTotal } =
+    useGetList<StubRecord>(
+      "stubs",
+      {
+        pagination: { page: 1, perPage: 1 },
+        sort: { field: "id", order: "DESC" },
+        filter: selectedServiceAndMethodFilter,
+      },
+      {
+        enabled: shouldFetchMatchingStubs,
+        retry: false,
+        staleTime: 30_000,
+        refetchOnWindowFocus: false,
+      },
+    );
   const hasAnyMatchingStubs = (matchingStubsTotal ?? matchingStubs.length) > 0;
-  const canCreateStubFromSelectedCall = Boolean(selectedService && selectedMethod);
+  const routeStubId = String(matchingStubs[0]?.id || "").trim();
+  const routeStubEditPath = useMemo(() => {
+    if (!routeStubId) {
+      return createPath({ resource: "stubs", type: "list" });
+    }
+
+    return createPath({ resource: "stubs", type: "edit", id: routeStubId });
+  }, [createPath, routeStubId]);
+  const canCreateStubFromSelectedCall = Boolean(
+    selectedService && selectedMethod,
+  );
   const latestCreatedSignalForSelectedCall = stubCreatedHistory.find(
     (item) =>
       sameServiceAlias(item.service, selectedService) &&
@@ -1041,19 +1515,34 @@ export const SnifferPage = () => {
   const shouldShowStubCreatedHint =
     shouldShowMissingStubBlock &&
     latestCreatedSavedAt > 0 &&
-    (selectedCallReceivedAtMs === null || latestCreatedSavedAt >= selectedCallReceivedAtMs);
+    (selectedCallReceivedAtMs === null ||
+      latestCreatedSavedAt >= selectedCallReceivedAtMs);
   const shouldShowStubAssignedRetryHint =
     shouldShowMissingStubBlock &&
     latestReplacedSavedAt > 0 &&
-    (selectedCallReceivedAtMs === null || latestReplacedSavedAt >= selectedCallReceivedAtMs);
-  const shouldShowStubCreatedAndAssignedRetryHint = shouldShowStubCreatedHint && shouldShowStubAssignedRetryHint;
+    (selectedCallReceivedAtMs === null ||
+      latestReplacedSavedAt >= selectedCallReceivedAtMs);
+  const shouldShowStubCreatedAndAssignedRetryHint =
+    shouldShowStubCreatedHint && shouldShowStubAssignedRetryHint;
   const callTableFilterOptions = useMemo(
     () => ({
-      client: buildDistinctFilterOptions(records.map((record) => String(record.client || "-").trim() || "-")),
-      service: buildDistinctFilterOptions(records.map((record) => String(record.service || "-").trim() || "-")),
-      method: buildDistinctFilterOptions(records.map((record) => String(record.method || "-").trim() || "-")),
-      code: buildDistinctFilterOptions(records.map((record) => String(record.code ?? 0))),
-      room: buildDistinctFilterOptions(records.map((record) => String(record.room || "global").trim() || "global")),
+      client: buildDistinctFilterOptions(
+        records.map((record) => String(record.client || "-").trim() || "-"),
+      ),
+      service: buildDistinctFilterOptions(
+        records.map((record) => String(record.service || "-").trim() || "-"),
+      ),
+      method: buildDistinctFilterOptions(
+        records.map((record) => String(record.method || "-").trim() || "-"),
+      ),
+      code: buildDistinctFilterOptions(
+        records.map((record) => String(record.code ?? 0)),
+      ),
+      room: buildDistinctFilterOptions(
+        records.map(
+          (record) => String(record.room || "global").trim() || "global",
+        ),
+      ),
     }),
     [records],
   );
@@ -1063,18 +1552,26 @@ export const SnifferPage = () => {
     const methodQuery = normalizeFilterQuery(callTableFilters.method.query);
     const codeQuery = normalizeFilterQuery(callTableFilters.code.query);
     const roomQuery = normalizeFilterQuery(callTableFilters.room.query);
-    const selectedClients = callTableFilters.client.selected.map(normalizeFilterQuery);
-    const selectedServices = callTableFilters.service.selected.map(normalizeFilterQuery);
-    const selectedMethods = callTableFilters.method.selected.map(normalizeFilterQuery);
-    const selectedCodes = callTableFilters.code.selected.map(normalizeFilterQuery);
-    const selectedRooms = callTableFilters.room.selected.map(normalizeFilterQuery);
+    const selectedClients =
+      callTableFilters.client.selected.map(normalizeFilterQuery);
+    const selectedServices =
+      callTableFilters.service.selected.map(normalizeFilterQuery);
+    const selectedMethods =
+      callTableFilters.method.selected.map(normalizeFilterQuery);
+    const selectedCodes =
+      callTableFilters.code.selected.map(normalizeFilterQuery);
+    const selectedRooms =
+      callTableFilters.room.selected.map(normalizeFilterQuery);
 
     return records.filter((record) => {
       const clientValue = String(record.client || "-").trim() || "-";
       if (clientQuery && !clientValue.toLowerCase().includes(clientQuery)) {
         return false;
       }
-      if (selectedClients.length > 0 && !selectedClients.includes(normalizeFilterQuery(clientValue))) {
+      if (
+        selectedClients.length > 0 &&
+        !selectedClients.includes(normalizeFilterQuery(clientValue))
+      ) {
         return false;
       }
 
@@ -1082,7 +1579,10 @@ export const SnifferPage = () => {
       if (serviceQuery && !serviceValue.toLowerCase().includes(serviceQuery)) {
         return false;
       }
-      if (selectedServices.length > 0 && !selectedServices.includes(normalizeFilterQuery(serviceValue))) {
+      if (
+        selectedServices.length > 0 &&
+        !selectedServices.includes(normalizeFilterQuery(serviceValue))
+      ) {
         return false;
       }
 
@@ -1090,7 +1590,10 @@ export const SnifferPage = () => {
       if (methodQuery && !methodValue.toLowerCase().includes(methodQuery)) {
         return false;
       }
-      if (selectedMethods.length > 0 && !selectedMethods.includes(normalizeFilterQuery(methodValue))) {
+      if (
+        selectedMethods.length > 0 &&
+        !selectedMethods.includes(normalizeFilterQuery(methodValue))
+      ) {
         return false;
       }
 
@@ -1098,7 +1601,10 @@ export const SnifferPage = () => {
       if (codeQuery && !codeValue.toLowerCase().includes(codeQuery)) {
         return false;
       }
-      if (selectedCodes.length > 0 && !selectedCodes.includes(normalizeFilterQuery(codeValue))) {
+      if (
+        selectedCodes.length > 0 &&
+        !selectedCodes.includes(normalizeFilterQuery(codeValue))
+      ) {
         return false;
       }
 
@@ -1106,7 +1612,10 @@ export const SnifferPage = () => {
       if (roomQuery && !roomValue.toLowerCase().includes(roomQuery)) {
         return false;
       }
-      if (selectedRooms.length > 0 && !selectedRooms.includes(normalizeFilterQuery(roomValue))) {
+      if (
+        selectedRooms.length > 0 &&
+        !selectedRooms.includes(normalizeFilterQuery(roomValue))
+      ) {
         return false;
       }
 
@@ -1114,39 +1623,67 @@ export const SnifferPage = () => {
     });
   }, [callTableFilters, records]);
   const hasActiveCallTableFilters = useMemo(
-    () => Object.values(callTableFilters).some((value) => value.query.trim().length > 0 || value.selected.length > 0),
+    () =>
+      Object.values(callTableFilters).some(
+        (value) => value.query.trim().length > 0 || value.selected.length > 0,
+      ),
     [callTableFilters],
   );
 
-  const setCallTableFilterQuery = useCallback((field: CallTableFilterField, value: string) => {
-    setCallTableFilters((current) => ({ ...current, [field]: { ...current[field], query: value } }));
-  }, []);
-  const toggleCallTableFilterSelection = useCallback((field: CallTableFilterField, value: string) => {
-    setCallTableFilters((current) => {
-      const selected = current[field].selected;
-      const exists = includesNormalized(selected, value);
-      const nextSelected = exists
-        ? selected.filter((item) => normalizeFilterQuery(item) !== normalizeFilterQuery(value))
-        : [...selected, value.trim()];
-      return { ...current, [field]: { ...current[field], selected: nextSelected } };
-    });
-  }, []);
-  const pinCallTableFilterValue = useCallback((field: CallTableFilterField, value: string) => {
-    const normalizedValue = value.trim();
-    if (!normalizedValue) {
-      return;
-    }
-    setCallTableFilters((current) => {
-      const selected = current[field].selected;
-      if (includesNormalized(selected, normalizedValue)) {
-        return current;
+  const setCallTableFilterQuery = useCallback(
+    (field: CallTableFilterField, value: string) => {
+      setCallTableFilters((current) => ({
+        ...current,
+        [field]: { ...current[field], query: value },
+      }));
+    },
+    [],
+  );
+  const toggleCallTableFilterSelection = useCallback(
+    (field: CallTableFilterField, value: string) => {
+      setCallTableFilters((current) => {
+        const selected = current[field].selected;
+        const exists = includesNormalized(selected, value);
+        const nextSelected = exists
+          ? selected.filter(
+              (item) =>
+                normalizeFilterQuery(item) !== normalizeFilterQuery(value),
+            )
+          : [...selected, value.trim()];
+        return {
+          ...current,
+          [field]: { ...current[field], selected: nextSelected },
+        };
+      });
+    },
+    [],
+  );
+  const pinCallTableFilterValue = useCallback(
+    (field: CallTableFilterField, value: string) => {
+      const normalizedValue = value.trim();
+      if (!normalizedValue) {
+        return;
       }
-      return { ...current, [field]: { ...current[field], selected: [...selected, normalizedValue] } };
-    });
-  }, []);
+      setCallTableFilters((current) => {
+        const selected = current[field].selected;
+        if (includesNormalized(selected, normalizedValue)) {
+          return current;
+        }
+        return {
+          ...current,
+          [field]: {
+            ...current[field],
+            selected: [...selected, normalizedValue],
+          },
+        };
+      });
+    },
+    [],
+  );
   const isCallTableFilterFieldActive = useCallback(
     (field: CallTableFilterField) =>
-      callTableFilters[field].query.trim().length > 0 || callTableFilters[field].selected.length > 0,
+      callTableFilters[field].query.trim().length > 0 ||
+      callTableFilters[field].selected.length > 0,
     [callTableFilters],
   );
   const clearCallTableFilters = useCallback(() => {
@@ -1161,15 +1698,30 @@ export const SnifferPage = () => {
   const closeCallTableFilterMenu = useCallback(() => {
     setCallTableFilterMenu(null);
   }, []);
-  const clearCallTableFilterField = useCallback((field: CallTableFilterField) => {
-    setCallTableFilters((current) => ({ ...current, [field]: { query: "", selected: [] } }));
-  }, []);
+  const clearCallTableFilterField = useCallback(
+    (field: CallTableFilterField) => {
+      setCallTableFilters((current) => ({
+        ...current,
+        [field]: { query: "", selected: [] },
+      }));
+    },
+    [],
+  );
   const openedCallTableFilterField = callTableFilterMenu?.field ?? null;
-  const openedCallTableFilterOptions = openedCallTableFilterField ? callTableFilterOptions[openedCallTableFilterField] : [];
-  const openedCallTableFilterQuery = openedCallTableFilterField ? callTableFilters[openedCallTableFilterField].query : "";
-  const openedCallTableFilterSelected = openedCallTableFilterField ? callTableFilters[openedCallTableFilterField].selected : [];
+  const openedCallTableFilterOptions = openedCallTableFilterField
+    ? callTableFilterOptions[openedCallTableFilterField]
+    : [];
+  const openedCallTableFilterQuery = openedCallTableFilterField
+    ? callTableFilters[openedCallTableFilterField].query
+    : "";
+  const openedCallTableFilterSelected = openedCallTableFilterField
+    ? callTableFilters[openedCallTableFilterField].selected
+    : [];
   const pinnedOnlySelectedOptions = useMemo(
-    () => openedCallTableFilterSelected.filter((item) => !includesNormalized(openedCallTableFilterOptions, item)),
+    () =>
+      openedCallTableFilterSelected.filter(
+        (item) => !includesNormalized(openedCallTableFilterOptions, item),
+      ),
     [openedCallTableFilterOptions, openedCallTableFilterSelected],
   );
   const allOpenedCallTableFilterOptions = useMemo(
@@ -1188,7 +1740,9 @@ export const SnifferPage = () => {
     if (!normalizedQuery) {
       return allOpenedCallTableFilterOptions;
     }
-    return allOpenedCallTableFilterOptions.filter((item) => item.toLowerCase().includes(normalizedQuery));
+    return allOpenedCallTableFilterOptions.filter((item) =>
+      item.toLowerCase().includes(normalizedQuery),
+    );
   }, [allOpenedCallTableFilterOptions, openedCallTableFilterQuery]);
 
   useEffect(() => {
@@ -1199,7 +1753,12 @@ export const SnifferPage = () => {
 
     setRoomForAttachment((current) => {
       const normalizedCurrent = current.trim();
-      if (normalizedCurrent && availableRoomsForAttachment.some((item) => item.id === normalizedCurrent)) {
+      if (
+        normalizedCurrent &&
+        availableRoomsForAttachment.some(
+          (item) => item.id === normalizedCurrent,
+        )
+      ) {
         return normalizedCurrent;
       }
 
@@ -1213,14 +1772,19 @@ export const SnifferPage = () => {
 
     return unwrapRootPayload(selected?.request ?? {});
   }, [selected]);
-  const requestPayloadText = useMemo(() => formatJsonPayload(requestPayload), [requestPayload]);
+  const requestPayloadText = useMemo(
+    () => formatJsonPayload(requestPayload),
+    [requestPayload],
+  );
   const hasRequestSearchablePayload = useMemo(() => {
     if (!selected) {
       return false;
     }
 
     if (Array.isArray(selected.requests) && selected.requests.length > 0) {
-      return selected.requests.some((item) => hasSearchableContent(unwrapRootPayload(item)));
+      return selected.requests.some((item) =>
+        hasSearchableContent(unwrapRootPayload(item)),
+      );
     }
 
     return hasSearchableContent(unwrapRootPayload(selected.request));
@@ -1236,30 +1800,43 @@ export const SnifferPage = () => {
   const requestMatchCount = requestMatchRanges.length;
   const responseEntries = useMemo(() => {
     const selectedResponses =
-      Array.isArray(selected?.responses) && selected.responses.length > 0 ? selected.responses : [];
+      Array.isArray(selected?.responses) && selected.responses.length > 0
+        ? selected.responses
+        : [];
     const responsePayloads =
-      selectedResponses.length > 0 ? selectedResponses : [selected?.response ?? {}];
-    const responseTimestamps = Array.isArray(selected?.responseTimestamps) ? selected.responseTimestamps : [];
+      selectedResponses.length > 0
+        ? selectedResponses
+        : [selected?.response ?? {}];
+    const responseTimestamps = Array.isArray(selected?.responseTimestamps)
+      ? selected.responseTimestamps
+      : [];
 
     return responsePayloads.map((payload, index) => {
       const unwrappedPayload = unwrapRootPayload(payload);
       return {
-      key: `${index}-${String(responseTimestamps[index] || "")}`,
-      payload: unwrappedPayload,
-      payloadText: formatJsonPayload(unwrappedPayload),
-      timestamp: responseTimestamps[index] || (index === 0 ? selected?.timestamp : undefined),
-      index,
+        key: `${index}-${String(responseTimestamps[index] || "")}`,
+        payload: unwrappedPayload,
+        payloadText: formatJsonPayload(unwrappedPayload),
+        timestamp:
+          responseTimestamps[index] ||
+          (index === 0 ? selected?.timestamp : undefined),
+        index,
       };
     });
   }, [selected]);
-  const orderedResponseEntries = useMemo(() => [...responseEntries].reverse(), [responseEntries]);
+  const orderedResponseEntries = useMemo(
+    () => [...responseEntries].reverse(),
+    [responseEntries],
+  );
   const hasResponseSearchablePayload = useMemo(() => {
     if (!selected) {
       return false;
     }
 
     if (Array.isArray(selected.responses) && selected.responses.length > 0) {
-      return selected.responses.some((item) => hasSearchableContent(unwrapRootPayload(item)));
+      return selected.responses.some((item) =>
+        hasSearchableContent(unwrapRootPayload(item)),
+      );
     }
 
     return hasSearchableContent(unwrapRootPayload(selected.response));
@@ -1271,7 +1848,11 @@ export const SnifferPage = () => {
   const responseMatchData = useMemo(() => {
     let offset = 0;
     const byEntry = orderedResponseEntries.map((entry) => {
-      const ranges = collectMatchRanges(entry.payloadText, responseSearchRegex, offset);
+      const ranges = collectMatchRanges(
+        entry.payloadText,
+        responseSearchRegex,
+        offset,
+      );
       offset += ranges.length;
       return { key: entry.key, ranges };
     });
@@ -1284,7 +1865,9 @@ export const SnifferPage = () => {
   const isSingleResponseView = orderedResponseEntries.length <= 1;
   const singleResponseEntry = orderedResponseEntries[0];
   const responseHeaderTimestamp = isSingleResponseView
-    ? formatServerReceivedAt(singleResponseEntry?.timestamp || selected?.timestamp)
+    ? formatServerReceivedAt(
+        singleResponseEntry?.timestamp || selected?.timestamp,
+      )
     : undefined;
 
   useEffect(() => {
@@ -1312,7 +1895,9 @@ export const SnifferPage = () => {
       setRequestActiveMatch(-1);
       return;
     }
-    setRequestActiveMatch((current) => (current < 0 || current >= requestMatchCount ? 0 : current));
+    setRequestActiveMatch((current) =>
+      current < 0 || current >= requestMatchCount ? 0 : current,
+    );
   }, [requestMatchCount, showRequestSearch]);
 
   useEffect(() => {
@@ -1324,16 +1909,19 @@ export const SnifferPage = () => {
       setResponseActiveMatch(-1);
       return;
     }
-    setResponseActiveMatch((current) => (current < 0 || current >= responseMatchData.totalMatches ? 0 : current));
+    setResponseActiveMatch((current) =>
+      current < 0 || current >= responseMatchData.totalMatches ? 0 : current,
+    );
   }, [responseMatchData.totalMatches, showResponseSearch]);
 
   useEffect(() => {
     if (!showRequestSearch || requestActiveMatch < 0) {
       return;
     }
-    const marker = requestSearchContainerRef.current?.querySelector<HTMLElement>(
-      `[data-match-index="${requestActiveMatch}"]`,
-    );
+    const marker =
+      requestSearchContainerRef.current?.querySelector<HTMLElement>(
+        `[data-match-index="${requestActiveMatch}"]`,
+      );
     marker?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [requestActiveMatch, requestMatchRanges, showRequestSearch]);
 
@@ -1341,17 +1929,24 @@ export const SnifferPage = () => {
     if (!showResponseSearch || responseActiveMatch < 0) {
       return;
     }
-    const marker = responseSearchContainerRef.current?.querySelector<HTMLElement>(
-      `[data-match-index="${responseActiveMatch}"]`,
-    );
+    const marker =
+      responseSearchContainerRef.current?.querySelector<HTMLElement>(
+        `[data-match-index="${responseActiveMatch}"]`,
+      );
     marker?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [responseActiveMatch, responseMatchData, showResponseSearch]);
 
   useEffect(() => {
-    if (!showResponseSearch || !responseSearchQuery.trim() || orderedResponseEntries.length <= 1) {
+    if (
+      !showResponseSearch ||
+      !responseSearchQuery.trim() ||
+      orderedResponseEntries.length <= 1
+    ) {
       return;
     }
-    setExpandedResponseKeys(new Set(orderedResponseEntries.map((entry) => entry.key)));
+    setExpandedResponseKeys(
+      new Set(orderedResponseEntries.map((entry) => entry.key)),
+    );
   }, [orderedResponseEntries, responseSearchQuery, showResponseSearch]);
 
   useEffect(() => {
@@ -1436,7 +2031,9 @@ export const SnifferPage = () => {
 
     let cancelled = false;
     apiClient
-      .request<{ room?: string; bound?: boolean }>(`/rooms/peers/status?peer=${encodeURIComponent(peer)}`)
+      .request<{ room?: string; bound?: boolean }>(
+        `/rooms/peers/status?peer=${encodeURIComponent(peer)}`,
+      )
       .then((payload) => {
         if (cancelled) {
           return;
@@ -1475,7 +2072,9 @@ export const SnifferPage = () => {
       setPeerBoundRoom(targetRoom);
       setRecentlyAttachedPeer(selectedPeer);
     } catch (error) {
-      notify((error as Error).message || "Failed to assign peer to room", { type: "warning" });
+      notify((error as Error).message || "Failed to assign peer to room", {
+        type: "warning",
+      });
     }
   }, [notify, selectedAttachmentRoom, selectedPeer]);
 
@@ -1489,6 +2088,86 @@ export const SnifferPage = () => {
     notify(`Entered room ${selectedSetupRoom}`, { type: "info" });
   }, [notify, selectedSetupRoom]);
 
+  const handleResponseSourceChange = (source: SnifferSource) => {
+    if (!selectedRouteKey) {
+      return;
+    }
+
+    const nextChange: SnifferSourceChange = {
+      source,
+      changedAtMs: Date.now(),
+    };
+
+    setRouteSources((current) => {
+      const next = {
+        ...current,
+        [selectedRouteKey]: source,
+      };
+      writeSnifferRouteSources(next);
+
+      return next;
+    });
+    const nextSourceChangeMarkers = {
+      ...sourceChangeMarkersRef.current,
+      [selectedRouteKey]: [
+        ...(sourceChangeMarkersRef.current[selectedRouteKey] || []),
+        nextChange,
+      ],
+    };
+    sourceChangeMarkersRef.current = nextSourceChangeMarkers;
+    writeSnifferRouteSourceChanges(nextSourceChangeMarkers);
+    setSourceChangeMarkers(nextSourceChangeMarkers);
+  };
+
+  const handleSetReflection = async () => {
+    if (!selectedRouteKey) {
+      return;
+    }
+
+    const source = normalizeReflectionSource(reflectionHost);
+    if (!source) {
+      notify("Enter reflection host first", { type: "warning" });
+      return;
+    }
+
+    setIsSettingReflection(true);
+    try {
+      const saved = await apiClient.request<ReflectionHostRecord>(
+        "/reflection-hosts",
+        {
+          method: "POST",
+          body: JSON.stringify({ host: reflectionHost.trim(), source }),
+        },
+      );
+
+      await dataProvider.create("descriptors", {
+        data: { source: saved.source || source },
+      });
+      const { hasMethod, hasProto } = await checkProtoStatus(
+        selectedService,
+        selectedMethod,
+      );
+      setHasMethodFromApi(hasMethod);
+      setHasProtoFromApi(hasProto);
+      setReflectionHost(saved.source || source);
+      await loadReflectionHosts().catch(() => {
+        // Keep the manually entered host if refreshing the list fails.
+      });
+      await loadHistorySnapshot().catch(() => {
+        // Keep current snapshot on refresh failure.
+      });
+      setStreamRevision((current) => current + 1);
+      handleResponseSourceChange("reflection");
+      notify("Reflection source set.", { type: "success" });
+    } catch (error) {
+      notify((error as Error).message || "Failed to set reflection source", {
+        type: "error",
+      });
+    } finally {
+      setIsSettingReflection(false);
+    }
+  };
+
   const handleProtoSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -1498,16 +2177,22 @@ export const SnifferPage = () => {
     setIsUploadingProto(true);
     try {
       await dataProvider.create("descriptors", { data: { file } });
-      const { hasMethod, hasProto } = await checkProtoStatus(selectedService, selectedMethod);
+      const { hasMethod, hasProto } = await checkProtoStatus(
+        selectedService,
+        selectedMethod,
+      );
       setHasMethodFromApi(hasMethod);
       setHasProtoFromApi(hasProto);
+      handleResponseSourceChange("proto");
       notify("Descriptor uploaded.", { type: "success" });
       await loadHistorySnapshot().catch(() => {
         // Keep current snapshot on refresh failure.
       });
       setStreamRevision((current) => current + 1);
     } catch (error) {
-      notify((error as Error).message || "Failed to upload descriptor", { type: "error" });
+      notify((error as Error).message || "Failed to upload descriptor", {
+        type: "error",
+      });
     } finally {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -1515,6 +2200,54 @@ export const SnifferPage = () => {
       setIsUploadingProto(false);
     }
   };
+
+  const reflectionHostControl = (
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 1,
+        flexWrap: "wrap",
+        width: "100%",
+      }}
+    >
+      <TextField
+        size="small"
+        label="Reflection host"
+        placeholder="localhost:50051"
+        value={reflectionHost}
+        onChange={(event) => setReflectionHost(event.target.value)}
+        inputProps={{ list: "reflection-host-options" }}
+        sx={{ width: { xs: "100%", sm: 280 }, maxWidth: "100%" }}
+      />
+      <datalist id="reflection-host-options">
+        {reflectionHosts.map((item) => {
+          const option = item.source || item.host || "";
+          return option ? <option key={option} value={option} /> : null;
+        })}
+      </datalist>
+      <Button
+        variant="contained"
+        onClick={handleSetReflection}
+        disabled={isSettingReflection || !reflectionHost.trim()}
+        sx={stateBlockActionButtonSx}
+      >
+        {isSettingReflection ? "Setting..." : "Set reflection"}
+      </Button>
+    </Box>
+  );
+
+  const protoUploadControl = (
+    <Button
+      variant="contained"
+      onClick={() => fileInputRef.current?.click()}
+      disabled={isUploadingProto}
+      sx={stateBlockActionButtonSx}
+    >
+      {isUploadingProto ? "Uploading..." : "Upload proto"}
+    </Button>
+  );
 
   const handleClearCurrentRoomRequests = useCallback(() => {
     const room = activeRoom.trim();
@@ -1532,10 +2265,17 @@ export const SnifferPage = () => {
         });
         setStreamRevision((current) => current + 1);
         const deletedCount = Number(payload?.deletedCount || 0);
-        notify(`Cleared ${deletedCount} request${deletedCount === 1 ? "" : "s"} in room: ${room}`, { type: "success" });
+        notify(
+          `Cleared ${deletedCount} request${deletedCount === 1 ? "" : "s"} in room: ${room}`,
+          { type: "success" },
+        );
       })
       .catch((error) => {
-        notify((error as Error).message || "Failed to clear requests for current room", { type: "error" });
+        notify(
+          (error as Error).message ||
+            "Failed to clear requests for current room",
+          { type: "error" },
+        );
       });
   }, [activeRoom, loadHistorySnapshot, notify]);
 
@@ -1555,16 +2295,28 @@ export const SnifferPage = () => {
     }
     setResponseActiveMatch((current) => {
       const safeCurrent = current < 0 ? 0 : current;
-      return (safeCurrent + direction + responseMatchData.totalMatches) % responseMatchData.totalMatches;
+      return (
+        (safeCurrent + direction + responseMatchData.totalMatches) %
+        responseMatchData.totalMatches
+      );
     });
   };
 
-  const toggleSearchOption = (target: "request" | "response", option: keyof SearchOptions) => {
+  const toggleSearchOption = (
+    target: "request" | "response",
+    option: keyof SearchOptions,
+  ) => {
     if (target === "request") {
-      setRequestSearchOptions((current) => ({ ...current, [option]: !current[option] }));
+      setRequestSearchOptions((current) => ({
+        ...current,
+        [option]: !current[option],
+      }));
       return;
     }
-    setResponseSearchOptions((current) => ({ ...current, [option]: !current[option] }));
+    setResponseSearchOptions((current) => ({
+      ...current,
+      [option]: !current[option],
+    }));
   };
 
   const openRequestSearch = useCallback(() => {
@@ -1611,13 +2363,17 @@ export const SnifferPage = () => {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() !== "f" || (!event.metaKey && !event.ctrlKey)) {
+      if (
+        event.key.toLowerCase() !== "f" ||
+        (!event.metaKey && !event.ctrlKey)
+      ) {
         return;
       }
 
       const target = event.target as HTMLElement | null;
       const isSnifferSearchInputTarget =
-        target === requestSearchInputRef.current || target === responseSearchInputRef.current;
+        target === requestSearchInputRef.current ||
+        target === responseSearchInputRef.current;
       const isEditableTarget =
         target?.isContentEditable ||
         target?.tagName === "INPUT" ||
@@ -1629,7 +2385,8 @@ export const SnifferPage = () => {
 
       const preferredTarget = activeSearchTarget;
       const canOpenRequest = hasRequestSearchablePayload;
-      const canOpenResponse = shouldShowResponsePayloadBlock && hasResponseSearchablePayload;
+      const canOpenResponse =
+        shouldShowResponsePayloadBlock && hasResponseSearchablePayload;
       if (!canOpenRequest && !canOpenResponse) {
         return;
       }
@@ -1765,9 +2522,7 @@ export const SnifferPage = () => {
           boxShadow: "0 10px 28px rgba(0,0,0,0.16)",
         }}
       >
-        <Box
-          sx={panelHeaderSx}
-        >
+        <Box sx={panelHeaderSx}>
           {activeRoom.trim() ? (
             <IconButton
               size="small"
@@ -1780,14 +2535,27 @@ export const SnifferPage = () => {
             </IconButton>
           ) : null}
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-            <Chip size="small" variant="outlined" label={`Room: ${activeRoom || "global"}`} />
             <Chip
               size="small"
               variant="outlined"
-              label={hasActiveCallTableFilters ? `${filteredRecords.length}/${records.length} calls` : `${records.length} calls`}
+              label={`Room: ${activeRoom || "global"}`}
+            />
+            <Chip
+              size="small"
+              variant="outlined"
+              label={
+                hasActiveCallTableFilters
+                  ? `${filteredRecords.length}/${records.length} calls`
+                  : `${records.length} calls`
+              }
             />
             {hasActiveCallTableFilters ? (
-              <Button size="small" color="inherit" onClick={clearCallTableFilters} sx={{ minWidth: 0, px: 0.75 }}>
+              <Button
+                size="small"
+                color="inherit"
+                onClick={clearCallTableFilters}
+                sx={{ minWidth: 0, px: 0.75 }}
+              >
                 Clear filters
               </Button>
             ) : null}
@@ -1871,6 +2639,18 @@ export const SnifferPage = () => {
                     {`${callTableFilterLabels.code}${isCallTableFilterFieldActive("code") ? " *" : ""}`}
                   </Button>
                 </TableCell>
+                <TableCell>
+                  <Typography
+                    component="span"
+                    sx={{
+                      ...tableFilterTriggerButtonSx,
+                      display: "inline-flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    source
+                  </Typography>
+                </TableCell>
                 <TableCell width="18%">
                   <Typography
                     component="span"
@@ -1888,11 +2668,16 @@ export const SnifferPage = () => {
             <TableBody>
               {filteredRecords.map((record) => {
                 const id = record.callId || record.id || "";
-                const selectedRow = !!id && id === (selected?.callId || selected?.id);
+                const selectedRow =
+                  !!id && id === (selected?.callId || selected?.id);
+                const recordSource = record.source || defaultSnifferSource;
                 return (
                   <TableRow
                     hover
-                    key={id || `${record.timestamp || ""}-${record.service || ""}-${record.method || ""}`}
+                    key={
+                      id ||
+                      `${record.timestamp || ""}-${record.service || ""}-${record.method || ""}`
+                    }
                     selected={selectedRow}
                     onClick={() => {
                       if (id) {
@@ -1921,7 +2706,21 @@ export const SnifferPage = () => {
                     <TableCell>{record.service || "-"}</TableCell>
                     <TableCell>{record.method || "-"}</TableCell>
                     <TableCell>
-                      <Chip size="small" color={codeToChipColor(record.code)} label={record.code ?? 0} />
+                      <Chip
+                        size="small"
+                        color={codeToChipColor(record.code)}
+                        label={record.code ?? 0}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        color={
+                          recordSource === "reflection" ? "info" : "default"
+                        }
+                        label={snifferSourceLabels[recordSource]}
+                      />
                     </TableCell>
                     <TableCell title={record.timestamp || "-"}>
                       {formatServerReceivedAt(record.timestamp)}
@@ -1931,7 +2730,7 @@ export const SnifferPage = () => {
               })}
               {hasActiveCallTableFilters && filteredRecords.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6}>
+                  <TableCell colSpan={7}>
                     <Typography variant="body2" color="text.secondary">
                       No calls match current filters.
                     </Typography>
@@ -1967,11 +2766,22 @@ export const SnifferPage = () => {
                 variant="outlined"
                 size="small"
                 value={openedCallTableFilterQuery}
-                onChange={(event) => setCallTableFilterQuery(openedCallTableFilterField, event.target.value)}
+                onChange={(event) =>
+                  setCallTableFilterQuery(
+                    openedCallTableFilterField,
+                    event.target.value,
+                  )
+                }
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && canPinOpenedCallTableFilterValue) {
+                  if (
+                    event.key === "Enter" &&
+                    canPinOpenedCallTableFilterValue
+                  ) {
                     event.preventDefault();
-                    pinCallTableFilterValue(openedCallTableFilterField, openedCallTableFilterQuery);
+                    pinCallTableFilterValue(
+                      openedCallTableFilterField,
+                      openedCallTableFilterQuery,
+                    );
                   }
                 }}
                 placeholder={`Search / select ${callTableFilterLabels[openedCallTableFilterField]}`}
@@ -1980,7 +2790,12 @@ export const SnifferPage = () => {
               {canPinOpenedCallTableFilterValue ? (
                 <Button
                   size="small"
-                  onClick={() => pinCallTableFilterValue(openedCallTableFilterField, openedCallTableFilterQuery)}
+                  onClick={() =>
+                    pinCallTableFilterValue(
+                      openedCallTableFilterField,
+                      openedCallTableFilterQuery,
+                    )
+                  }
                   sx={{ alignSelf: "flex-start", minWidth: 0, px: 0.75 }}
                 >
                   {`Pin "${openedCallTableFilterQuery.trim()}"`}
@@ -1997,20 +2812,33 @@ export const SnifferPage = () => {
               >
                 {openedCallTableFilteredOptions.length > 0 ? (
                   openedCallTableFilteredOptions.map((option) => {
-                    const checked = includesNormalized(openedCallTableFilterSelected, option);
+                    const checked = includesNormalized(
+                      openedCallTableFilterSelected,
+                      option,
+                    );
                     const isPinnedOnly = pinnedOnlySelectedOptions.some(
-                      (item) => normalizeFilterQuery(item) === normalizeFilterQuery(option),
+                      (item) =>
+                        normalizeFilterQuery(item) ===
+                        normalizeFilterQuery(option),
                     );
                     return (
                       <Box
                         key={option}
                         role="button"
                         tabIndex={0}
-                        onClick={() => toggleCallTableFilterSelection(openedCallTableFilterField, option)}
+                        onClick={() =>
+                          toggleCallTableFilterSelection(
+                            openedCallTableFilterField,
+                            option,
+                          )
+                        }
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
-                            toggleCallTableFilterSelection(openedCallTableFilterField, option);
+                            toggleCallTableFilterSelection(
+                              openedCallTableFilterField,
+                              option,
+                            );
                           }
                         }}
                         sx={{
@@ -2045,7 +2873,11 @@ export const SnifferPage = () => {
                           {option}
                         </Typography>
                         {isPinnedOnly ? (
-                          <Typography variant="caption" color="text.secondary" sx={{ ...tableFilterTextSx, ml: "auto" }}>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ ...tableFilterTextSx, ml: "auto" }}
+                          >
                             pinned
                           </Typography>
                         ) : null}
@@ -2053,16 +2885,27 @@ export const SnifferPage = () => {
                     );
                   })
                 ) : (
-                  <Typography variant="body2" color="text.secondary" sx={{ ...tableFilterTextSx, px: 1, py: 0 }}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ ...tableFilterTextSx, px: 1, py: 0 }}
+                  >
                     No matching values
                   </Typography>
                 )}
               </Box>
-              <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 0.5 }}>
+              <Box
+                sx={{ display: "flex", justifyContent: "flex-end", gap: 0.5 }}
+              >
                 <Button
                   size="small"
-                  onClick={() => clearCallTableFilterField(openedCallTableFilterField)}
-                  disabled={!openedCallTableFilterQuery.trim() && openedCallTableFilterSelected.length === 0}
+                  onClick={() =>
+                    clearCallTableFilterField(openedCallTableFilterField)
+                  }
+                  disabled={
+                    !openedCallTableFilterQuery.trim() &&
+                    openedCallTableFilterSelected.length === 0
+                  }
                   sx={tableFilterClearButtonSx}
                 >
                   Clear
@@ -2110,7 +2953,9 @@ export const SnifferPage = () => {
           }}
         >
           <Box sx={{ maxWidth: 420, px: 2 }}>
-            <SearchOffRoundedIcon sx={{ fontSize: 78, opacity: 0.55, mb: 1.1 }} />
+            <SearchOffRoundedIcon
+              sx={{ fontSize: 78, opacity: 0.55, mb: 1.1 }}
+            />
             <Typography variant="h5" sx={{ fontWeight: 600, opacity: 0.9 }}>
               No Selection
             </Typography>
@@ -2142,9 +2987,7 @@ export const SnifferPage = () => {
               boxShadow: "0 10px 28px rgba(0,0,0,0.16)",
             }}
           >
-            <Box
-              sx={panelHeaderSx}
-            >
+            <Box sx={panelHeaderSx}>
               <Typography variant="subtitle2" sx={panelTitleSx}>
                 Request
               </Typography>
@@ -2152,7 +2995,11 @@ export const SnifferPage = () => {
                 <Chip
                   size="small"
                   variant="outlined"
-                  label={selectedService && selectedMethod ? `${selectedService}.${selectedMethod}` : "No call selected"}
+                  label={
+                    selectedService && selectedMethod
+                      ? `${selectedService}.${selectedMethod}`
+                      : "No call selected"
+                  }
                 />
                 {hasRequestSearchablePayload ? (
                   <IconButton
@@ -2174,13 +3021,13 @@ export const SnifferPage = () => {
             <Divider />
             {showRequestSearch && hasRequestSearchablePayload ? (
               <>
-                <Box
-                  sx={compactSearchBarSx}
-                >
+                <Box sx={compactSearchBarSx}>
                   <TextField
                     inputRef={requestSearchInputRef}
                     value={requestSearchQuery}
-                    onChange={(event) => setRequestSearchQuery(event.target.value)}
+                    onChange={(event) =>
+                      setRequestSearchQuery(event.target.value)
+                    }
                     size="small"
                     fullWidth
                     placeholder="Find"
@@ -2188,15 +3035,21 @@ export const SnifferPage = () => {
                   />
                   <Button
                     size="small"
-                    variant={requestSearchOptions.caseSensitive ? "contained" : "text"}
-                    onClick={() => toggleSearchOption("request", "caseSensitive")}
+                    variant={
+                      requestSearchOptions.caseSensitive ? "contained" : "text"
+                    }
+                    onClick={() =>
+                      toggleSearchOption("request", "caseSensitive")
+                    }
                     sx={compactSearchToggleButtonSx}
                   >
                     Aa
                   </Button>
                   <Button
                     size="small"
-                    variant={requestSearchOptions.wholeWord ? "contained" : "text"}
+                    variant={
+                      requestSearchOptions.wholeWord ? "contained" : "text"
+                    }
                     onClick={() => toggleSearchOption("request", "wholeWord")}
                     sx={compactSearchToggleButtonSx}
                   >
@@ -2204,14 +3057,18 @@ export const SnifferPage = () => {
                   </Button>
                   <Button
                     size="small"
-                    variant={requestSearchOptions.useRegex ? "contained" : "text"}
+                    variant={
+                      requestSearchOptions.useRegex ? "contained" : "text"
+                    }
                     onClick={() => toggleSearchOption("request", "useRegex")}
                     sx={compactSearchToggleButtonSx}
                   >
                     .*
                   </Button>
                   <Typography variant="body2" sx={compactSearchCounterSx}>
-                    {requestMatchCount > 0 ? `${requestActiveMatch + 1} of ${requestMatchCount}` : "0 of 0"}
+                    {requestMatchCount > 0
+                      ? `${requestActiveMatch + 1} of ${requestMatchCount}`
+                      : "0 of 0"}
                   </Typography>
                   <IconButton
                     size="small"
@@ -2241,9 +3098,16 @@ export const SnifferPage = () => {
                 </Box>
               </>
             ) : null}
-            <Box ref={requestSearchContainerRef} sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.25 }}>
+            <Box
+              ref={requestSearchContainerRef}
+              sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.25 }}
+            >
               <Box component="pre" sx={jsonTextSx}>
-                {renderHighlightedJsonText(requestPayloadText, requestMatchRanges, requestActiveMatch)}
+                {renderHighlightedJsonText(
+                  requestPayloadText,
+                  requestMatchRanges,
+                  requestActiveMatch,
+                )}
               </Box>
             </Box>
           </Paper>
@@ -2283,22 +3147,55 @@ export const SnifferPage = () => {
               boxShadow: "0 10px 28px rgba(0,0,0,0.16)",
             }}
           >
-            <Box
-              sx={panelHeaderSx}
-            >
+            <Box sx={panelHeaderSx}>
               <Typography variant="subtitle2" sx={panelTitleSx}>
                 {isSingleResponseView ? "Response" : "Responses"}
               </Typography>
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-                <Chip size="small" color={codeToChipColor(selectedCode)} variant="outlined" label={`Code: ${selectedCode ?? 0}`} />
+                <FormControl size="small" sx={{ minWidth: 132 }}>
+                  <Select
+                    value={selectedResponseSource}
+                    onChange={(event) =>
+                      handleResponseSourceChange(
+                        event.target.value as SnifferSource,
+                      )
+                    }
+                    sx={{
+                      height: 26,
+                      fontSize: 12,
+                      "& .MuiSelect-select": {
+                        py: 0.25,
+                        px: 1,
+                      },
+                    }}
+                  >
+                    <MenuItem value="proto">proto</MenuItem>
+                    <MenuItem value="reflection">server reflection</MenuItem>
+                  </Select>
+                </FormControl>
+                <Chip
+                  size="small"
+                  color={codeToChipColor(selectedCode)}
+                  variant="outlined"
+                  label={`Code: ${selectedCode ?? 0}`}
+                />
                 {isSingleResponseView ? (
-                  <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ whiteSpace: "nowrap" }}
+                  >
                     {responseHeaderTimestamp}
                   </Typography>
                 ) : (
-                  <Chip size="small" variant="outlined" label={`${orderedResponseEntries.length} items`} />
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={`${orderedResponseEntries.length} items`}
+                  />
                 )}
-                {shouldShowResponsePayloadBlock && hasResponseSearchablePayload ? (
+                {shouldShowResponsePayloadBlock &&
+                hasResponseSearchablePayload ? (
                   <IconButton
                     size="small"
                     onClick={() => {
@@ -2316,6 +3213,33 @@ export const SnifferPage = () => {
               </Box>
             </Box>
             <Divider />
+            {shouldShowSourceChangedRetryBanner ? (
+              <Alert
+                severity="info"
+                variant="outlined"
+                sx={{
+                  alignItems: "center",
+                  borderRadius: 0,
+                  borderLeft: 0,
+                  borderRight: 0,
+                  py: 0.25,
+                  "& .MuiAlert-icon": {
+                    alignItems: "center",
+                    py: 0,
+                  },
+                  "& .MuiAlert-message": {
+                    display: "flex",
+                    alignItems: "center",
+                    py: 0,
+                    minHeight: 32,
+                    fontSize: 13,
+                    fontWeight: 700,
+                  },
+                }}
+              >
+                Source changed
+              </Alert>
+            ) : null}
             <input
               ref={fileInputRef}
               type="file"
@@ -2325,13 +3249,22 @@ export const SnifferPage = () => {
             />
             {shouldPromptEnterRoomToSetup ? (
               <Box sx={stateBlockContainerSx}>
-                <Box sx={[stateBlockCardSx, { maxWidth: { xs: "100%", sm: 540 } }]}>
-                  <LockOutlinedIcon sx={{ fontSize: { xs: 36, sm: 44 }, opacity: 0.7, mb: 0.75 }} />
+                <Box
+                  sx={[stateBlockCardSx, { maxWidth: { xs: "100%", sm: 540 } }]}
+                >
+                  <LockOutlinedIcon
+                    sx={{
+                      fontSize: { xs: 36, sm: 44 },
+                      opacity: 0.7,
+                      mb: 0.75,
+                    }}
+                  />
                   <Typography variant="h5" sx={stateBlockTitleSx}>
                     Enter the room to set up
                   </Typography>
                   <Typography variant="body1" sx={stateBlockBodySx}>
-                    This request belongs to room {selectedSetupRoom}. Enter this room first, then continue setup.
+                    This request belongs to room {selectedSetupRoom}. Enter this
+                    room first, then continue setup.
                   </Typography>
                   <Box sx={stateBlockActionsSx}>
                     <Button
@@ -2347,7 +3280,13 @@ export const SnifferPage = () => {
             ) : shouldHideResponsePayload ? (
               <Box sx={stateBlockContainerSx}>
                 <Box sx={stateBlockCardSx}>
-                  <LockOutlinedIcon sx={{ fontSize: { xs: 36, sm: 44 }, opacity: 0.7, mb: 0.75 }} />
+                  <LockOutlinedIcon
+                    sx={{
+                      fontSize: { xs: 36, sm: 44 },
+                      opacity: 0.7,
+                      mb: 0.75,
+                    }}
+                  />
                   <Typography variant="h5" sx={stateBlockTitleSx}>
                     Response payload locked
                   </Typography>
@@ -2355,9 +3294,13 @@ export const SnifferPage = () => {
                     This response cannot be decoded yet.
                   </Typography>
                   <Typography variant="body1" sx={stateBlockBodySx}>
-                    {hasProtoForSelectedCall
-                      ? "Route the peer to a room to view the content."
-                      : "Upload runtime proto and route the peer to a room to view the content."}
+                    {selectedResponseSource === "proto"
+                      ? hasProtoForSelectedCall
+                        ? "Route the peer to a room to view the content."
+                        : "Upload runtime proto and route the peer to a room to view the content."
+                      : hasProtoForSelectedCall
+                        ? "Route the peer to a room to view the content."
+                        : "Set a reflection host and route the peer to a room to view the content."}
                   </Typography>
                   <Box
                     sx={{
@@ -2379,11 +3322,19 @@ export const SnifferPage = () => {
                       }}
                     >
                       {shouldShowCombinedAttachAndProtoHint ? (
-                        <Typography variant="body2" color="success.main" sx={stateBlockHintSx}>
+                        <Typography
+                          variant="body2"
+                          color="success.main"
+                          sx={stateBlockHintSx}
+                        >
                           {`Room ${attachedRoomLabel} attached and Protofile already available - Retry request`}
                         </Typography>
                       ) : shouldShowAttachedRoomInfo ? (
-                        <Typography variant="body2" color="success.main" sx={stateBlockHintSx}>
+                        <Typography
+                          variant="body2"
+                          color="success.main"
+                          sx={stateBlockHintSx}
+                        >
                           {`Room ${attachedRoomLabel} attached - Retry request`}
                         </Typography>
                       ) : !isPeerBoundToAnyRoom ? (
@@ -2406,14 +3357,21 @@ export const SnifferPage = () => {
                             }}
                           >
                             {isInGlobalScope ? (
-                              <Box sx={{ ...roomAssignControlWidthSx, mx: "auto" }}>
+                              <Box
+                                sx={{ ...roomAssignControlWidthSx, mx: "auto" }}
+                              >
                                 <FormControl
                                   margin="none"
-                                  sx={[roomAssignSelectorSx, roomAssignControlWidthSx]}
+                                  sx={[
+                                    roomAssignSelectorSx,
+                                    roomAssignControlWidthSx,
+                                  ]}
                                 >
                                   <Select
                                     value={roomForAttachment}
-                                    onChange={(event) => setRoomForAttachment(event.target.value)}
+                                    onChange={(event) =>
+                                      setRoomForAttachment(event.target.value)
+                                    }
                                     variant="outlined"
                                     displayEmpty={false}
                                     sx={roomAssignControlWidthSx}
@@ -2431,9 +3389,15 @@ export const SnifferPage = () => {
                               variant="contained"
                               onClick={handleAssignPeerRoom}
                               disabled={!canAssignPeerRoom}
-                              sx={[roomAssignButtonSx, roomAssignControlWidthSx, { mx: "auto" }]}
+                              sx={[
+                                roomAssignButtonSx,
+                                roomAssignControlWidthSx,
+                                { mx: "auto" },
+                              ]}
                             >
-                              {isInGlobalScope ? "Assign selected room" : "Assign current room"}
+                              {isInGlobalScope
+                                ? "Assign selected room"
+                                : "Assign current room"}
                             </Button>
                           </Box>
                           {shouldShowCombinedAttachAndProtoHint ? null : hasProtoForSelectedCall ? (
@@ -2447,8 +3411,14 @@ export const SnifferPage = () => {
                                 px: 0.25,
                               }}
                             >
-                              <Typography variant="body2" color="success.main" sx={stateBlockHintSx}>
-                                {shouldShowProtoUploadedHint ? "Protofile uploaded - retry call" : "Protofile already available"}
+                              <Typography
+                                variant="body2"
+                                color="success.main"
+                                sx={stateBlockHintSx}
+                              >
+                                {shouldShowProtoUploadedHint
+                                  ? "Protofile uploaded - retry call"
+                                  : "Protofile already available"}
                               </Typography>
                             </Box>
                           ) : (
@@ -2460,31 +3430,28 @@ export const SnifferPage = () => {
                                 width: "100%",
                               }}
                             >
-                              <Button
-                                variant="contained"
-                                onClick={() => fileInputRef.current?.click()}
-                                disabled={isUploadingProto}
-                                sx={roomAssignButtonSx}
-                              >
-                                {isUploadingProto ? "Uploading..." : "Upload proto"}
-                              </Button>
+                              {selectedResponseSource === "proto"
+                                ? protoUploadControl
+                                : reflectionHostControl}
                             </Box>
                           )}
                         </Box>
                       ) : null}
-                      {shouldShowCombinedAttachAndProtoHint || !isPeerBoundToAnyRoom ? null : hasProtoForSelectedCall ? (
-                        <Typography variant="body2" color="success.main" sx={stateBlockHintSx}>
-                          {shouldShowProtoUploadedHint ? "Protofile uploaded - retry call" : "Protofile already available"}
-                        </Typography>
-                      ) : (
-                        <Button
-                          variant="contained"
-                          onClick={() => fileInputRef.current?.click()}
-                          disabled={isUploadingProto}
-                          sx={stateBlockActionButtonSx}
+                      {shouldShowCombinedAttachAndProtoHint ||
+                      !isPeerBoundToAnyRoom ? null : hasProtoForSelectedCall ? (
+                        <Typography
+                          variant="body2"
+                          color="success.main"
+                          sx={stateBlockHintSx}
                         >
-                          {isUploadingProto ? "Uploading..." : "Upload proto"}
-                        </Button>
+                          {shouldShowProtoUploadedHint
+                            ? "Protofile uploaded - retry call"
+                            : "Protofile already available"}
+                        </Typography>
+                      ) : selectedResponseSource === "proto" ? (
+                        protoUploadControl
+                      ) : (
+                        reflectionHostControl
                       )}
                     </Box>
                   </Box>
@@ -2494,7 +3461,12 @@ export const SnifferPage = () => {
               <Box sx={stateBlockContainerSx}>
                 <Box sx={stateBlockCardSx}>
                   <ErrorOutlineRoundedIcon
-                    sx={{ fontSize: { xs: 36, sm: 44 }, opacity: 0.75, mb: 0.75, color: "error.main" }}
+                    sx={{
+                      fontSize: { xs: 36, sm: 44 },
+                      opacity: 0.75,
+                      mb: 0.75,
+                      color: "error.main",
+                    }}
                   />
                   <Typography variant="h5" sx={stateBlockTitleSx}>
                     Invalid stub response
@@ -2507,11 +3479,19 @@ export const SnifferPage = () => {
                   </Typography>
                   <Box sx={stateBlockActionsSx}>
                     {shouldShowResolvedReplacedHint ? (
-                      <Typography variant="body2" color="success.main" sx={stateBlockHintSx}>
+                      <Typography
+                        variant="body2"
+                        color="success.main"
+                        sx={stateBlockHintSx}
+                      >
                         Stub replaced - Retry Call
                       </Typography>
                     ) : shouldShowResolvedEditedHint ? (
-                      <Typography variant="body2" color="success.main" sx={stateBlockHintSx}>
+                      <Typography
+                        variant="body2"
+                        color="success.main"
+                        sx={stateBlockHintSx}
+                      >
                         Stub edited - retry call
                       </Typography>
                     ) : selectedStubId ? (
@@ -2542,29 +3522,74 @@ export const SnifferPage = () => {
             ) : shouldShowMissingStubBlock ? (
               <Box sx={stateBlockContainerSx}>
                 <Box sx={stateBlockCardSx}>
-                  <SearchOffRoundedIcon sx={{ fontSize: { xs: 36, sm: 44 }, opacity: 0.75, mb: 0.75 }} />
+                  <SearchOffRoundedIcon
+                    sx={{
+                      fontSize: { xs: 36, sm: 44 },
+                      opacity: 0.75,
+                      mb: 0.75,
+                    }}
+                  />
                   <Typography variant="h5" sx={stateBlockTitleSx}>
-                    No stub assigned
-                  </Typography>
-                  <Typography variant="body1" sx={stateBlockBodySx}>
-                    No stub is assigned for this call.
+                    {hasAnyMatchingStubs
+                      ? "Stub did not match request"
+                      : "No stub assigned"}
                   </Typography>
                   <Typography variant="body1" sx={stateBlockBodySx}>
                     {hasAnyMatchingStubs
-                      ? "Stubs exist for this service/method, but none is assigned to this call. Assign an existing stub or create a new one."
+                      ? "A stub exists for this route, but this request did not match its input or headers."
+                      : "No stub is assigned for this call."}
+                  </Typography>
+                  <Typography variant="body1" sx={stateBlockBodySx}>
+                    {hasAnyMatchingStubs
+                      ? "Edit the route stub or create a more specific stub for this request."
                       : "No stubs exist for this service/method yet. Create one for this call."}
                   </Typography>
+                  {hasAnyMatchingStubs && selected?.error ? (
+                    <Box
+                      component="pre"
+                      sx={{
+                        mt: 1,
+                        maxWidth: "min(720px, 100%)",
+                        maxHeight: 220,
+                        overflow: "auto",
+                        whiteSpace: "pre-wrap",
+                        textAlign: "left",
+                        color: "text.secondary",
+                        bgcolor: "rgba(255,255,255,0.04)",
+                        border: "1px solid",
+                        borderColor: "divider",
+                        borderRadius: 1,
+                        p: 1.25,
+                        fontFamily: "monospace",
+                        fontSize: "0.75rem",
+                      }}
+                    >
+                      {selected.error}
+                    </Box>
+                  ) : null}
                   <Box sx={stateBlockActionsSx}>
                     {shouldShowStubCreatedAndAssignedRetryHint ? (
-                      <Typography variant="body2" color="success.main" sx={stateBlockHintSx}>
+                      <Typography
+                        variant="body2"
+                        color="success.main"
+                        sx={stateBlockHintSx}
+                      >
                         Stub created and assigned - retry call
                       </Typography>
                     ) : shouldShowStubAssignedRetryHint ? (
-                      <Typography variant="body2" color="success.main" sx={stateBlockHintSx}>
+                      <Typography
+                        variant="body2"
+                        color="success.main"
+                        sx={stateBlockHintSx}
+                      >
                         Stub assigned - retry call
                       </Typography>
                     ) : shouldShowStubCreatedHint ? (
-                      <Typography variant="body2" color="text.secondary" sx={stateBlockHintSx}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={stateBlockHintSx}
+                      >
                         Stub created
                       </Typography>
                     ) : null}
@@ -2574,11 +3599,11 @@ export const SnifferPage = () => {
                           <Button
                             variant="outlined"
                             component={RouterLink}
-                            to={stubsListPath}
+                            to={routeStubEditPath}
                             state={{ returnTo: snifferPath }}
                             sx={stateBlockActionButtonSx}
                           >
-                            Assign stub
+                            Edit route stub
                           </Button>
                         ) : null}
                         {shouldShowStubCreatedHint ? null : (
@@ -2603,15 +3628,22 @@ export const SnifferPage = () => {
                 </Box>
               </Box>
             ) : (
-              <Box sx={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  minHeight: 0,
+                  flex: 1,
+                }}
+              >
                 {showResponseSearch && hasResponseSearchablePayload ? (
-                  <Box
-                    sx={compactSearchBarSx}
-                  >
+                  <Box sx={compactSearchBarSx}>
                     <TextField
                       inputRef={responseSearchInputRef}
                       value={responseSearchQuery}
-                      onChange={(event) => setResponseSearchQuery(event.target.value)}
+                      onChange={(event) =>
+                        setResponseSearchQuery(event.target.value)
+                      }
                       size="small"
                       fullWidth
                       placeholder="Find"
@@ -2619,23 +3651,35 @@ export const SnifferPage = () => {
                     />
                     <Button
                       size="small"
-                      variant={responseSearchOptions.caseSensitive ? "contained" : "text"}
-                      onClick={() => toggleSearchOption("response", "caseSensitive")}
+                      variant={
+                        responseSearchOptions.caseSensitive
+                          ? "contained"
+                          : "text"
+                      }
+                      onClick={() =>
+                        toggleSearchOption("response", "caseSensitive")
+                      }
                       sx={compactSearchToggleButtonSx}
                     >
                       Aa
                     </Button>
                     <Button
                       size="small"
-                      variant={responseSearchOptions.wholeWord ? "contained" : "text"}
-                      onClick={() => toggleSearchOption("response", "wholeWord")}
+                      variant={
+                        responseSearchOptions.wholeWord ? "contained" : "text"
+                      }
+                      onClick={() =>
+                        toggleSearchOption("response", "wholeWord")
+                      }
                       sx={compactSearchToggleButtonSx}
                     >
                       ab
                     </Button>
                     <Button
                       size="small"
-                      variant={responseSearchOptions.useRegex ? "contained" : "text"}
+                      variant={
+                        responseSearchOptions.useRegex ? "contained" : "text"
+                      }
                       onClick={() => toggleSearchOption("response", "useRegex")}
                       sx={compactSearchToggleButtonSx}
                     >
@@ -2673,106 +3717,131 @@ export const SnifferPage = () => {
                     </IconButton>
                   </Box>
                 ) : null}
-                <Box ref={responseSearchContainerRef} sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.25 }}>
-                {isSingleResponseView ? (
-                  <Box component="pre" sx={jsonTextSx}>
-                    {singleResponseEntry ? (
-                      renderHighlightedJsonText(
-                        singleResponseEntry.payloadText,
-                        responseMatchData.rangesByEntry.get(singleResponseEntry.key) || [],
-                        responseActiveMatch,
-                      )
-                    ) : (
-                      "No response payload"
-                    )}
-                  </Box>
-                ) : (
-                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                    {orderedResponseEntries.map((entry) => (
-                      <Accordion
-                        key={entry.key}
-                        disableGutters
-                        elevation={0}
-                        square
-                        expanded={expandedResponseKeys.has(entry.key)}
-                        onChange={(_, expanded) => {
-                          setExpandedResponseKeys((current) => {
-                            const next = new Set(current);
-                            if (expanded) {
-                              next.add(entry.key);
-                            } else {
-                              next.delete(entry.key);
-                            }
-                            return next;
-                          });
-                        }}
-                        sx={{
-                          border: "1px solid",
-                          borderColor: "divider",
-                          borderRadius: RADIUS_PX,
-                          overflow: "hidden",
-                          "&::before": { display: "none" },
-                          bgcolor: "background.paper",
-                        }}
-                      >
-                        <AccordionSummary
-                          expandIcon={<ExpandMoreRoundedIcon fontSize="small" />}
-                          sx={{
-                            px: 1,
-                            minHeight: 36,
-                            bgcolor: "action.hover",
-                            "&.Mui-expanded": { minHeight: 36 },
-                            "& .MuiAccordionSummary-content": {
-                              my: 0.4,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 1.2,
-                            },
-                            "& .MuiAccordionSummary-content.Mui-expanded": { my: 0.4 },
+                <Box
+                  ref={responseSearchContainerRef}
+                  sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.25 }}
+                >
+                  {isSingleResponseView ? (
+                    <Box component="pre" sx={jsonTextSx}>
+                      {singleResponseEntry
+                        ? renderHighlightedJsonText(
+                            singleResponseEntry.payloadText,
+                            responseMatchData.rangesByEntry.get(
+                              singleResponseEntry.key,
+                            ) || [],
+                            responseActiveMatch,
+                          )
+                        : "No response payload"}
+                    </Box>
+                  ) : (
+                    <Box
+                      sx={{ display: "flex", flexDirection: "column", gap: 1 }}
+                    >
+                      {orderedResponseEntries.map((entry) => (
+                        <Accordion
+                          key={entry.key}
+                          disableGutters
+                          elevation={0}
+                          square
+                          expanded={expandedResponseKeys.has(entry.key)}
+                          onChange={(_, expanded) => {
+                            setExpandedResponseKeys((current) => {
+                              const next = new Set(current);
+                              if (expanded) {
+                                next.add(entry.key);
+                              } else {
+                                next.delete(entry.key);
+                              }
+                              return next;
+                            });
                           }}
-                        >
-                          <Box sx={{ minWidth: 0, display: "flex", alignItems: "center", gap: 0.75 }}>
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{
-                                minWidth: 0,
-                                display: "block",
-                                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                maxWidth: "100%",
-                              }}
-                            >
-                              {formatJsonInlinePayload(entry.payload)}
-                            </Typography>
-                          </Box>
-                          <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
-                            {formatServerReceivedAt(entry.timestamp || selected?.timestamp)}
-                          </Typography>
-                        </AccordionSummary>
-                        <AccordionDetails
                           sx={{
-                            p: 1,
-                            borderTop: "1px solid",
+                            border: "1px solid",
                             borderColor: "divider",
+                            borderRadius: RADIUS_PX,
+                            overflow: "hidden",
+                            "&::before": { display: "none" },
                             bgcolor: "background.paper",
                           }}
                         >
-                          <Box component="pre" sx={jsonTextSx}>
-                            {renderHighlightedJsonText(
-                              entry.payloadText,
-                              responseMatchData.rangesByEntry.get(entry.key) || [],
-                              responseActiveMatch,
-                            )}
-                          </Box>
-                        </AccordionDetails>
-                      </Accordion>
-                    ))}
-                  </Box>
-                )}
+                          <AccordionSummary
+                            expandIcon={
+                              <ExpandMoreRoundedIcon fontSize="small" />
+                            }
+                            sx={{
+                              px: 1,
+                              minHeight: 36,
+                              bgcolor: "action.hover",
+                              "&.Mui-expanded": { minHeight: 36 },
+                              "& .MuiAccordionSummary-content": {
+                                my: 0.4,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 1.2,
+                              },
+                              "& .MuiAccordionSummary-content.Mui-expanded": {
+                                my: 0.4,
+                              },
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                minWidth: 0,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 0.75,
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{
+                                  minWidth: 0,
+                                  display: "block",
+                                  fontFamily:
+                                    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  maxWidth: "100%",
+                                }}
+                              >
+                                {formatJsonInlinePayload(entry.payload)}
+                              </Typography>
+                            </Box>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ whiteSpace: "nowrap" }}
+                            >
+                              {formatServerReceivedAt(
+                                entry.timestamp || selected?.timestamp,
+                              )}
+                            </Typography>
+                          </AccordionSummary>
+                          <AccordionDetails
+                            sx={{
+                              p: 1,
+                              borderTop: "1px solid",
+                              borderColor: "divider",
+                              bgcolor: "background.paper",
+                            }}
+                          >
+                            <Box component="pre" sx={jsonTextSx}>
+                              {renderHighlightedJsonText(
+                                entry.payloadText,
+                                responseMatchData.rangesByEntry.get(
+                                  entry.key,
+                                ) || [],
+                                responseActiveMatch,
+                              )}
+                            </Box>
+                          </AccordionDetails>
+                        </Accordion>
+                      ))}
+                    </Box>
+                  )}
                 </Box>
               </Box>
             )}

@@ -24,7 +24,11 @@ export type ProtoMessageSchema = {
 export type ServiceMethod = {
   id?: string;
   name?: string;
-  methodType?: "unary" | "client_streaming" | "server_streaming" | "bidi_streaming";
+  methodType?:
+    | "unary"
+    | "client_streaming"
+    | "server_streaming"
+    | "bidi_streaming";
   requestType?: string;
   inputType?: string;
   request?: string;
@@ -63,6 +67,7 @@ export type HistoryRecord = {
   response?: unknown;
   responses?: unknown[];
   responseTimestamps?: string[];
+  source?: "proto" | "reflection";
 };
 
 export type StubRecord = {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	stderrors "errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -39,6 +40,36 @@ func (m *mockExtender) Wait(ctx context.Context)          {}
 type protoMetadataDeleteMock struct {
 	result pgprotometadata.DeleteProtofileResult
 	err    error
+}
+
+type restReflectionClientMock struct {
+	fds         *descriptorpb.FileDescriptorSet
+	sourceSeen  *protoset.Source
+	err         error
+	calls       []string
+	fdsBySource map[string]*descriptorpb.FileDescriptorSet
+	errBySource map[string]error
+}
+
+func (m *restReflectionClientMock) FetchDescriptorSet(
+	_ context.Context,
+	source *protoset.Source,
+) (*descriptorpb.FileDescriptorSet, error) {
+	m.sourceSeen = source
+	m.calls = append(m.calls, source.ReflectAddress)
+
+	if m.errBySource != nil {
+		if err, ok := m.errBySource[source.ReflectAddress]; ok {
+			return nil, err
+		}
+	}
+	if m.fdsBySource != nil {
+		if fds, ok := m.fdsBySource[source.ReflectAddress]; ok {
+			return fds, nil
+		}
+	}
+
+	return m.fds, m.err
 }
 
 func (m *protoMetadataDeleteMock) ReplaceDescriptorFiles(context.Context, string, []protoreflect.FileDescriptor) error {
@@ -461,6 +492,166 @@ message MultiplyResponse {
 	s.Require().NoError(err)
 	s.Equal("ok", addResp.Message)
 	s.Contains(addResp.ServiceIDs, "multiplier.v1.MultiplierService")
+}
+
+func (s *RestServerTestSuite) TestAddDescriptorsFromProtoSourceWithGrpcGatewayOpenAPIImport() {
+	body := []byte(`syntax = "proto3";
+package openapiupload.v1;
+
+import "protoc-gen-openapiv2/options/annotations.proto";
+
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  info: {
+    title: "OpenAPI Upload"
+    version: "1.0"
+  }
+};
+
+service OpenAPIUploadService {
+  rpc Ping (PingRequest) returns (PingResponse) {}
+}
+
+message PingRequest {}
+
+message PingResponse {
+  string message = 1;
+}`)
+
+	w := s.addDescriptorsPayloadWithFilename(s.server, body, "openapi_upload.proto")
+	s.Equal(http.StatusOK, w.Code, w.Body.String())
+
+	var addResp struct {
+		Message    string   `json:"message"`
+		ServiceIDs []string `json:"serviceIDs"`
+	}
+
+	err := json.Unmarshal(w.Body.Bytes(), &addResp)
+	s.Require().NoError(err)
+	s.Equal("ok", addResp.Message)
+	s.Contains(addResp.ServiceIDs, "openapiupload.v1.OpenAPIUploadService")
+}
+
+func (s *RestServerTestSuite) TestAddDescriptorsFromReflectionWithDependency() {
+	server, err := NewRestServer(s.T().Context(), stuber.NewBudgerigar(), &mockExtender{}, nil, nil, nil)
+	s.Require().NoError(err)
+
+	client := &restReflectionClientMock{fds: reflectionDescriptorSetWithDependency()}
+	server.SetRemoteClient(client)
+
+	body := strings.NewReader(`{"source":"grpc://reflection.test:50051?timeout=1s"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/descriptors/reflection", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.AddDescriptorsFromReflection(w, req)
+
+	s.Equal(http.StatusOK, w.Code, w.Body.String())
+	s.Equal("reflection.test:50051", client.sourceSeen.ReflectAddress)
+	s.Contains(server.restDescriptors.ServiceIDs(), "reflectdep.ReflectionService")
+	s.True(strings.HasPrefix(server.restDescriptors.Source("reflectdep/service.proto"), descriptorSourceReflectPrefix))
+}
+
+func (s *RestServerTestSuite) TestMcpDescriptorsReflectTool() {
+	server, err := NewRestServer(s.T().Context(), stuber.NewBudgerigar(), &mockExtender{}, nil, nil, nil)
+	s.Require().NoError(err)
+	server.SetRemoteClient(&restReflectionClientMock{fds: reflectionDescriptorSetWithDependency()})
+
+	response := s.mcpToolCall(server, 1, "descriptors.reflect", map[string]any{
+		"source": "grpc://reflection.test:50051",
+	})
+	payload := s.mcpStructuredContent(response)
+
+	serviceIDs, ok := payload["serviceIDs"].([]any)
+	s.Require().True(ok)
+	s.Contains(serviceIDs, "reflectdep.ReflectionService")
+
+	sourcesResponse := s.mcpToolCall(server, 2, "reflect.sources", map[string]any{"kind": "reflection"})
+	sourcesPayload := s.mcpStructuredContent(sourcesResponse)
+
+	total, ok := sourcesPayload["total"].(float64)
+	s.Require().True(ok)
+	s.GreaterOrEqual(int(total), 1)
+}
+
+func (s *RestServerTestSuite) TestAddDescriptorsFromReflectionFallsBackToDockerHost() {
+	server, err := NewRestServer(s.T().Context(), stuber.NewBudgerigar(), &mockExtender{}, nil, nil, nil)
+	s.Require().NoError(err)
+
+	client := &restReflectionClientMock{
+		fdsBySource: map[string]*descriptorpb.FileDescriptorSet{
+			"host.docker.internal:4772": reflectionDescriptorSetWithDependency(),
+		},
+		errBySource: map[string]error{
+			"127.0.0.1:4772": stderrors.New("connection refused"),
+		},
+	}
+	server.SetRemoteClient(client)
+
+	body := strings.NewReader(`{"source":"grpc://127.0.0.1:4772"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/descriptors/reflection", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.AddDescriptorsFromReflection(w, req)
+
+	s.Equal(http.StatusOK, w.Code, w.Body.String())
+	s.Equal([]string{"127.0.0.1:4772", "host.docker.internal:4772"}, client.calls)
+	s.Contains(server.restDescriptors.ServiceIDs(), "reflectdep.ReflectionService")
+}
+
+func (s *RestServerTestSuite) TestAddDescriptorsFromReflectionReportsAllLocalFallbackFailures() {
+	server, err := NewRestServer(s.T().Context(), stuber.NewBudgerigar(), &mockExtender{}, nil, nil, nil)
+	s.Require().NoError(err)
+
+	client := &restReflectionClientMock{
+		err: stderrors.New("connection refused"),
+	}
+	server.SetRemoteClient(client)
+
+	body := strings.NewReader(`{"source":"grpc://127.0.0.1:4772"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/descriptors/reflection", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.AddDescriptorsFromReflection(w, req)
+
+	s.Equal(http.StatusBadRequest, w.Code)
+	s.Equal([]string{"127.0.0.1:4772", "host.docker.internal:4772", "localhost:4772"}, client.calls)
+	s.Contains(w.Body.String(), "host.docker.internal:4772")
+	s.Contains(w.Body.String(), "localhost:4772")
+}
+
+func (s *RestServerTestSuite) TestNormalizeReflectionHostRequest() {
+	host, source, err := normalizeReflectionHostRequest("localhost:50051", "")
+	s.Require().NoError(err)
+	s.Equal("127.0.0.1:50051", host)
+	s.Equal("grpc://127.0.0.1:50051", source)
+
+	host, source, err = normalizeReflectionHostRequest("", "grpcs://api.company.local:443?timeout=10s")
+	s.Require().NoError(err)
+	s.Equal("api.company.local:443", host)
+	s.Equal("grpcs://api.company.local:443?timeout=10s", source)
+
+	host, source, err = normalizeReflectionHostRequest(":4772", "")
+	s.Require().NoError(err)
+	s.Equal("127.0.0.1:4772", host)
+	s.Equal("grpc://127.0.0.1:4772", source)
+
+	host, source, err = normalizeReflectionHostRequest("", "grpc://:4772")
+	s.Require().NoError(err)
+	s.Equal("127.0.0.1:4772", host)
+	s.Equal("grpc://127.0.0.1:4772", source)
+
+	host, source, err = normalizeReflectionHostRequest("", "grpc://localhost:4772")
+	s.Require().NoError(err)
+	s.Equal("127.0.0.1:4772", host)
+	s.Equal("grpc://127.0.0.1:4772", source)
+}
+
+func (s *RestServerTestSuite) TestNormalizeReflectionHostRequestRejectsNonReflectionSource() {
+	_, _, err := normalizeReflectionHostRequest("", "http://localhost:8080")
+	s.Require().Error(err)
+	s.Contains(err.Error(), "reflection source")
 }
 
 // TestListDescriptors tests GET /api/descriptors.
@@ -2120,6 +2311,55 @@ func (s *RestServerTestSuite) greeterDescriptorSetBytes() []byte {
 	s.Require().NoError(err)
 
 	return body
+}
+
+func reflectionDescriptorSetWithDependency() *descriptorpb.FileDescriptorSet {
+	labelOptional := descriptorpb.FieldDescriptorProto_LABEL_OPTIONAL
+	typeString := descriptorpb.FieldDescriptorProto_TYPE_STRING
+
+	return &descriptorpb.FileDescriptorSet{
+		File: []*descriptorpb.FileDescriptorProto{
+			{
+				Name:    proto.String("reflectdep/dependency.proto"),
+				Package: proto.String("reflectdep"),
+				Syntax:  proto.String("proto3"),
+				MessageType: []*descriptorpb.DescriptorProto{
+					{
+						Name: proto.String("SharedRequest"),
+						Field: []*descriptorpb.FieldDescriptorProto{
+							{
+								Name:   proto.String("value"),
+								Number: proto.Int32(1),
+								Label:  &labelOptional,
+								Type:   &typeString,
+							},
+						},
+					},
+				},
+			},
+			{
+				Name:       proto.String("reflectdep/service.proto"),
+				Package:    proto.String("reflectdep"),
+				Syntax:     proto.String("proto3"),
+				Dependency: []string{"reflectdep/dependency.proto"},
+				MessageType: []*descriptorpb.DescriptorProto{
+					{Name: proto.String("ReflectReply")},
+				},
+				Service: []*descriptorpb.ServiceDescriptorProto{
+					{
+						Name: proto.String("ReflectionService"),
+						Method: []*descriptorpb.MethodDescriptorProto{
+							{
+								Name:       proto.String("Echo"),
+								InputType:  proto.String(".reflectdep.SharedRequest"),
+								OutputType: proto.String(".reflectdep.ReflectReply"),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 func (s *RestServerTestSuite) addDescriptorsPayload(server *RestServer, payload []byte) *httptest.ResponseRecorder {

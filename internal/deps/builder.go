@@ -22,6 +22,7 @@ import (
 	pgallowlist "github.com/bavix/gripmock/v3/internal/infra/postgres/allowlist"
 	pgclients "github.com/bavix/gripmock/v3/internal/infra/postgres/clients"
 	pgprotometadata "github.com/bavix/gripmock/v3/internal/infra/postgres/protometadata"
+	pgreflectionhosts "github.com/bavix/gripmock/v3/internal/infra/postgres/reflectionhosts"
 	pgrooms "github.com/bavix/gripmock/v3/internal/infra/postgres/rooms"
 	pgusers "github.com/bavix/gripmock/v3/internal/infra/postgres/users"
 	reflectclient "github.com/bavix/gripmock/v3/internal/infra/reflectclient"
@@ -92,6 +93,10 @@ type Builder struct {
 	protoMetadataRepository     *pgprotometadata.Repository
 	protoMetadataRepositoryOnce sync.Once
 	protoMetadataRepositoryErr  error
+
+	reflectionHostsRepository     *pgreflectionhosts.Repository
+	reflectionHostsRepositoryOnce sync.Once
+	reflectionHostsRepositoryErr  error
 
 	persistenceInitOnce sync.Once
 	persistenceInitErr  error

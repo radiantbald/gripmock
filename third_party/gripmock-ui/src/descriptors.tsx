@@ -11,6 +11,7 @@ import {
   ListItem,
   ListItemText,
   Chip,
+  TextField,
 } from "@mui/material";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -32,7 +33,9 @@ export const DescriptorList = () => {
   const refresh = useRefresh();
   const dataProvider = useDataProvider();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [reflectionSource, setReflectionSource] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [isReflecting, setIsReflecting] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
 
   const { data, isLoading, error } = useGetList("descriptors", {
@@ -70,12 +73,58 @@ export const DescriptorList = () => {
     }
   };
 
+  const handleReflectionLoad = async () => {
+    const source = reflectionSource.trim();
+    if (!source) {
+      notify("Enter a grpc:// or grpcs:// reflection source first", {
+        type: "warning",
+      });
+      return;
+    }
+
+    setIsReflecting(true);
+    try {
+      const response = await dataProvider.create("descriptors", {
+        data: { source },
+      });
+      setResult(response.data as UploadResult);
+      notify("Descriptors loaded from reflection", { type: "success" });
+      refresh();
+    } catch (reflectionError) {
+      notify((reflectionError as Error).message, { type: "error" });
+    } finally {
+      setIsReflecting(false);
+    }
+  };
+
   return (
     <Box p={1.5} display="flex" flexDirection="column" gap={1.5}>
       <Card>
         <CardHeader title="Runtime descriptors" />
         <CardContent>
           <Box display="flex" flexDirection="column" gap={1.5}>
+            <Box display="flex" alignItems="center" gap={1}>
+              <TextField
+                size="small"
+                fullWidth
+                label="gRPC reflection source"
+                placeholder="grpc://localhost:50051"
+                value={reflectionSource}
+                onChange={(event) => setReflectionSource(event.target.value)}
+              />
+              <Button
+                variant="contained"
+                onClick={handleReflectionLoad}
+                disabled={isReflecting || !reflectionSource.trim()}
+              >
+                {isReflecting ? "Loading..." : "Load reflection"}
+              </Button>
+            </Box>
+            <Typography variant="body2" color="text.secondary">
+              Use server reflection when a proto upload fails because its
+              imports are not available locally.
+            </Typography>
+
             <Box display="flex" alignItems="center" gap={1}>
               <input
                 type="file"

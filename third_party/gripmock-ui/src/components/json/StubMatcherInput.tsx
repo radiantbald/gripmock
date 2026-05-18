@@ -143,17 +143,22 @@ export const StubMatcherInput = ({
         ? matcherPlaceholder
         : prettyJson(initialValue);
     setText(nextText);
-    applyParsedValue(nextText);
+    applyParsedValue(nextText, { shouldDirty: mode === "create" });
     setInitialized(true);
   }, [initialValue, isInitialized, mode, record]);
 
-  const applyParsedValue = (nextText: string) => {
+  const applyParsedValue = (
+    nextText: string,
+    options: { shouldDirty?: boolean } = { shouldDirty: true },
+  ) => {
     const trimmed = nextText.trim();
+    const shouldDirty = options.shouldDirty ?? true;
+    const unsetValue = mode === "edit" ? null : undefined;
 
     if (!trimmed) {
       setParseError(null);
-      setValue(inputSource, undefined, { shouldDirty: true });
-      setValue(inputsSource, undefined, { shouldDirty: true });
+      setValue(inputSource, unsetValue, { shouldDirty });
+      setValue(inputsSource, unsetValue, { shouldDirty });
       return;
     }
 
@@ -162,15 +167,15 @@ export const StubMatcherInput = ({
       const normalized = normalizeInputMatcher(parsed);
 
       if (Array.isArray(normalized)) {
-        setValue(inputsSource, normalized, { shouldDirty: true });
-        setValue(inputSource, undefined, { shouldDirty: true });
+        setValue(inputsSource, normalized, { shouldDirty });
+        setValue(inputSource, unsetValue, { shouldDirty });
         setParseError(null);
         return;
       }
 
       if (normalized && typeof normalized === "object") {
-        setValue(inputSource, normalized, { shouldDirty: true });
-        setValue(inputsSource, undefined, { shouldDirty: true });
+        setValue(inputSource, normalized, { shouldDirty });
+        setValue(inputsSource, unsetValue, { shouldDirty });
         setParseError(null);
         return;
       }
@@ -191,7 +196,7 @@ export const StubMatcherInput = ({
     if (!trimmed) {
       setText("{}");
       setValue(inputSource, {}, { shouldDirty: true });
-      setValue(inputsSource, undefined, { shouldDirty: true });
+      setValue(inputsSource, mode === "edit" ? null : undefined, { shouldDirty: true });
       setParseError(null);
       return;
     }
