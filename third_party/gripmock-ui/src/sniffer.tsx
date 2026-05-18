@@ -1350,12 +1350,13 @@ export const SnifferPage = () => {
     selectedMethod,
   );
   const selectedHistorySource = selected?.source || defaultSnifferSource;
-  const selectedResponseSource =
+  const selectedNextResponseSource =
     (selectedRouteKey ? routeSources[selectedRouteKey] : undefined) ||
     selectedHistorySource;
+  const selectedResponseSource = selectedHistorySource;
   const hasSelectedSourceChanged =
     selectedRouteKey.length > 0 &&
-    selectedResponseSource !== selectedHistorySource;
+    selectedNextResponseSource !== selectedHistorySource;
   const resolvedPeerRoom = (selectedPeer ? peerBoundRoom : selectedRoom).trim();
   const isPeerBoundToAnyRoom = resolvedPeerRoom.length > 0;
   const isGlobalRoomCall = !!selected && selectedRoom.length === 0;
@@ -3430,7 +3431,7 @@ export const SnifferPage = () => {
                                 width: "100%",
                               }}
                             >
-                              {selectedResponseSource === "proto"
+                              {selectedNextResponseSource === "proto"
                                 ? protoUploadControl
                                 : reflectionHostControl}
                             </Box>
@@ -3448,7 +3449,7 @@ export const SnifferPage = () => {
                             ? "Protofile uploaded - retry call"
                             : "Protofile already available"}
                         </Typography>
-                      ) : selectedResponseSource === "proto" ? (
+                      ) : selectedNextResponseSource === "proto" ? (
                         protoUploadControl
                       ) : (
                         reflectionHostControl
