@@ -1,8 +1,11 @@
 package pbs
 
 import (
+	"context"
+	"strings"
 	"testing"
 
+	"github.com/bufbuild/protocompile"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/descriptorpb"
@@ -16,7 +19,7 @@ func TestNewResolver(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resolver)
 	require.NotNil(t, resolver.items)
-	require.Len(t, resolver.items, 2) // googleapis and protobuf
+	require.Len(t, resolver.items, 3) // googleapis, grpc-gateway, and protobuf
 }
 
 func TestNewResolverEmbeddedData(t *testing.T) {
@@ -24,7 +27,64 @@ func TestNewResolverEmbeddedData(t *testing.T) {
 
 	// Test that embedded data is not empty
 	require.NotEmpty(t, googleapis)
+	require.NotEmpty(t, grpcGateway)
 	require.NotEmpty(t, protobuf)
+}
+
+func TestThirdPartyResolverFindGrpcGatewayOpenAPIOptions(t *testing.T) {
+	t.Parallel()
+
+	resolver, err := NewResolver()
+	require.NoError(t, err)
+
+	result, err := resolver.FindFileByPath("protoc-gen-openapiv2/options/annotations.proto")
+	require.NoError(t, err)
+	require.NotNil(t, result.Proto)
+}
+
+func TestThirdPartyResolverCompilesUploadedProtoWithGrpcGatewayOpenAPIOptions(t *testing.T) {
+	t.Parallel()
+
+	resolver, err := NewResolver()
+	require.NoError(t, err)
+
+	const fileName = "upload.proto"
+	compiler := protocompile.Compiler{
+		Resolver: protocompile.CompositeResolver{
+			resolver,
+			protocompile.ResolverFunc(func(path string) (protocompile.SearchResult, error) {
+				if path != fileName {
+					return protocompile.SearchResult{}, protoregistry.NotFound
+				}
+
+				return protocompile.SearchResult{Source: strings.NewReader(`syntax = "proto3";
+package openapiupload.v1;
+
+import "protoc-gen-openapiv2/options/annotations.proto";
+
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  info: {
+    title: "OpenAPI Upload"
+    version: "1.0"
+  }
+};
+
+service OpenAPIUploadService {
+  rpc Ping (PingRequest) returns (PingResponse) {}
+}
+
+message PingRequest {}
+
+message PingResponse {
+  string message = 1;
+}`)}, nil
+			}),
+		},
+	}
+
+	files, err := compiler.Compile(context.Background(), fileName)
+	require.NoError(t, err)
+	require.Len(t, files, 1)
 }
 
 func TestThirdPartyResolverFIndFileByPathExistingFile(t *testing.T) {

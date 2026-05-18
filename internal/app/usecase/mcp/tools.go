@@ -9,23 +9,24 @@ const (
 	ToolOverview  = "dashboard.overview"
 	ToolInfo      = "dashboard.info"
 
-	ToolRoomsList   = "rooms.list"
+	ToolRoomsList      = "rooms.list"
 	ToolGripmockInfo   = "gripmock.info"
 	ToolReflectInfo    = "reflect.info"
 	ToolReflectSources = "reflect.sources"
 
-	ToolDescriptorsAdd  = "descriptors.add"
-	ToolDescriptorsList = "descriptors.list"
-	ToolServicesGet     = "services.get"
-	ToolServicesMethods = "services.methods"
-	ToolServicesMethod  = "services.method"
-	ToolServicesList    = "services.list"
-	ToolServicesDelete  = "services.delete"
-	ToolHistoryList     = "history.list"
-	ToolHistoryErrors   = "history.errors"
-	ToolVerifyCalls     = "verify.calls"
-	ToolDebugCall       = "debug.call"
-	ToolSchemaStub      = "schema.stub"
+	ToolDescriptorsAdd     = "descriptors.add"
+	ToolDescriptorsReflect = "descriptors.reflect"
+	ToolDescriptorsList    = "descriptors.list"
+	ToolServicesGet        = "services.get"
+	ToolServicesMethods    = "services.methods"
+	ToolServicesMethod     = "services.method"
+	ToolServicesList       = "services.list"
+	ToolServicesDelete     = "services.delete"
+	ToolHistoryList        = "history.list"
+	ToolHistoryErrors      = "history.errors"
+	ToolVerifyCalls        = "verify.calls"
+	ToolDebugCall          = "debug.call"
+	ToolSchemaStub         = "schema.stub"
 
 	ToolStubsUpsert      = "stubs.upsert"
 	ToolStubsList        = "stubs.list"
@@ -52,6 +53,7 @@ func ListTools() []map[string]any {
 		reflectInfoTool(),
 		reflectSourcesTool(),
 		descriptorsAddTool(),
+		descriptorsReflectTool(),
 		descriptorsListTool(),
 		servicesListTool(),
 		servicesGetTool(),
@@ -184,6 +186,15 @@ func descriptorsAddTool() map[string]any {
 	}
 }
 
+func descriptorsReflectTool() map[string]any {
+	return newTool(ToolDescriptorsReflect, "Register descriptors from a gRPC server reflection source", objectSchema(map[string]any{
+		"source": map[string]any{
+			"type":        "string",
+			"description": "gRPC reflection source, for example grpc://localhost:50051 or grpcs://api.company.local:443?timeout=10s",
+		},
+	}, "source"))
+}
+
 func descriptorsListTool() map[string]any {
 	return newTool(ToolDescriptorsList, "List service IDs registered through dynamic descriptors", objectSchema(nil))
 }
@@ -221,15 +232,15 @@ func historyListTool() map[string]any {
 	return newTool(ToolHistoryList, "List recent gRPC call history for debugging", objectSchema(map[string]any{
 		"service": stringProp(),
 		"method":  stringProp(),
-		"room": stringProp(),
+		"room":    stringProp(),
 		"limit":   nonNegativeIntegerProp(),
 	}))
 }
 
 func historyErrorsTool() map[string]any {
 	return newTool(ToolHistoryErrors, "List recent gRPC calls that ended with errors", objectSchema(map[string]any{
-		"room": stringProp(),
-		"limit":   nonNegativeIntegerProp(),
+		"room":  stringProp(),
+		"limit": nonNegativeIntegerProp(),
 	}))
 }
 
@@ -237,7 +248,7 @@ func debugCallTool() map[string]any {
 	return newTool(ToolDebugCall, "Diagnose why a service/method call is failing", objectSchema(map[string]any{
 		"service":    stringProp(),
 		"method":     stringProp(),
-		"room":    stringProp(),
+		"room":       stringProp(),
 		"limit":      nonNegativeIntegerProp(),
 		"stubsLimit": nonNegativeIntegerProp(),
 	}, "service"))
@@ -248,7 +259,7 @@ func verifyCallsTool() map[string]any {
 		"service":       stringProp(),
 		"method":        stringProp(),
 		"expectedCount": nonNegativeIntegerProp(),
-		"room":       stringProp(),
+		"room":          stringProp(),
 	}, "service", "method", "expectedCount"))
 }
 
@@ -283,7 +294,7 @@ func stubsListTool() map[string]any {
 	return newTool(ToolStubsList, "List stubs with optional filters", objectSchema(map[string]any{
 		"service": stringProp(),
 		"method":  stringProp(),
-		"room": stringProp(),
+		"room":    stringProp(),
 		"limit":   nonNegativeIntegerProp(),
 		"offset":  nonNegativeIntegerProp(),
 	}))
@@ -355,7 +366,7 @@ func stubsSearchTool() map[string]any {
 			"properties": map[string]any{
 				"service": map[string]any{"type": "string"},
 				"method":  map[string]any{"type": "string"},
-				"room": map[string]any{"type": "string"},
+				"room":    map[string]any{"type": "string"},
 				"headers": map[string]any{"type": "object", "additionalProperties": true},
 				"payload": map[string]any{"type": "object", "additionalProperties": true},
 				"input": map[string]any{
@@ -372,7 +383,7 @@ func stubsInspectTool() map[string]any {
 		"id":      stringProp(),
 		"service": stringProp(),
 		"method":  stringProp(),
-		"room": stringProp(),
+		"room":    stringProp(),
 		"headers": objectAnyProp(),
 		"input":   objectArrayAnyProp(),
 	}, "service", "method"))

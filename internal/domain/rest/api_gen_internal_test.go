@@ -114,6 +114,12 @@ func (m *mockServer) AddDescriptors(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (m *mockServer) AddDescriptorsFromReflection(w http.ResponseWriter, _ *http.Request) {
+	m.called["AddDescriptorsFromReflection"] = true
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func (m *mockServer) DeleteService(w http.ResponseWriter, _ *http.Request, _ string) {
 	m.called["DeleteService"] = true
 
@@ -209,6 +215,7 @@ func TestHandlerRoutes(t *testing.T) {
 		{http.MethodPost, "/stubs", "AddStub"},
 		{http.MethodGet, "/descriptors", "ListDescriptors"},
 		{http.MethodPost, "/descriptors", "AddDescriptors"},
+		{http.MethodPost, "/descriptors/reflection", "AddDescriptorsFromReflection"},
 		{http.MethodDelete, "/services/myservice", "DeleteService"},
 		{http.MethodPost, "/stubs/batchDelete", "BatchStubsDelete"},
 		{http.MethodPost, "/stubs/search", "SearchStubs"},

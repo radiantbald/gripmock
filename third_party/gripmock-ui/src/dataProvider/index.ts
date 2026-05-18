@@ -205,6 +205,19 @@ const dataProvider: DataProvider = {
     const canonical = canonicalResource(resource);
 
     if (canonical === "descriptors") {
+      const source = params.data?.source;
+      if (typeof source === "string" && source.trim()) {
+        const data = asRow(
+          await apiClient.request<Row>(`/${canonical}/reflection`, {
+            method: "POST",
+            body: JSON.stringify({ source: source.trim() }),
+            skipRoomHeader: true,
+          }),
+        );
+        const id = typeof data.time === "string" ? data.time : source.trim();
+        return { data: { id, ...data } } as RAResult<any>;
+      }
+
       const file = params.data?.file as File | undefined;
       if (!file) {
         throw new Error("Descriptor file is required");

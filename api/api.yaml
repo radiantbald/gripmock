@@ -662,6 +662,30 @@ paths:
           description: Invalid or empty FileDescriptorSet
         '500':
           description: Internal Server Error
+  /descriptors/reflection:
+    post:
+      tags:
+        - descriptors
+      summary: Load descriptors from gRPC server reflection
+      description: Fetches a FileDescriptorSet from a live gRPC server reflection endpoint and registers descriptors for dynamic service discovery.
+      operationId: addDescriptorsFromReflection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddDescriptorsFromReflectionRequest'
+      responses:
+        '200':
+          description: Descriptors registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddDescriptorsResponse'
+        '400':
+          description: Invalid reflection source or reflection fetch failure
+        '500':
+          description: Internal Server Error
 
 components:
   schemas:
@@ -698,6 +722,14 @@ components:
           items:
             type: string
           description: Service IDs (e.g. helloworld.Greeter) registered. Use DELETE /services/{serviceID} to remove.
+    AddDescriptorsFromReflectionRequest:
+      type: object
+      required:
+        - source
+      properties:
+        source:
+          type: string
+          description: gRPC reflection source, for example grpc://localhost:50051 or grpcs://api.company.local:443?timeout=10s
     DescriptorServiceIDs:
       type: object
       required:

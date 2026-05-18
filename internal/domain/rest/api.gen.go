@@ -79,6 +79,12 @@ func (e StubEffectAction) Valid() bool {
 	}
 }
 
+// AddDescriptorsFromReflectionRequest defines model for AddDescriptorsFromReflectionRequest.
+type AddDescriptorsFromReflectionRequest struct {
+	// Source gRPC reflection source, for example grpc://localhost:50051 or grpcs://api.company.local:443?timeout=10s
+	Source string `json:"source"`
+}
+
 // AddDescriptorsResponse defines model for AddDescriptorsResponse.
 type AddDescriptorsResponse struct {
 	Message string `json:"message"`
@@ -525,6 +531,9 @@ type AddStub200JSONResponseBody struct {
 	union json.RawMessage
 }
 
+// AddDescriptorsFromReflectionJSONRequestBody defines body for AddDescriptorsFromReflection for application/json ContentType.
+type AddDescriptorsFromReflectionJSONRequestBody = AddDescriptorsFromReflectionRequest
+
 // AddStubJSONRequestBody defines body for AddStub for application/json ContentType.
 type AddStubJSONRequestBody AddStubJSONBody
 
@@ -721,6 +730,9 @@ type ServerInterface interface {
 	// Upload FileDescriptorSet
 	// (POST /descriptors)
 	AddDescriptors(w http.ResponseWriter, r *http.Request)
+	// Load descriptors from gRPC server reflection
+	// (POST /descriptors/reflection)
+	AddDescriptorsFromReflection(w http.ResponseWriter, r *http.Request)
 	// Liveness check
 	// (GET /health/liveness)
 	Liveness(w http.ResponseWriter, r *http.Request)
@@ -856,6 +868,20 @@ func (siw *ServerInterfaceWrapper) AddDescriptors(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AddDescriptors(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddDescriptorsFromReflection operation middleware
+func (siw *ServerInterfaceWrapper) AddDescriptorsFromReflection(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddDescriptorsFromReflection(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1517,6 +1543,8 @@ func HandlerWithOptions(si ServerInterface, options GorillaServerOptions) http.H
 	r.HandleFunc(options.BaseURL+"/descriptors", wrapper.ListDescriptors).Methods(http.MethodGet)
 
 	r.HandleFunc(options.BaseURL+"/descriptors", wrapper.AddDescriptors).Methods(http.MethodPost)
+
+	r.HandleFunc(options.BaseURL+"/descriptors/reflection", wrapper.AddDescriptorsFromReflection).Methods(http.MethodPost)
 
 	r.HandleFunc(options.BaseURL+"/health/liveness", wrapper.Liveness).Methods(http.MethodGet)
 
