@@ -2,6 +2,7 @@ import {
   ChangeEvent,
   Fragment,
   MouseEvent,
+  PointerEvent as ReactPointerEvent,
   ReactNode,
   useCallback,
   useEffect,
@@ -92,6 +93,15 @@ type CallTableFilterMenuState = {
   field: CallTableFilterField;
   anchorEl: HTMLElement;
 };
+type CallTableColumnKey =
+  | "room"
+  | "client"
+  | "service"
+  | "method"
+  | "code"
+  | "receivedByServer"
+  | "source"
+  | "servedBy";
 type SnifferSource = "proto" | "reflection";
 type ReflectionServedBy = "stub" | "proxy";
 type ResponsePanelMode = "response" | "nextResponse";
@@ -105,6 +115,10 @@ type ProtofileRecord = {
   name?: string;
   version?: number;
   source?: string;
+};
+type ProtofileOption = {
+  name: string;
+  label: string;
 };
 type SnifferSourceChange = {
   source: SnifferSource;
@@ -125,6 +139,27 @@ const MIN_TOP_PANEL_RATIO = 0.2;
 const MIN_BOTTOM_PANEL_RATIO = 0.25;
 const MIN_REQUEST_PANEL_RATIO = 0.2;
 const MIN_RESPONSE_PANEL_RATIO = 0.2;
+const CALL_TABLE_COLUMN_RESIZE_HANDLE_WIDTH_PX = 8;
+const CALL_TABLE_DEFAULT_COLUMN_WIDTHS: Record<CallTableColumnKey, number> = {
+  room: 108,
+  client: 220,
+  service: 190,
+  method: 200,
+  code: 96,
+  receivedByServer: 180,
+  source: 118,
+  servedBy: 114,
+};
+const CALL_TABLE_MIN_COLUMN_WIDTHS: Record<CallTableColumnKey, number> = {
+  room: 72,
+  client: 120,
+  service: 120,
+  method: 120,
+  code: 72,
+  receivedByServer: 140,
+  source: 96,
+  servedBy: 96,
+};
 const clampRatio = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
@@ -471,10 +506,12 @@ const nextResponseViewportSx = {
   minHeight: "100%",
   minWidth: 0,
   width: "100%",
+  boxSizing: "border-box",
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
+  py: 2.5,
 } as const;
 const nextResponseCardSx = {
   ...stateBlockCardSx,
@@ -500,7 +537,7 @@ const nextResponseBodySx = {
   lineHeight: 1.25,
 } as const;
 const nextResponseControlsSx = {
-  mt: 0.75,
+  mt: 0,
   width: "100%",
   minWidth: 0,
   display: "flex",
@@ -669,27 +706,89 @@ const nextResponseTextInputSx = {
 const reflectionHostPulseSx = {
   "@keyframes reflectionHostErrorPulse": {
     "0%, 100%": {
-      borderColor: "error.main",
+      borderColor: alpha("#ff8a80", 0.6),
+      boxShadow: "0 0 0 0 rgba(255, 138, 128, 0.0)",
     },
     "50%": {
       borderColor: "#ff8a80",
+      boxShadow: "0 0 0 3px rgba(255, 138, 128, 0.22)",
     },
   },
-  "& .MuiOutlinedInput-root.Mui-error .MuiOutlinedInput-notchedOutline": {
-    animation: "reflectionHostErrorPulse 240ms ease-in-out 0s 3",
+  "& .MuiOutlinedInput-root .MuiOutlinedInput-notchedOutline": {
+    animation: "reflectionHostErrorPulse 320ms ease-in-out 0s 3",
   },
 } as const;
 const reflectionHostSuccessPulseSx = {
   "@keyframes reflectionHostSuccessPulse": {
     "0%, 100%": {
-      borderColor: "success.main",
+      borderColor: alpha("#7ae7b0", 0.6),
+      boxShadow: "0 0 0 0 rgba(122, 231, 176, 0.0)",
     },
     "50%": {
       borderColor: "#7ae7b0",
+      boxShadow: "0 0 0 3px rgba(122, 231, 176, 0.22)",
     },
   },
   "& .MuiOutlinedInput-root .MuiOutlinedInput-notchedOutline": {
-    animation: "reflectionHostSuccessPulse 240ms ease-in-out 0s 3",
+    animation: "reflectionHostSuccessPulse 320ms ease-in-out 0s 3",
+  },
+  "& .MuiInputLabel-root": {
+    color: "#9df2c5",
+  },
+  "& .MuiInputLabel-root.Mui-focused": {
+    color: "#9df2c5",
+  },
+} as const;
+const reflectionHostSetSx = {
+  "& .MuiOutlinedInput-root": {
+    backgroundColor: alpha("#7ae7b0", 0.12),
+  },
+  "& .MuiOutlinedInput-root .MuiOutlinedInput-notchedOutline": {
+    borderColor: "success.main",
+    borderWidth: 2,
+  },
+  "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
+    borderColor: "#7ae7b0",
+  },
+  "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
+    borderColor: "#7ae7b0",
+    borderWidth: 2,
+  },
+  "& .MuiInputBase-input": {
+    color: "text.primary",
+    caretColor: "text.primary",
+  },
+  "& .MuiInputLabel-root": {
+    color: "#9df2c5",
+  },
+  "& .MuiInputLabel-root.Mui-focused": {
+    color: "#9df2c5",
+  },
+} as const;
+const reflectionHostSetErrorSx = {
+  "& .MuiOutlinedInput-root": {
+    backgroundColor: alpha("#ff8a80", 0.1),
+  },
+  "& .MuiOutlinedInput-root .MuiOutlinedInput-notchedOutline": {
+    borderColor: "error.main",
+    borderWidth: 2,
+  },
+  "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
+    borderColor: "#ff8a80",
+  },
+  "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
+    borderColor: "#ff8a80",
+    borderWidth: 2,
+  },
+  "& .MuiInputBase-input": {
+    color: "text.primary",
+    caretColor: "text.primary",
+  },
+  "& .MuiInputLabel-root": {
+    color: "text.secondary",
+  },
+  "& .MuiInputLabel-root.Mui-focused": {
+    color: "text.primary",
   },
 } as const;
 const nextResponseReflectionHostSx = {
@@ -702,13 +801,26 @@ const nextResponseReflectionHostSx = {
   flexWrap: "wrap",
   overflowX: "hidden",
 } as const;
+const nextResponseProtoActionsRowSx = {
+  ...nextResponseReflectionHostSx,
+  justifyContent: "center",
+} as const;
+const nextResponseInlineSeparatorSx = {
+  fontSize: 13,
+  fontWeight: 700,
+  color: "text.secondary",
+  textTransform: "lowercase",
+} as const;
 const nextResponseActionButtonSx = {
   ...stateBlockActionButtonSx,
   minHeight: 34,
-  py: 0.6,
-  px: 1.5,
-  fontSize: 13,
+  height: 34,
+  py: 0.45,
+  px: 1.4,
+  fontSize: 12.5,
+  minWidth: 108,
   flexShrink: 0,
+  justifyContent: "center",
 } as const;
 const nextResponseCheckIconButtonSx = {
   width: 28,
@@ -1590,6 +1702,9 @@ export const SnifferPage = () => {
   >("request");
   const [topPanelRatio, setTopPanelRatio] = useState(0.5);
   const [requestPanelRatio, setRequestPanelRatio] = useState(0.5);
+  const [callTableColumnWidths, setCallTableColumnWidths] = useState<
+    Record<CallTableColumnKey, number>
+  >(CALL_TABLE_DEFAULT_COLUMN_WIDTHS);
   const [responsePanelMode, setResponsePanelMode] =
     useState<ResponsePanelMode>("response");
   const [callTableFilters, setCallTableFilters] = useState<CallTableFilters>(
@@ -1611,6 +1726,9 @@ export const SnifferPage = () => {
   const [reflectionHostErrorPulse, setReflectionHostErrorPulse] = useState(0);
   const [reflectionHostSuccessPulse, setReflectionHostSuccessPulse] =
     useState(0);
+  const [reflectionHostSetSuccess, setReflectionHostSetSuccess] =
+    useState(false);
+  const [reflectionHostSetError, setReflectionHostSetError] = useState(false);
   const [reflectionHosts, setReflectionHosts] = useState<
     ReflectionHostRecord[]
   >([]);
@@ -1629,10 +1747,20 @@ export const SnifferPage = () => {
   const responseSearchInputRef = useRef<HTMLInputElement | null>(null);
   const requestSearchContainerRef = useRef<HTMLDivElement | null>(null);
   const responseSearchContainerRef = useRef<HTMLDivElement | null>(null);
+  const callTableContainerRef = useRef<HTMLDivElement | null>(null);
   const rootLayoutRef = useRef<HTMLDivElement | null>(null);
   const detailsLayoutRef = useRef<HTMLDivElement | null>(null);
   const [viewportBoundHeightPx, setViewportBoundHeightPx] = useState<number>(0);
-  const activeResizeRef = useRef<"rows" | "columns" | null>(null);
+  const activeResizeRef = useRef<"rows" | "columns" | "callTableColumns" | null>(
+    null,
+  );
+  const activeCallTableColumnResizeRef = useRef<{
+    leftKey: CallTableColumnKey;
+    rightKey: CallTableColumnKey;
+    startX: number;
+    startLeftWidth: number;
+    startRightWidth: number;
+  } | null>(null);
   const sourceChangeMarkersRef = useRef(sourceChangeMarkers);
   const syncedReflectionServedByRef = useRef<
     Record<string, ReflectionServedBy>
@@ -1990,6 +2118,27 @@ export const SnifferPage = () => {
   const hasAnyMatchingStubs = (matchingStubsTotal ?? matchingStubs.length) > 0;
   const selectedProtofileName =
     (selectedRouteKey ? selectedProtofilesByRoute[selectedRouteKey] : "") || "";
+  const protofileOptions = useMemo<ProtofileOption[]>(() => {
+    const deduped = new Map<string, ProtofileOption>();
+    availableProtofiles.forEach((item) => {
+      const name = String(item.name || item.id || "").trim();
+      if (!name || deduped.has(name)) {
+        return;
+      }
+      const version =
+        typeof item.version === "number" && item.version > 0
+          ? ` v${item.version}`
+          : "";
+      deduped.set(name, { name, label: `${name}${version}` });
+    });
+    return Array.from(deduped.values());
+  }, [availableProtofiles]);
+  const selectedProtofileOption = useMemo(
+    () =>
+      protofileOptions.find((option) => option.name === selectedProtofileName) ??
+      null,
+    [protofileOptions, selectedProtofileName],
+  );
   const routeStubId = String(matchingStubs[0]?.id || "").trim();
   const routeStubEditPath = useMemo(() => {
     if (!routeStubId) {
@@ -2204,6 +2353,42 @@ export const SnifferPage = () => {
   const clearCallTableFilters = useCallback(() => {
     setCallTableFilters(EMPTY_CALL_TABLE_FILTERS);
   }, []);
+  const callTableTotalMinWidth = useMemo(
+    () =>
+      (Object.keys(callTableColumnWidths) as CallTableColumnKey[]).reduce(
+        (total, key) => total + callTableColumnWidths[key],
+        0,
+      ),
+    [callTableColumnWidths],
+  );
+  const getCallTableColumnSx = useCallback(
+    (key: CallTableColumnKey) => ({
+      position: "relative",
+      width: `${callTableColumnWidths[key]}px`,
+      minWidth: `${callTableColumnWidths[key]}px`,
+      maxWidth: `${callTableColumnWidths[key]}px`,
+      boxSizing: "border-box",
+    }),
+    [callTableColumnWidths],
+  );
+  const startCallTableColumnResize = useCallback(
+    (leftKey: CallTableColumnKey, rightKey: CallTableColumnKey) =>
+      (event: ReactPointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      activeResizeRef.current = "callTableColumns";
+      activeCallTableColumnResizeRef.current = {
+        leftKey,
+        rightKey,
+        startX: event.clientX,
+        startLeftWidth: callTableColumnWidths[leftKey],
+        startRightWidth: callTableColumnWidths[rightKey],
+      };
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    },
+    [callTableColumnWidths],
+  );
   const openCallTableFilterMenu = useCallback(
     (field: CallTableFilterField) => (event: MouseEvent<HTMLElement>) => {
       setCallTableFilterMenu({ field, anchorEl: event.currentTarget });
@@ -2755,7 +2940,9 @@ export const SnifferPage = () => {
     }
 
     setReflectionHostError("");
-    setReflectionHostSuccessPulse(0);
+    if (!persistHost) {
+      setReflectionHostSuccessPulse(0);
+    }
     if (persistHost) {
       setIsSettingReflection(true);
     } else {
@@ -2796,9 +2983,17 @@ export const SnifferPage = () => {
         selectedReflectionServedBy,
       );
       setReflectionHostSuccessPulse((current) => current + 1);
+      if (persistHost) {
+        setReflectionHostSetError(false);
+        setReflectionHostSetSuccess(true);
+      }
     } catch {
       setReflectionHostError("Reflection host/port is unavailable");
       setReflectionHostErrorPulse((current) => current + 1);
+      setReflectionHostSetSuccess(false);
+      if (persistHost) {
+        setReflectionHostSetError(true);
+      }
     } finally {
       if (persistHost) {
         setIsSettingReflection(false);
@@ -2928,7 +3123,7 @@ export const SnifferPage = () => {
       variant="contained"
       onClick={() => fileInputRef.current?.click()}
       disabled={isUploadingProto}
-      sx={stateBlockActionButtonSx}
+      sx={nextResponseActionButtonSx}
     >
       {isUploadingProto ? "Uploading..." : "Upload proto"}
     </Button>
@@ -2968,7 +3163,7 @@ export const SnifferPage = () => {
             variant="outlined"
             component={RouterLink}
             to={stubsListPath}
-            disabled={!hasMethodFromApi}
+            disabled={!canCreateStubFromSelectedCall}
             sx={nextResponseActionButtonSx}
           >
             Select stub
@@ -2997,7 +3192,7 @@ export const SnifferPage = () => {
             state={{ returnTo: snifferPath }}
             sx={nextResponseActionButtonSx}
           >
-            Edit route stub
+            Edit stub
           </Button>
         )}
         {selectedStubId && hasAnyMatchingStubs ? (
@@ -3005,7 +3200,7 @@ export const SnifferPage = () => {
             variant="outlined"
             component={RouterLink}
             to={stubsListPath}
-            disabled={!hasMethodFromApi}
+            disabled={!canCreateStubFromSelectedCall}
             sx={nextResponseActionButtonSx}
           >
             Select another stub
@@ -3030,6 +3225,11 @@ export const SnifferPage = () => {
             <FormControl size="small" sx={nextResponseDropdownSx}>
               <Select
                 value={selectedNextResponseSource}
+                sx={{
+                  "& .MuiSelect-icon": {
+                    color: "#D7DCE2",
+                  },
+                }}
                 onChange={(event) => {
                   const nextSource = event.target.value as SnifferSource;
                   const servedBy =
@@ -3055,43 +3255,58 @@ export const SnifferPage = () => {
 
             {selectedNextResponseSource === "proto" ? (
               <>
-                {availableProtofiles.length > 0 ? (
-                  <FormControl size="small" sx={nextResponseDropdownSx}>
-                    <Select
-                      value={selectedProtofileName}
-                      onChange={(event) => {
-                        const protofileName = String(event.target.value || "");
-                        if (!selectedRouteKey || !protofileName) {
-                          return;
+                <Box sx={nextResponseProtoActionsRowSx}>
+                  {protofileOptions.length > 0 ? (
+                    <>
+                      <Autocomplete
+                        disableClearable
+                        forcePopupIcon={false}
+                        selectOnFocus={false}
+                        options={protofileOptions}
+                        value={selectedProtofileOption}
+                        onChange={(_, option) => {
+                          if (!selectedRouteKey || !option?.name) {
+                            return;
+                          }
+                          setSelectedProtofilesByRoute((current) => ({
+                            ...current,
+                            [selectedRouteKey]: option.name,
+                          }));
+                        }}
+                        getOptionLabel={(option) => option.label}
+                        isOptionEqualToValue={(option, value) =>
+                          option.name === value.name
                         }
-                        setSelectedProtofilesByRoute((current) => ({
-                          ...current,
-                          [selectedRouteKey]: protofileName,
-                        }));
-                      }}
-                      displayEmpty
+                        sx={nextResponseTextInputSx}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            size="small"
+                            variant="outlined"
+                            label="Protofile"
+                            placeholder="Search protofile"
+                          />
+                        )}
+                      />
+                      <Typography
+                        variant="body2"
+                        sx={nextResponseInlineSeparatorSx}
+                      >
+                        or
+                      </Typography>
+                    </>
+                  ) : (
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={stateBlockHintSx}
                     >
-                      <MenuItem value="" disabled>
-                        Select protofile
-                      </MenuItem>
-                      {availableProtofiles.map((item) => {
-                        const name = String(item.name || item.id || "").trim();
-                        if (!name) {
-                          return null;
-                        }
-                        const version =
-                          typeof item.version === "number" && item.version > 0
-                            ? ` v${item.version}`
-                            : "";
-                        return (
-                          <MenuItem key={name} value={name}>
-                            {`${name}${version}`}
-                          </MenuItem>
-                        );
-                      })}
-                    </Select>
-                  </FormControl>
-                ) : isLoadingProtofiles ? (
+                      No protofiles for selected method
+                    </Typography>
+                  )}
+                  {protoUploadControl}
+                </Box>
+                {isLoadingProtofiles ? (
                   <Typography
                     variant="body2"
                     color="text.secondary"
@@ -3099,16 +3314,7 @@ export const SnifferPage = () => {
                   >
                     Loading protofiles...
                   </Typography>
-                ) : (
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={stateBlockHintSx}
-                  >
-                    No protofiles for selected method
-                  </Typography>
-                )}
-                {hasProtoForSelectedCall ? null : protoUploadControl}
+                ) : null}
                 {nextResponseStubControl}
               </>
             ) : (
@@ -3124,6 +3330,12 @@ export const SnifferPage = () => {
                       if (reflectionHostError) {
                         setReflectionHostError("");
                       }
+                      if (reflectionHostSetError) {
+                        setReflectionHostSetError(false);
+                      }
+                      if (reflectionHostSetSuccess) {
+                        setReflectionHostSetSuccess(false);
+                      }
                       if (reflectionHostSuccessPulse) {
                         setReflectionHostSuccessPulse(0);
                       }
@@ -3134,6 +3346,10 @@ export const SnifferPage = () => {
                       !reflectionHostError && reflectionHostSuccessPulse
                         ? reflectionHostSuccessPulseSx
                         : null,
+                      !reflectionHostError && reflectionHostSetSuccess
+                        ? reflectionHostSetSx
+                        : null,
+                      reflectionHostSetError ? reflectionHostSetErrorSx : null,
                     ]}
                     renderInput={(params) => (
                       <TextField
@@ -3446,6 +3662,7 @@ export const SnifferPage = () => {
   useEffect(() => {
     const stopResize = () => {
       activeResizeRef.current = null;
+      activeCallTableColumnResizeRef.current = null;
       document.body.style.removeProperty("cursor");
       document.body.style.removeProperty("user-select");
     };
@@ -3471,6 +3688,36 @@ export const SnifferPage = () => {
           1 - MIN_BOTTOM_PANEL_RATIO,
         );
         setTopPanelRatio(nextRatio);
+        return;
+      }
+      if (activeResize === "callTableColumns") {
+        const activeColumnResize = activeCallTableColumnResizeRef.current;
+        if (!activeColumnResize) {
+          return;
+        }
+        const deltaX = Math.round(event.clientX - activeColumnResize.startX);
+        const minDelta =
+          CALL_TABLE_MIN_COLUMN_WIDTHS[activeColumnResize.leftKey] -
+          activeColumnResize.startLeftWidth;
+        const maxDelta =
+          activeColumnResize.startRightWidth -
+          CALL_TABLE_MIN_COLUMN_WIDTHS[activeColumnResize.rightKey];
+        const boundedDelta = Math.min(maxDelta, Math.max(minDelta, deltaX));
+        const nextLeftWidth = activeColumnResize.startLeftWidth + boundedDelta;
+        const nextRightWidth = activeColumnResize.startRightWidth - boundedDelta;
+        setCallTableColumnWidths((current) => {
+          if (
+            current[activeColumnResize.leftKey] === nextLeftWidth &&
+            current[activeColumnResize.rightKey] === nextRightWidth
+          ) {
+            return current;
+          }
+          return {
+            ...current,
+            [activeColumnResize.leftKey]: nextLeftWidth,
+            [activeColumnResize.rightKey]: nextRightWidth,
+          };
+        });
         return;
       }
 
@@ -3605,9 +3852,12 @@ export const SnifferPage = () => {
         </Box>
         <Divider />
         <TableContainer
+          ref={callTableContainerRef}
           sx={{
             maxHeight: "100%",
             height: "100%",
+            overflowX: "auto",
+            overflowY: "auto",
             backgroundImage:
               "repeating-linear-gradient(to bottom, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 32px, transparent 32px, transparent 64px)",
           }}
@@ -3616,22 +3866,45 @@ export const SnifferPage = () => {
             stickyHeader
             size="small"
             sx={{
+              tableLayout: "fixed",
+              width: "100%",
+              minWidth: `${callTableTotalMinWidth}px`,
               "& .MuiTableCell-root": {
-                py: 0.45,
+                py: 0.2,
                 px: 1,
               },
               "& .MuiTableCell-head": {
                 py: 0.55,
                 fontSize: 11,
               },
-              "& .MuiTableRow-root": {
-                height: 32,
+              "& .MuiTableCell-body": {
+                fontSize: 12,
+                lineHeight: 1.25,
+              },
+              "& .MuiTableBody-root .MuiTableRow-root": {
+                height: 30,
+                minHeight: 30,
+                maxHeight: 30,
+              },
+              "& .MuiTableBody-root .MuiTableCell-root": {
+                height: 30,
+                boxSizing: "border-box",
+              },
+              "& .MuiTableBody-root .MuiTypography-root": {
+                fontSize: 12,
+                lineHeight: 1.25,
+              },
+              "& .MuiTableBody-root .MuiChip-root": {
+                height: 20,
+              },
+              "& .MuiTableBody-root .MuiChip-label": {
+                fontSize: 12,
               },
             }}
           >
             <TableHead>
               <TableRow>
-                <TableCell>
+                <TableCell sx={getCallTableColumnSx("room")}>
                   <Button
                     size="small"
                     endIcon={<KeyboardArrowDownRoundedIcon fontSize="small" />}
@@ -3641,7 +3914,7 @@ export const SnifferPage = () => {
                     {`${callTableFilterLabels.room}${isCallTableFilterFieldActive("room") ? " *" : ""}`}
                   </Button>
                 </TableCell>
-                <TableCell width="24%">
+                <TableCell sx={getCallTableColumnSx("client")}>
                   <Button
                     size="small"
                     endIcon={<KeyboardArrowDownRoundedIcon fontSize="small" />}
@@ -3650,8 +3923,22 @@ export const SnifferPage = () => {
                   >
                     {`${callTableFilterLabels.client}${isCallTableFilterFieldActive("client") ? " *" : ""}`}
                   </Button>
+                  <Box
+                    role="separator"
+                    aria-label="Resize client column"
+                    onPointerDown={startCallTableColumnResize("room", "client")}
+                    sx={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: `${CALL_TABLE_COLUMN_RESIZE_HANDLE_WIDTH_PX}px`,
+                      height: "100%",
+                      cursor: "col-resize",
+                      zIndex: 3,
+                    }}
+                  />
                 </TableCell>
-                <TableCell>
+                <TableCell sx={getCallTableColumnSx("service")}>
                   <Button
                     size="small"
                     endIcon={<KeyboardArrowDownRoundedIcon fontSize="small" />}
@@ -3660,8 +3947,22 @@ export const SnifferPage = () => {
                   >
                     {`${callTableFilterLabels.service}${isCallTableFilterFieldActive("service") ? " *" : ""}`}
                   </Button>
+                  <Box
+                    role="separator"
+                    aria-label="Resize service column"
+                    onPointerDown={startCallTableColumnResize("client", "service")}
+                    sx={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: `${CALL_TABLE_COLUMN_RESIZE_HANDLE_WIDTH_PX}px`,
+                      height: "100%",
+                      cursor: "col-resize",
+                      zIndex: 3,
+                    }}
+                  />
                 </TableCell>
-                <TableCell>
+                <TableCell sx={getCallTableColumnSx("method")}>
                   <Button
                     size="small"
                     endIcon={<KeyboardArrowDownRoundedIcon fontSize="small" />}
@@ -3670,8 +3971,22 @@ export const SnifferPage = () => {
                   >
                     {`${callTableFilterLabels.method}${isCallTableFilterFieldActive("method") ? " *" : ""}`}
                   </Button>
+                  <Box
+                    role="separator"
+                    aria-label="Resize method column"
+                    onPointerDown={startCallTableColumnResize("service", "method")}
+                    sx={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: `${CALL_TABLE_COLUMN_RESIZE_HANDLE_WIDTH_PX}px`,
+                      height: "100%",
+                      cursor: "col-resize",
+                      zIndex: 3,
+                    }}
+                  />
                 </TableCell>
-                <TableCell>
+                <TableCell sx={getCallTableColumnSx("code")}>
                   <Button
                     size="small"
                     endIcon={<KeyboardArrowDownRoundedIcon fontSize="small" />}
@@ -3680,30 +3995,22 @@ export const SnifferPage = () => {
                   >
                     {`${callTableFilterLabels.code}${isCallTableFilterFieldActive("code") ? " *" : ""}`}
                   </Button>
-                </TableCell>
-                <TableCell>
-                  <Button
-                    size="small"
-                    endIcon={<KeyboardArrowDownRoundedIcon fontSize="small" />}
-                    onClick={openCallTableFilterMenu("servedBy")}
-                    sx={tableFilterTriggerButtonSx}
-                  >
-                    {`${callTableFilterLabels.servedBy}${isCallTableFilterFieldActive("servedBy") ? " *" : ""}`}
-                  </Button>
-                </TableCell>
-                <TableCell>
-                  <Typography
-                    component="span"
+                  <Box
+                    role="separator"
+                    aria-label="Resize code column"
+                    onPointerDown={startCallTableColumnResize("method", "code")}
                     sx={{
-                      ...tableFilterTriggerButtonSx,
-                      display: "inline-flex",
-                      alignItems: "center",
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: `${CALL_TABLE_COLUMN_RESIZE_HANDLE_WIDTH_PX}px`,
+                      height: "100%",
+                      cursor: "col-resize",
+                      zIndex: 3,
                     }}
-                  >
-                    source
-                  </Typography>
+                  />
                 </TableCell>
-                <TableCell width="18%">
+                <TableCell sx={getCallTableColumnSx("receivedByServer")}>
                   <Typography
                     component="span"
                     sx={{
@@ -3714,6 +4021,76 @@ export const SnifferPage = () => {
                   >
                     received by server
                   </Typography>
+                  <Box
+                    role="separator"
+                    aria-label="Resize received by server column"
+                    onPointerDown={startCallTableColumnResize(
+                      "code",
+                      "receivedByServer",
+                    )}
+                    sx={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: `${CALL_TABLE_COLUMN_RESIZE_HANDLE_WIDTH_PX}px`,
+                      height: "100%",
+                      cursor: "col-resize",
+                      zIndex: 3,
+                    }}
+                  />
+                </TableCell>
+                <TableCell sx={getCallTableColumnSx("source")}>
+                  <Typography
+                    component="span"
+                    sx={{
+                      ...tableFilterTriggerButtonSx,
+                      display: "inline-flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    source
+                  </Typography>
+                  <Box
+                    role="separator"
+                    aria-label="Resize source column"
+                    onPointerDown={startCallTableColumnResize(
+                      "receivedByServer",
+                      "source",
+                    )}
+                    sx={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: `${CALL_TABLE_COLUMN_RESIZE_HANDLE_WIDTH_PX}px`,
+                      height: "100%",
+                      cursor: "col-resize",
+                      zIndex: 3,
+                    }}
+                  />
+                </TableCell>
+                <TableCell sx={getCallTableColumnSx("servedBy")}>
+                  <Button
+                    size="small"
+                    endIcon={<KeyboardArrowDownRoundedIcon fontSize="small" />}
+                    onClick={openCallTableFilterMenu("servedBy")}
+                    sx={tableFilterTriggerButtonSx}
+                  >
+                    {`${callTableFilterLabels.servedBy}${isCallTableFilterFieldActive("servedBy") ? " *" : ""}`}
+                  </Button>
+                  <Box
+                    role="separator"
+                    aria-label="Resize served by column"
+                    onPointerDown={startCallTableColumnResize("source", "servedBy")}
+                    sx={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: `${CALL_TABLE_COLUMN_RESIZE_HANDLE_WIDTH_PX}px`,
+                      height: "100%",
+                      cursor: "col-resize",
+                      zIndex: 3,
+                    }}
+                  />
                 </TableCell>
               </TableRow>
             </TableHead>
@@ -3750,30 +4127,37 @@ export const SnifferPage = () => {
                       },
                     }}
                   >
-                    <TableCell>{record.room || "global"}</TableCell>
-                    <TableCell title={record.client || "-"}>
+                    <TableCell sx={getCallTableColumnSx("room")}>
+                      {record.room || "global"}
+                    </TableCell>
+                    <TableCell
+                      sx={getCallTableColumnSx("client")}
+                      title={record.client || "-"}
+                    >
                       <Typography variant="body2" noWrap>
                         {record.client || "-"}
                       </Typography>
                     </TableCell>
-                    <TableCell>{record.service || "-"}</TableCell>
-                    <TableCell>{record.method || "-"}</TableCell>
-                    <TableCell>
+                    <TableCell sx={getCallTableColumnSx("service")}>
+                      {record.service || "-"}
+                    </TableCell>
+                    <TableCell sx={getCallTableColumnSx("method")}>
+                      {record.method || "-"}
+                    </TableCell>
+                    <TableCell sx={getCallTableColumnSx("code")}>
                       <Chip
                         size="small"
                         color={codeToChipColor(record.code)}
                         label={record.code ?? 0}
                       />
                     </TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        color={servedByChipColor(servedBy)}
-                        label={servedByLabels[servedBy]}
-                      />
+                    <TableCell
+                      sx={getCallTableColumnSx("receivedByServer")}
+                      title={record.timestamp || "-"}
+                    >
+                      {formatServerReceivedAt(record.timestamp)}
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={getCallTableColumnSx("source")}>
                       <Chip
                         size="small"
                         variant="outlined"
@@ -3783,8 +4167,13 @@ export const SnifferPage = () => {
                         label={snifferSourceLabels[recordSource]}
                       />
                     </TableCell>
-                    <TableCell title={record.timestamp || "-"}>
-                      {formatServerReceivedAt(record.timestamp)}
+                    <TableCell sx={getCallTableColumnSx("servedBy")}>
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        color={servedByChipColor(servedBy)}
+                        label={servedByLabels[servedBy]}
+                      />
                     </TableCell>
                   </TableRow>
                 );
@@ -4214,6 +4603,11 @@ export const SnifferPage = () => {
               <FormControl size="small" sx={postmanLikeSelectSx}>
                 <Select
                   value={responsePanelMode}
+                  sx={{
+                    "& .MuiSelect-icon": {
+                      color: "#D7DCE2",
+                    },
+                  }}
                   onChange={(event) => {
                     setResponsePanelMode(event.target.value as ResponsePanelMode);
                     if (event.target.value === "nextResponse") {
@@ -4581,7 +4975,7 @@ export const SnifferPage = () => {
                         variant="outlined"
                         component={RouterLink}
                         to={stubsListPath}
-                        disabled={!hasMethodFromApi}
+                        disabled={!canCreateStubFromSelectedCall}
                         sx={stateBlockActionButtonSx}
                       >
                         Select another stub
@@ -4651,7 +5045,7 @@ export const SnifferPage = () => {
                             state={{ returnTo: snifferPath }}
                             sx={stateBlockActionButtonSx}
                           >
-                            Edit route stub
+                            Edit stub
                           </Button>
                         ) : null}
                         {hasAnyMatchingStubs ? (
@@ -4659,7 +5053,7 @@ export const SnifferPage = () => {
                             variant="outlined"
                             component={RouterLink}
                             to={stubsListPath}
-                            disabled={!hasMethodFromApi}
+                            disabled={!canCreateStubFromSelectedCall}
                             sx={stateBlockActionButtonSx}
                           >
                             Select another stub
@@ -4824,7 +5218,10 @@ export const SnifferPage = () => {
                         >
                           <AccordionSummary
                             expandIcon={
-                              <ExpandMoreRoundedIcon fontSize="small" />
+                              <ExpandMoreRoundedIcon
+                                fontSize="small"
+                                sx={{ color: "#D7DCE2" }}
+                              />
                             }
                             sx={{
                               px: 1,
