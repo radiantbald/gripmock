@@ -104,6 +104,7 @@ type CallTableColumnKey =
   | "servedBy";
 type SnifferSource = "proto" | "reflection";
 type ReflectionServedBy = "stub" | "proxy";
+const defaultReflectionServedBy: ReflectionServedBy = "proxy";
 type ResponsePanelMode = "response" | "nextResponse";
 type ReflectionHostRecord = {
   id?: string | number;
@@ -1058,6 +1059,23 @@ const buildSnifferRouteKey = (
 
   return `${normalizedRoom}|${normalizedService}|${normalizedMethod}`;
 };
+const parseSnifferRouteKey = (
+  routeKey: string,
+): { room: string; service: string; method: string } | null => {
+  const [rawRoom, rawService, rawMethod] = routeKey.split("|");
+  const service = String(rawService || "").trim();
+  const method = String(rawMethod || "").trim();
+  if (!service || !method) {
+    return null;
+  }
+
+  const roomCandidate = String(rawRoom || "").trim();
+  return {
+    room: roomCandidate === "global" ? "" : roomCandidate,
+    service,
+    method,
+  };
+};
 const readSnifferRouteSources = (): Record<string, SnifferSource> => {
   if (typeof window === "undefined") {
     return {};
@@ -1805,6 +1823,9 @@ export const SnifferPage = () => {
   const syncedReflectionServedByRef = useRef<
     Record<string, ReflectionServedBy>
   >({});
+  const bootstrappedReflectionRouteModesRef = useRef<
+    Record<string, ReflectionServedBy>
+  >({});
 
   useEffect(() => {
     sourceChangeMarkersRef.current = sourceChangeMarkers;
@@ -2013,7 +2034,7 @@ export const SnifferPage = () => {
   const selectedReflectionServedBy =
     (selectedRouteKey
       ? reflectionServedByRoutes[selectedRouteKey]
-      : undefined) || "stub";
+      : undefined) || defaultReflectionServedBy;
   const hasSelectedSourceChanged =
     selectedRouteKey.length > 0 &&
     selectedNextResponseSource !== selectedHistorySource;
@@ -2933,12 +2954,53 @@ export const SnifferPage = () => {
     notify(`Entered room ${selectedSetupRoom}`, { type: "info" });
   }, [notify, selectedSetupRoom]);
 
+  const ensureReflectionProxyReady = useCallback(async () => {
+    const source = normalizeReflectionSource(reflectionHost);
+    if (!source) {
+      throw new Error("Enter reflection host");
+    }
+
+    await dataProvider.create("descriptors", {
+      data: { source },
+    });
+    const { hasMethod, hasProto } = await checkProtoStatus(
+      selectedService,
+      selectedMethod,
+    );
+    setHasMethodFromApi(hasMethod);
+    setHasProtoFromApi(hasProto);
+    await loadHistorySnapshot().catch(() => {
+      // Keep current snapshot on refresh failure.
+    });
+    setStreamRevision((current) => current + 1);
+  }, [
+    checkProtoStatus,
+    dataProvider,
+    loadHistorySnapshot,
+    reflectionHost,
+    selectedMethod,
+    selectedService,
+  ]);
+
   const handleResponseSourceChange = async (
     source: SnifferSource,
     servedBy?: ReflectionServedBy,
+    options?: { skipReflectionBootstrap?: boolean },
   ) => {
     if (!selectedRouteKey) {
       return;
+    }
+
+    const resolvedServedBy =
+      source === "reflection"
+        ? (servedBy || defaultReflectionServedBy)
+        : undefined;
+    if (
+      source === "reflection" &&
+      resolvedServedBy === "proxy" &&
+      !options?.skipReflectionBootstrap
+    ) {
+      await ensureReflectionProxyReady();
     }
 
     if (selectedService && selectedMethod) {
@@ -2949,7 +3011,7 @@ export const SnifferPage = () => {
           method: selectedMethod,
           room: selectedRoom,
           source,
-          ...(source === "reflection" ? { servedBy: servedBy || "stub" } : {}),
+          ...(source === "reflection" ? { servedBy: resolvedServedBy } : {}),
         }),
       });
     }
@@ -3002,8 +3064,14 @@ export const SnifferPage = () => {
       return;
     }
 
+    const previousServedBy = selectedReflectionServedBy;
     persistReflectionServedByRoute(selectedRouteKey, servedBy);
-    await handleResponseSourceChange("reflection", servedBy);
+    try {
+      await handleResponseSourceChange("reflection", servedBy);
+    } catch (error) {
+      persistReflectionServedByRoute(selectedRouteKey, previousServedBy);
+      throw error;
+    }
   };
 
   const runReflectionWithMode = async (persistHost: boolean) => {
@@ -3057,10 +3125,9 @@ export const SnifferPage = () => {
         // Keep current snapshot on refresh failure.
       });
       setStreamRevision((current) => current + 1);
-      await handleResponseSourceChange(
-        "reflection",
-        selectedReflectionServedBy,
-      );
+      await handleResponseSourceChange("reflection", selectedReflectionServedBy, {
+        skipReflectionBootstrap: true,
+      });
       setReflectionHostSuccessPulse((current) => current + 1);
       if (persistHost) {
         setReflectionHostSetError(false);
@@ -3085,6 +3152,78 @@ export const SnifferPage = () => {
   const handleSetReflection = async () => runReflectionWithMode(true);
 
   useEffect(() => {
+    const reflectionRouteEntries = Object.entries(routeSources).filter(
+      ([, source]) => source === "reflection",
+    );
+    if (reflectionRouteEntries.length === 0) {
+      return;
+    }
+
+    const pending = reflectionRouteEntries.filter(([routeKey]) => {
+      const servedBy =
+        reflectionServedByRoutes[routeKey] || defaultReflectionServedBy;
+      return bootstrappedReflectionRouteModesRef.current[routeKey] !== servedBy;
+    });
+    if (pending.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      if (
+        pending.some(
+          ([routeKey]) =>
+            (reflectionServedByRoutes[routeKey] || defaultReflectionServedBy) ===
+            "proxy",
+        )
+      ) {
+        await ensureReflectionProxyReady();
+      }
+
+      await Promise.all(
+        pending.map(async ([routeKey]) => {
+          const parsed = parseSnifferRouteKey(routeKey);
+          if (!parsed) {
+            return;
+          }
+
+          const servedBy =
+            reflectionServedByRoutes[routeKey] || defaultReflectionServedBy;
+          await apiClient.request("/sniffer/route-source", {
+            method: "POST",
+            body: JSON.stringify({
+              service: parsed.service,
+              method: parsed.method,
+              room: parsed.room,
+              source: "reflection",
+              servedBy,
+            }),
+          });
+        }),
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      pending.forEach(([routeKey]) => {
+        bootstrappedReflectionRouteModesRef.current[routeKey] =
+          reflectionServedByRoutes[routeKey] || defaultReflectionServedBy;
+      });
+    })().catch(() => {
+      // Keep local selection; user can still apply manually via selector.
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    ensureReflectionProxyReady,
+    reflectionServedByRoutes,
+    routeSources,
+  ]);
+
+  useEffect(() => {
     if (
       selectedNextResponseSource !== "reflection" ||
       !selectedRouteKey ||
@@ -3103,8 +3242,11 @@ export const SnifferPage = () => {
 
     syncedReflectionServedByRef.current[selectedRouteKey] =
       selectedReflectionServedBy;
-    void apiClient
-      .request("/sniffer/route-source", {
+    void (async () => {
+      if (selectedReflectionServedBy === "proxy") {
+        await ensureReflectionProxyReady();
+      }
+      await apiClient.request("/sniffer/route-source", {
         method: "POST",
         body: JSON.stringify({
           service: selectedService,
@@ -3114,10 +3256,14 @@ export const SnifferPage = () => {
           servedBy: selectedReflectionServedBy,
         }),
       })
-      .catch(() => {
+        .catch(() => {
+          throw new Error("Failed to sync reflection route mode");
+        });
+    })().catch(() => {
         delete syncedReflectionServedByRef.current[selectedRouteKey];
       });
   }, [
+    ensureReflectionProxyReady,
     selectedMethod,
     selectedNextResponseSource,
     selectedReflectionServedBy,
@@ -3378,7 +3524,7 @@ export const SnifferPage = () => {
                 value={selectedNextResponseSource}
                 sx={{
                   "& .MuiSelect-icon": {
-                    color: "#D7DCE2",
+                    color: "#FF6C37",
                   },
                 }}
                 onChange={(event) => {
@@ -3474,6 +3620,11 @@ export const SnifferPage = () => {
                 <FormControl size="small" sx={nextResponseDropdownSx}>
                   <Select
                     value={selectedReflectionServedBy}
+                    sx={{
+                      "& .MuiSelect-icon": {
+                        color: "#FF6C37",
+                      },
+                    }}
                     onChange={(event) => {
                       const servedBy = event.target.value as ReflectionServedBy;
                       void handleReflectionServedByChange(servedBy).catch(
