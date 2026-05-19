@@ -413,7 +413,10 @@ func (b *Budgerigar) DeleteByID(ids ...uint64) int {
 		}
 	}
 
-	return b.searcher.del(ids...)
+	deleted := b.searcher.del(ids...)
+	b.resetNextIDIfEmpty()
+
+	return deleted
 }
 
 // DeleteRoom deletes all stubs that belong to the provided room.
@@ -440,6 +443,7 @@ func (b *Budgerigar) DeleteRoom(room string) int {
 	b.stateLock.Unlock()
 
 	if len(idsByRoom) == 0 {
+		b.resetNextIDIfEmpty()
 		return 0
 	}
 
@@ -448,7 +452,10 @@ func (b *Budgerigar) DeleteRoom(room string) int {
 		ids = append(ids, id)
 	}
 
-	return b.searcher.del(ids...)
+	deleted := b.searcher.del(ids...)
+	b.resetNextIDIfEmpty()
+
+	return deleted
 }
 
 // FindByID retrieves the Stub value associated with the given ID.
@@ -525,6 +532,13 @@ func (b *Budgerigar) Clear() {
 	b.stateLock.Unlock()
 
 	b.searcher.clear()
+	b.nextID.Store(0)
+}
+
+func (b *Budgerigar) resetNextIDIfEmpty() {
+	if len(b.searcher.all()) == 0 {
+		b.nextID.Store(0)
+	}
 }
 
 func dedupeStubsByID(values []*Stub) []*Stub {

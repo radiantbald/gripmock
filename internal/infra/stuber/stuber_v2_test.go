@@ -443,6 +443,37 @@ func TestBudgerigarClearV2(t *testing.T) {
 	require.Nil(t, s.FindByID(stub2.ID))
 }
 
+func TestBudgerigarClearResetsIDSequenceV2(t *testing.T) {
+	t.Parallel()
+
+	s := stuber.NewBudgerigar()
+	first := &stuber.Stub{Service: "Greeter", Method: "SayHello"}
+	s.PutMany(first)
+	require.Equal(t, uint64(1), first.ID)
+
+	s.Clear()
+
+	next := &stuber.Stub{Service: "Greeter", Method: "SayHelloAgain"}
+	s.PutMany(next)
+	require.Equal(t, uint64(1), next.ID)
+}
+
+func TestDeleteLastStubResetsIDSequenceV2(t *testing.T) {
+	t.Parallel()
+
+	s := stuber.NewBudgerigar()
+	first := &stuber.Stub{Service: "Greeter", Method: "SayHello"}
+	s.PutMany(first)
+	require.Equal(t, uint64(1), first.ID)
+
+	s.DeleteByID(first.ID)
+	require.Empty(t, s.All())
+
+	next := &stuber.Stub{Service: "Greeter", Method: "SayHelloAgain"}
+	s.PutMany(next)
+	require.Equal(t, uint64(1), next.ID)
+}
+
 func TestBudgerigarFindByQueryFoundWithPriorityV2(t *testing.T) {
 	t.Parallel()
 
