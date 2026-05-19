@@ -181,6 +181,18 @@ func (b *Builder) RestServe(
 	router.Path("/api/clients").Methods(http.MethodGet).Handler(
 		withMCPMiddlewares(http.HandlerFunc(apiServer.ClientsList)),
 	)
+	router.Path("/api/clients").Methods(http.MethodPatch).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.ClientsUpdate)),
+	)
+	router.Path("/api/clients").Methods(http.MethodDelete).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.ClientsDelete)),
+	)
+	router.Path("/api/clients/{clientID}").Methods(http.MethodPatch).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.ClientsUpdate)),
+	)
+	router.Path("/api/clients/{clientID}").Methods(http.MethodDelete).Handler(
+		withMCPMiddlewares(http.HandlerFunc(apiServer.ClientsDelete)),
+	)
 	router.Path("/api/reflection-hosts").Methods(http.MethodGet).Handler(
 		withMCPMiddlewares(http.HandlerFunc(apiServer.ReflectionHostsList)),
 	)

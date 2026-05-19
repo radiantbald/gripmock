@@ -120,6 +120,12 @@ type ProtofileOption = {
   name: string;
   label: string;
 };
+type ClientLookupRow = {
+  id?: string | number;
+  name?: string;
+  peerHost?: string;
+  userAgent?: string;
+};
 type SnifferSourceChange = {
   source: SnifferSource;
   changedAtMs: number | null;
@@ -355,9 +361,9 @@ const compactSearchCounterSx = {
     color: "#FF6C37",
   },
 } as const;
-const ROOM_ASSIGN_CONTROL_WIDTH_PX = 248;
+const ROOM_ASSIGN_CONTROL_WIDTH_PX = 260;
 const roomAssignControlWidthSx = {
-  width: { xs: "100%", sm: ROOM_ASSIGN_CONTROL_WIDTH_PX },
+  width: `min(100%, ${ROOM_ASSIGN_CONTROL_WIDTH_PX}px)`,
   maxWidth: "100%",
 } as const;
 const roomAssignSelectorSx = {
@@ -405,16 +411,20 @@ const roomAssignSelectorSx = {
   },
 } as const;
 const roomAssignButtonSx = {
+  textTransform: "none",
+  fontWeight: 700,
   width: "100%",
   maxWidth: ROOM_ASSIGN_CONTROL_WIDTH_PX,
-  minHeight: 40,
+  minHeight: 34,
+  height: 34,
+  minWidth: 108,
+  flexShrink: 0,
+  justifyContent: "center",
   borderRadius: 1.5,
-  px: { xs: 1.25, sm: 2 },
-  textTransform: "none",
-  fontWeight: 600,
-  fontSize: "clamp(0.78rem, 1.1vw, 0.9rem)",
-  lineHeight: 1.25,
-  letterSpacing: 0,
+  px: 1.4,
+  py: 0.45,
+  fontSize: 12.5,
+  lineHeight: 1.2,
   whiteSpace: "normal",
   overflowWrap: "anywhere",
   boxShadow: "none",
@@ -2016,6 +2026,37 @@ export const SnifferPage = () => {
     { pagination: { page: 1, perPage: 1000 } },
     { retry: false, staleTime: 30_000, refetchOnWindowFocus: false },
   );
+  const { data: clientsLookup = [] } = useGetList<ClientLookupRow>(
+    "clients",
+    { pagination: { page: 1, perPage: 2000 } },
+    { retry: false, staleTime: 10_000, refetchOnWindowFocus: true },
+  );
+  const clientNameByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    clientsLookup.forEach((item) => {
+      const peerHost = String(item.peerHost || "").trim();
+      const userAgent = String(item.userAgent || "").trim();
+      const key = `${peerHost}|${userAgent}`;
+      const name = String(item.name || "").trim();
+      if ((peerHost === "" && userAgent === "") || !name) {
+        return;
+      }
+
+      map.set(key, name);
+    });
+    return map;
+  }, [clientsLookup]);
+  const getClientDisplayName = useCallback(
+    (record: HistoryRecord): string => {
+      const clientKey = String(record.client || "").trim();
+      if (!clientKey) {
+        return "-";
+      }
+
+      return clientNameByKey.get(clientKey) || clientKey;
+    },
+    [clientNameByKey],
+  );
   const availableRoomsForAttachment = useMemo(
     () =>
       backendRooms
@@ -2209,7 +2250,7 @@ export const SnifferPage = () => {
   const callTableFilterOptions = useMemo(
     () => ({
       client: buildDistinctFilterOptions(
-        records.map((record) => String(record.client || "-").trim() || "-"),
+        records.map((record) => getClientDisplayName(record)),
       ),
       service: buildDistinctFilterOptions(
         records.map((record) => String(record.service || "-").trim() || "-"),
@@ -2229,7 +2270,7 @@ export const SnifferPage = () => {
         ),
       ),
     }),
-    [records],
+    [records, getClientDisplayName],
   );
   const filteredRecords = useMemo(() => {
     const clientQuery = normalizeFilterQuery(callTableFilters.client.query);
@@ -2252,7 +2293,7 @@ export const SnifferPage = () => {
       callTableFilters.room.selected.map(normalizeFilterQuery);
 
     return records.filter((record) => {
-      const clientValue = String(record.client || "-").trim() || "-";
+      const clientValue = getClientDisplayName(record);
       if (clientQuery && !clientValue.toLowerCase().includes(clientQuery)) {
         return false;
       }
@@ -2323,7 +2364,7 @@ export const SnifferPage = () => {
 
       return true;
     });
-  }, [callTableFilters, records]);
+  }, [callTableFilters, records, getClientDisplayName]);
   const hasActiveCallTableFilters = useMemo(
     () =>
       Object.values(callTableFilters).some(
@@ -4097,6 +4138,7 @@ export const SnifferPage = () => {
             <TableBody>
               {filteredRecords.map((record) => {
                 const id = record.callId || record.id || "";
+                const clientLabel = getClientDisplayName(record);
                 const selectedRow =
                   !!id && id === (selected?.callId || selected?.id);
                 const recordSource = record.source || defaultSnifferSource;
@@ -4132,10 +4174,10 @@ export const SnifferPage = () => {
                     </TableCell>
                     <TableCell
                       sx={getCallTableColumnSx("client")}
-                      title={record.client || "-"}
+                      title={clientLabel}
                     >
                       <Typography variant="body2" noWrap>
-                        {record.client || "-"}
+                        {clientLabel}
                       </Typography>
                     </TableCell>
                     <TableCell sx={getCallTableColumnSx("service")}>
@@ -4841,7 +4883,7 @@ export const SnifferPage = () => {
                             display: "flex",
                             flexDirection: "column",
                             alignItems: "center",
-                            gap: 1.5,
+                            gap: 0.75,
                             justifyContent: "center",
                             width: "100%",
                           }}
@@ -4851,7 +4893,7 @@ export const SnifferPage = () => {
                               display: "flex",
                               flexDirection: "column",
                               alignItems: "center",
-                              gap: 0.85,
+                              gap: 0.75,
                               width: "100%",
                             }}
                           >

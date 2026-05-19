@@ -178,7 +178,7 @@ func (h *RestServer) SetClientsRepository(repository *pgclients.Repository) {
 		return
 	}
 	for _, route := range routes {
-		roominfra.AssignClient(route.ClientID, route.RoomID)
+		roominfra.AssignClient(clientRoutingKey(route.PeerHost, route.UserAgent), route.RoomID)
 	}
 }
 
@@ -445,10 +445,9 @@ func (h *RestServer) RoomsDelete(w http.ResponseWriter, r *http.Request) {
 // RoomsAssignPeer binds a stable peer identifier to a room for gRPC calls without explicit room header.
 func (h *RestServer) RoomsAssignPeer(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		Peer        string `json:"peer"`
-		Room        string `json:"room"`
-		UserAgent   string `json:"userAgent"`
-		Fingerprint string `json:"fingerprint"`
+		Peer      string `json:"peer"`
+		Room      string `json:"room"`
+		UserAgent string `json:"userAgent"`
 	}
 
 	byt, err := io.ReadAll(r.Body)
@@ -464,7 +463,6 @@ func (h *RestServer) RoomsAssignPeer(w http.ResponseWriter, r *http.Request) {
 	peerID := strings.TrimSpace(payload.Peer)
 	roomID := strings.TrimSpace(payload.Room)
 	userAgent := strings.TrimSpace(payload.UserAgent)
-	fingerprint := strings.TrimSpace(payload.Fingerprint)
 	if peerID == "" || roomID == "" {
 		h.validationError(r.Context(), w, errors.New("peer and room are required"))
 		return
@@ -474,26 +472,23 @@ func (h *RestServer) RoomsAssignPeer(w http.ResponseWriter, r *http.Request) {
 		_, embeddedUserAgent := splitClientID(peerID)
 		userAgent = embeddedUserAgent
 	}
-	if fingerprint == "" {
-		fingerprint = clientFingerprint(peerHost, userAgent)
-	}
+	clientKey := clientRoutingKey(peerHost, userAgent)
 
 	if h.clientsRepo != nil {
 		if err := h.clientsRepo.Upsert(
 			r.Context(),
-			peerID,
 			roomID,
+			"",
 			muxmiddleware.OwnerFromContext(r.Context()),
 			peerHost,
 			userAgent,
-			fingerprint,
 		); err != nil {
 			h.validationError(r.Context(), w, err)
 			return
 		}
 	}
 
-	if !roominfra.AssignClient(peerID, roomID) {
+	if !roominfra.AssignClient(clientKey, roomID) {
 		h.validationError(r.Context(), w, errors.New("failed to assign peer to room"))
 		return
 	}
@@ -516,7 +511,7 @@ func (h *RestServer) RoomsPeerStatus(w http.ResponseWriter, r *http.Request) {
 	lookupCandidates := clientLookupCandidates(peerID)
 	if h.clientsRepo != nil {
 		for _, candidateID := range lookupCandidates {
-			dbRoomID, err := h.clientsRepo.RoomByClient(r.Context(), candidateID)
+			dbRoomID, err := h.clientsRepo.RoomByClientKey(r.Context(), candidateID)
 			if err != nil {
 				h.validationError(r.Context(), w, err)
 				return
@@ -567,24 +562,191 @@ func (h *RestServer) ClientsList(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]map[string]any, 0, len(routes))
 	for _, route := range routes {
-		clientID := strings.TrimSpace(route.ClientID)
 		roomID := strings.TrimSpace(route.RoomID)
-		if clientID == "" || roomID == "" {
+		if route.ID <= 0 || roomID == "" {
 			continue
 		}
 
 		items = append(items, map[string]any{
-			"id":          clientID,
-			"client":      clientID,
-			"room":        roomID,
-			"user":        route.UserID,
-			"peerHost":    route.PeerHost,
-			"userAgent":   route.UserAgent,
-			"fingerprint": route.Fingerprint,
+			"id":        route.ID,
+			"client":    route.ID,
+			"room":      roomID,
+			"name":      route.Name,
+			"user":      route.UserID,
+			"peerHost":  route.PeerHost,
+			"userAgent": route.UserAgent,
 		})
 	}
 
 	h.writeResponse(r.Context(), w, items)
+}
+
+// ClientsUpdate updates editable client fields (room and/or name).
+func (h *RestServer) ClientsUpdate(w http.ResponseWriter, r *http.Request) {
+	if h.clientsRepo == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		h.writeResponseError(r.Context(), w, errors.New("clients repository is not configured"))
+		return
+	}
+
+	var payload struct {
+		Client any     `json:"client"`
+		Room   *string `json:"room"`
+		Name   *string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		h.validationError(r.Context(), w, errors.Wrap(err, "invalid clients update payload"))
+		return
+	}
+	if payload.Room == nil && payload.Name == nil {
+		h.validationError(r.Context(), w, errors.New("at least one of room or name must be provided"))
+		return
+	}
+	clientID, clientIDErr := parseClientNumericID(mux.Vars(r)["clientID"])
+	if clientIDErr != nil {
+		h.validationError(r.Context(), w, clientIDErr)
+		return
+	}
+	if clientID == 0 {
+		clientID, clientIDErr = parseClientNumericID(r.URL.Query().Get("client"))
+		if clientIDErr != nil {
+			h.validationError(r.Context(), w, clientIDErr)
+			return
+		}
+	}
+	if clientID == 0 {
+		clientID, clientIDErr = parseClientNumericID(payload.Client)
+		if clientIDErr != nil {
+			h.validationError(r.Context(), w, clientIDErr)
+			return
+		}
+	}
+	if clientID == 0 {
+		h.validationError(r.Context(), w, errors.New("client id is required"))
+		return
+	}
+
+	updated, err := h.clientsRepo.Update(r.Context(), clientID, payload.Room, payload.Name)
+	if err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+	if updated == nil {
+		w.WriteHeader(http.StatusNotFound)
+		h.writeResponseError(r.Context(), w, fmt.Errorf("client not found: %d", clientID))
+		return
+	}
+
+	if payload.Room != nil {
+		roomID := strings.TrimSpace(updated.RoomID)
+		clientKey := clientRoutingKey(updated.PeerHost, updated.UserAgent)
+		if roomID == "" {
+			roominfra.UnassignClient(clientKey)
+		} else if clientKey != "" {
+			roominfra.AssignClient(clientKey, roomID)
+		}
+	}
+
+	h.writeResponse(r.Context(), w, map[string]any{
+		"id":        updated.ID,
+		"client":    updated.ID,
+		"room":      updated.RoomID,
+		"name":      updated.Name,
+		"user":      updated.UserID,
+		"peerHost":  updated.PeerHost,
+		"userAgent": updated.UserAgent,
+	})
+}
+
+// ClientsDelete removes a single client mapping.
+func (h *RestServer) ClientsDelete(w http.ResponseWriter, r *http.Request) {
+	if h.clientsRepo == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		h.writeResponseError(r.Context(), w, errors.New("clients repository is not configured"))
+		return
+	}
+
+	clientID, clientIDErr := parseClientNumericID(mux.Vars(r)["clientID"])
+	if clientIDErr != nil {
+		h.validationError(r.Context(), w, clientIDErr)
+		return
+	}
+	if clientID == 0 {
+		clientID, clientIDErr = parseClientNumericID(r.URL.Query().Get("client"))
+		if clientIDErr != nil {
+			h.validationError(r.Context(), w, clientIDErr)
+			return
+		}
+	}
+	if clientID == 0 {
+		var payload struct {
+			Client any `json:"client"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err == nil {
+			clientID, clientIDErr = parseClientNumericID(payload.Client)
+			if clientIDErr != nil {
+				h.validationError(r.Context(), w, clientIDErr)
+				return
+			}
+		}
+	}
+	if clientID == 0 {
+		h.validationError(r.Context(), w, errors.New("client id is required"))
+		return
+	}
+
+	deletedPeerHost, deletedUserAgent, err := h.clientsRepo.DeleteByID(r.Context(), clientID)
+	if err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+	clientKey := clientRoutingKey(deletedPeerHost, deletedUserAgent)
+	if clientKey == "" {
+		w.WriteHeader(http.StatusNotFound)
+		h.writeResponseError(r.Context(), w, fmt.Errorf("client not found: %d", clientID))
+		return
+	}
+
+	roominfra.UnassignClient(clientKey)
+	h.writeResponse(r.Context(), w, map[string]any{
+		"deleted": true,
+		"client":  clientID,
+	})
+}
+
+func parseClientNumericID(value any) (int64, error) {
+	switch candidate := value.(type) {
+	case nil:
+		return 0, nil
+	case int:
+		if candidate <= 0 {
+			return 0, errors.New("client id must be a positive number")
+		}
+		return int64(candidate), nil
+	case int64:
+		if candidate <= 0 {
+			return 0, errors.New("client id must be a positive number")
+		}
+		return candidate, nil
+	case float64:
+		numericID := int64(candidate)
+		if candidate <= 0 || candidate != float64(numericID) {
+			return 0, errors.New("client id must be a positive integer")
+		}
+		return numericID, nil
+	case string:
+		normalized := strings.TrimSpace(candidate)
+		if normalized == "" {
+			return 0, nil
+		}
+		numericID, err := strconv.ParseInt(normalized, 10, 64)
+		if err != nil || numericID <= 0 {
+			return 0, errors.New("client id must be a positive integer")
+		}
+		return numericID, nil
+	default:
+		return 0, errors.New("client id must be a positive integer")
+	}
 }
 
 // ReflectionHostsList returns configured gRPC reflection upstream hosts.
@@ -754,14 +916,11 @@ func normalizeReflectionHostRequest(host string, source string) (string, string,
 	return parsed.ReflectAddress, source, nil
 }
 
-func clientFingerprint(peerID string, userAgent string) string {
+func clientRoutingKey(peerID string, userAgent string) string {
 	peerID = strings.TrimSpace(peerID)
 	userAgent = strings.TrimSpace(userAgent)
-	if peerID == "" {
-		return userAgent
-	}
-	if userAgent == "" {
-		return peerID
+	if peerID == "" && userAgent == "" {
+		return ""
 	}
 
 	return peerID + "|" + userAgent
@@ -794,7 +953,13 @@ func clientLookupCandidates(clientID string) []string {
 		return nil
 	}
 
-	return []string{clientID}
+	peerHost, userAgent := splitClientID(clientID)
+	normalizedKey := clientRoutingKey(peerHost, userAgent)
+	if normalizedKey == "" || normalizedKey == clientID {
+		return []string{clientID}
+	}
+
+	return []string{clientID, normalizedKey}
 }
 
 // ProtofilesList returns persisted runtime proto files metadata.

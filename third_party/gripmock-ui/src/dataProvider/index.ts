@@ -80,6 +80,27 @@ const toNumericId = (value: unknown): number => {
   return Date.now();
 };
 
+const toClientID = (value: unknown): number => {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+
+  return 0;
+};
+
+const normalizeClientRows = (rows: Row[]): Row[] =>
+  rows.flatMap((row) => {
+    const clientID = toClientID(row.id);
+    if (clientID <= 0) {
+      return [];
+    }
+
+    return [{
+      ...row,
+      id: clientID,
+    }];
+  });
+
 const dataProvider: DataProvider = {
   getList: async (resource, params) => {
     const canonical = canonicalResource(resource);
@@ -123,9 +144,10 @@ const dataProvider: DataProvider = {
       const response = await apiClient.request<unknown>(`/${canonical}${query}${roomQuery}`);
       const json = ensureArray<Row>(response);
       const normalized = canonical === "history" ? normalizeHistoryRows(json) : json;
+      const resourceRows = canonical === "clients" ? normalizeClientRows(normalized) : normalized;
 
       const processedData = dataProcessing.processData(
-        normalized,
+        resourceRows,
         params.filter,
         params.sort,
         canonical,
@@ -138,9 +160,10 @@ const dataProvider: DataProvider = {
     const response = await apiClient.request<unknown>(`/${canonical}`);
     const json = ensureArray<Row>(response);
     const normalized = canonical === "history" ? normalizeHistoryRows(json) : json;
+    const resourceRows = canonical === "clients" ? normalizeClientRows(normalized) : normalized;
 
     const processedData = dataProcessing.processData(
-      normalized,
+      resourceRows,
       params.filter,
       params.sort,
       canonical,
