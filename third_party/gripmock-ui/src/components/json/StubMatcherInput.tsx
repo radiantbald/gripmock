@@ -20,7 +20,7 @@ type StubMatcherInputProps = {
 };
 
 const matcherKeys = new Set(["equals", "contains", "matches", "glob", "anyOf", "ignoreArrayOrder"]);
-const scalarMatcherKeys = ["equals", "contains", "matches", "glob"] as const;
+const scalarMatcherKeys = ["equals", "contains"] as const;
 type ScalarMatcherKey = (typeof scalarMatcherKeys)[number];
 const ANY_OF_MODE_KEY = "__anyOfEnabled";
 
@@ -279,8 +279,6 @@ const compactMatcherRoot = (value: unknown): Record<string, unknown> | undefined
 const matcherKeyLabels: Record<ScalarMatcherKey, string> = {
   equals: "equals",
   contains: "contains",
-  matches: "matches (regex)",
-  glob: "glob",
 };
 
 const matcherBooleanInputSx = {
@@ -395,12 +393,20 @@ const MatcherRuleKeyValueEditor = ({
         {controls}
       </Stack>
       <Box sx={{ gridColumn: { md: "2 / 3" }, minWidth: 0 }}>
-        <KeyValueTableInput
-          source={`${baseSource}.${selectedKey}`}
-          label={matcherKeyLabels[selectedKey]}
-          hideLabel
-          maxTableHeight={maxTableHeight}
-        />
+        {scalarMatcherKeys.map((key) => (
+          <Box
+            key={key}
+            sx={{ display: selectedKey === key ? "block" : "none" }}
+            aria-hidden={selectedKey !== key}
+          >
+            <KeyValueTableInput
+              source={`${baseSource}.${key}`}
+              label={matcherKeyLabels[key]}
+              hideLabel
+              maxTableHeight={maxTableHeight}
+            />
+          </Box>
+        ))}
       </Box>
     </Box>
   );
@@ -530,18 +536,6 @@ export const StubMatcherInput = ({
 
     setInitialized(true);
   }, [initialValue, inputSource, inputsSource, isInitialized, mode, record, setValue]);
-
-  useEffect(() => {
-    if (!isPlainObject(watchedInput)) {
-      return;
-    }
-
-    const compacted = compactMatcherRoot(watchedInput);
-    const nextInput = compacted ?? {};
-    if (JSON.stringify(watchedInput) !== JSON.stringify(nextInput)) {
-      setValue(inputSource, nextInput, { shouldDirty: true });
-    }
-  }, [inputSource, setValue, watchedInput]);
 
   useEffect(() => {
     const unsetValue = mode === "edit" ? null : undefined;

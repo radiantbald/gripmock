@@ -205,7 +205,7 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
           width: "100%",
           display: "grid",
           gridTemplateColumns: showId
-            ? { xs: "1fr", md: "repeat(4, minmax(0, 1fr))" }
+            ? { xs: "1fr", md: "auto repeat(3, minmax(0, 1fr))" }
             : { xs: "1fr", md: "repeat(3, minmax(0, 1fr))" },
           pt: 0.5,
           pb: 1,
@@ -239,7 +239,7 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
                 lineHeight: 1.1,
               }}
             >
-              {`Stub ID = ${stubIdValue ?? ""}`}
+              {stubIdValue ?? ""}
             </Typography>
           </Box>
         ) : null}

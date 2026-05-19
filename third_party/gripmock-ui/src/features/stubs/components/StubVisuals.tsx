@@ -175,7 +175,7 @@ const pickMatcherMap = (value: unknown): Record<string, unknown> | null => {
     return null;
   }
 
-  const matcherOrder = ["equals", "contains", "matches", "glob"] as const;
+  const matcherOrder = ["equals", "contains"] as const;
   for (const key of matcherOrder) {
     const candidate = value[key];
     if (hasOwnEntries(candidate)) {
@@ -199,7 +199,7 @@ const pickMatcherPayload = (value: unknown): unknown => {
     return value;
   }
 
-  const matcherOrder = ["equals", "contains", "matches", "glob"] as const;
+  const matcherOrder = ["equals", "contains"] as const;
   const normalized: Record<string, unknown> = {};
 
   if (value.ignoreArrayOrder === true) {

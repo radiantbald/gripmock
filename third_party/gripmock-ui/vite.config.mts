@@ -7,7 +7,7 @@ export default defineConfig({
     server: {
         host: true,
     },
-    base: './',
+    base: '/',
     build: {
         rollupOptions: {
             output: {

@@ -86,7 +86,7 @@ const exportStubs = (stubs: object[]) => {
 
 const PLAIN_MILLISECONDS_RE = /^\d+(\.\d+)?$/;
 const MATCHER_ANY_OF_MODE_KEY = "__anyOfEnabled";
-const MATCHER_SCALAR_KEYS = ["equals", "contains", "matches", "glob"] as const;
+const MATCHER_SCALAR_KEYS = ["equals", "contains"] as const;
 
 const isRecordValue = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
