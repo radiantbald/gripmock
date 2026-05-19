@@ -1,28 +1,16 @@
-import { Box } from "@mui/material";
-import { NumberInput, TextInput } from "react-admin";
+import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
+import { Box, FormControl, MenuItem, Select } from "@mui/material";
+import { SelectInput, TextInput } from "react-admin";
+import { useEffect, useState } from "react";
+import { useFormContext, useWatch } from "react-hook-form";
+import { reflectionHostInputSx } from "../../../components/inputs/reflectionHostInputSx";
 import { JsonTextAreaInput } from "../../../components/json/JsonTextAreaInput";
 import { KeyValueTableInput } from "../../../components/json/KeyValueTableInput";
 import { StubMatcherInput } from "../../../components/json/StubMatcherInput";
 
 const CARD_RADIUS_PX = "10px";
 
-const OUTPUT_PLACEHOLDER_TEMPLATE = `{
-  "data": {
-    "message": "ok"
-  },
-  "stream": [
-    {
-      "message": "part-1"
-    }
-  ],
-  "details": [
-    {
-      "@type": "type.googleapis.com/google.rpc.ErrorInfo",
-      "reason": "EXAMPLE_REASON",
-      "domain": "example.service"
-    }
-  ]
-}`;
+type OutputPayloadType = "data" | "stream";
 
 type StubFormLayoutMode = "create" | "edit";
 
@@ -30,6 +18,26 @@ type StubFormLayoutProps = {
   mode: StubFormLayoutMode;
   showId?: boolean;
 };
+
+const grpcStatusCodeChoices = [
+  { id: 0, name: "0 OK" },
+  { id: 1, name: "1 CANCELLED" },
+  { id: 2, name: "2 UNKNOWN" },
+  { id: 3, name: "3 INVALID_ARGUMENT" },
+  { id: 4, name: "4 DEADLINE_EXCEEDED" },
+  { id: 5, name: "5 NOT_FOUND" },
+  { id: 6, name: "6 ALREADY_EXISTS" },
+  { id: 7, name: "7 PERMISSION_DENIED" },
+  { id: 8, name: "8 RESOURCE_EXHAUSTED" },
+  { id: 9, name: "9 FAILED_PRECONDITION" },
+  { id: 10, name: "10 ABORTED" },
+  { id: 11, name: "11 OUT_OF_RANGE" },
+  { id: 12, name: "12 UNIMPLEMENTED" },
+  { id: 13, name: "13 INTERNAL" },
+  { id: 14, name: "14 UNAVAILABLE" },
+  { id: 15, name: "15 DATA_LOSS" },
+  { id: 16, name: "16 UNAUTHENTICATED" },
+] as const;
 
 const sectionCardSx = {
   width: "100%",
@@ -41,6 +49,81 @@ const sectionCardSx = {
   display: "flex",
   flexDirection: "column",
   overflow: "hidden",
+} as const;
+
+const responseTypeHeaderSelectSx = {
+  width: "auto",
+  minWidth: 0,
+  m: 0,
+  p: 0,
+  "& .MuiInputBase-root": {
+    width: "auto",
+    minHeight: "unset",
+    margin: 0,
+    padding: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    color: "#FF6C37 !important",
+    backgroundColor: "transparent",
+    borderRadius: 0,
+    fontSize: "inherit",
+    fontWeight: "inherit",
+    lineHeight: "inherit",
+  },
+  "& .MuiInputBase-root::before, & .MuiInputBase-root::after": {
+    borderBottom: "none !important",
+  },
+  "& .MuiInputBase-root:hover:not(.Mui-disabled)::before": {
+    borderBottom: "none !important",
+  },
+  "& .MuiOutlinedInput-notchedOutline": {
+    border: "none",
+  },
+  "& .MuiSelect-select": {
+    minWidth: "unset !important",
+    minHeight: "unset !important",
+    padding: "0 20px 0 0 !important",
+    display: "inline-flex",
+    alignItems: "center",
+    backgroundColor: "transparent !important",
+    boxShadow: "none",
+    color: "#FF6C37 !important",
+    fontSize: "inherit",
+    fontWeight: "inherit",
+    lineHeight: "inherit",
+  },
+  "& .MuiOutlinedInput-input, & .MuiSelect-select.MuiOutlinedInput-input": {
+    padding: "0 20px 0 0 !important",
+  },
+  "& .MuiSelect-select:focus": {
+    backgroundColor: "transparent !important",
+  },
+  "& .MuiSelect-icon": {
+    right: 0,
+    color: "#FF6C37 !important",
+    fontSize: 16,
+  },
+  "& .MuiSelect-iconOpen": { transform: "rotate(180deg)" },
+} as const;
+
+const stubPrimaryInputSx = {
+  ...reflectionHostInputSx,
+  width: "100%",
+  maxWidth: "100%",
+} as const;
+
+const responseMetaInputSx = {
+  ...stubPrimaryInputSx,
+  "& .MuiFormControl-root": {
+    width: "100%",
+  },
+  "& input[type=number]": {
+    MozAppearance: "textfield",
+  },
+  "& input[type=number]::-webkit-outer-spin-button, & input[type=number]::-webkit-inner-spin-button": {
+    WebkitAppearance: "none",
+    margin: 0,
+  },
 } as const;
 
 export const stubFormSx = {
@@ -77,6 +160,39 @@ export const stubFormSx = {
 } as const;
 
 export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) => {
+  const { setValue } = useFormContext();
+  const outputData = useWatch({ name: "output.data" });
+  const outputStream = useWatch({ name: "output.stream" });
+  const outputCode = useWatch({ name: "output.code" });
+  const [outputPayloadType, setOutputPayloadType] = useState<OutputPayloadType>("data");
+  const [outputTypeInitialized, setOutputTypeInitialized] = useState(false);
+  const parsedOutputCode = typeof outputCode === "string" ? Number(outputCode.trim() || "0") : Number(outputCode);
+  const hasNonZeroStatusCode = Number.isFinite(parsedOutputCode) && parsedOutputCode !== 0;
+
+  useEffect(() => {
+    if (outputTypeInitialized) {
+      return;
+    }
+
+    if (outputStream !== undefined && outputStream !== null && (outputData === undefined || outputData === null)) {
+      setOutputPayloadType("stream");
+    } else {
+      setOutputPayloadType("data");
+    }
+    setOutputTypeInitialized(true);
+  }, [outputData, outputStream, outputTypeInitialized]);
+
+  const handleOutputPayloadTypeChange = (nextType: OutputPayloadType) => {
+    const unsetValue = mode === "edit" ? null : undefined;
+    setOutputPayloadType(nextType);
+    if (nextType === "data") {
+      setValue("output.stream", unsetValue, { shouldDirty: true });
+      return;
+    }
+
+    setValue("output.data", unsetValue, { shouldDirty: true });
+  };
+
   return (
     <>
       <Box
@@ -92,10 +208,19 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
           flexShrink: 0,
         }}
       >
-        {showId ? <TextInput source="id" label="Stub ID" fullWidth disabled /> : null}
-        <TextInput source="name" label="Stub Name" fullWidth />
-        <TextInput source="service" fullWidth />
-        <TextInput source="method" fullWidth />
+        {showId ? (
+          <TextInput
+            source="id"
+            label="Stub ID"
+            variant="outlined"
+            fullWidth
+            disabled
+            sx={stubPrimaryInputSx}
+          />
+        ) : null}
+        <TextInput source="name" label="Stub Name" variant="outlined" fullWidth sx={stubPrimaryInputSx} />
+        <TextInput source="service" variant="outlined" fullWidth sx={stubPrimaryInputSx} />
+        <TextInput source="method" variant="outlined" fullWidth sx={stubPrimaryInputSx} />
       </Box>
 
       <Box
@@ -119,7 +244,7 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
             sx={{
               width: "100%",
               display: "grid",
-              gridTemplateColumns: { xs: "1fr", md: "2fr 3fr" },
+              gridTemplateColumns: { xs: "1fr", md: "minmax(220px, 1fr) minmax(0, 3fr)" },
               gap: 2,
               alignItems: "start",
               minHeight: 0,
@@ -128,8 +253,8 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
           >
             <KeyValueTableInput
               source="headers.equals"
-              label="Request headers"
-              helperText="Matcher for incoming request metadata."
+              label="Request metadata"
+              helperText={undefined}
               maxTableHeight={140}
             />
             <StubMatcherInput
@@ -146,8 +271,8 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
           <Box
             sx={{
               width: "100%",
-              display: "flex",
-              flexDirection: "column",
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(0, 1fr) 250px" },
               gap: 2,
               minHeight: 0,
             }}
@@ -155,58 +280,134 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
             <Box
               sx={{
                 width: "100%",
-                display: "grid",
-                gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(180px, 1fr))" },
-                gap: 2,
-                alignItems: "start",
+                display: "flex",
+                flexDirection: "column",
+                gap: 0,
+                minHeight: 0,
               }}
             >
-              <NumberInput
-                source="output.code"
-                label="gRPC status code"
-                min={0}
-                max={16}
-                step={1}
-                helperText="Optional status code (0..16). Use non-zero with error responses."
-                fullWidth
-              />
-              <TextInput
-                source="output.error"
-                label="gRPC error"
-                helperText="Optional error text (for non-zero status codes)."
-                fullWidth
-              />
+              <Box
+                sx={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "stretch",
+                  gap: hasNonZeroStatusCode ? 1 : 0,
+                  overflow: "hidden",
+                  transition: "gap 220ms ease",
+                }}
+              >
+                <Box
+                  sx={{
+                    flex: hasNonZeroStatusCode ? "0 0 40%" : "1 1 100%",
+                    minWidth: 0,
+                    transition: "flex-basis 220ms ease, flex-grow 220ms ease, flex-shrink 220ms ease",
+                  }}
+                >
+                  <SelectInput
+                    source="output.code"
+                    label="gRPC status code"
+                    variant="outlined"
+                    choices={grpcStatusCodeChoices}
+                    optionText="name"
+                    optionValue="id"
+                    emptyText={false}
+                    parse={(value) => Number(value)}
+                    format={(value) => String(value ?? 0)}
+                    helperText={false}
+                    fullWidth
+                    sx={responseMetaInputSx}
+                  />
+                </Box>
+                <Box
+                  sx={{
+                    flex: hasNonZeroStatusCode ? "1 1 60%" : "0 0 0px",
+                    minWidth: 0,
+                    maxWidth: hasNonZeroStatusCode ? "100%" : 0,
+                    opacity: hasNonZeroStatusCode ? 1 : 0,
+                    overflow: "hidden",
+                    pointerEvents: hasNonZeroStatusCode ? "auto" : "none",
+                    transition:
+                      "flex-basis 220ms ease, flex-grow 220ms ease, flex-shrink 220ms ease, max-width 220ms ease, opacity 180ms ease",
+                  }}
+                >
+                  <TextInput
+                    source="output.error"
+                    label="gRPC error"
+                    variant="outlined"
+                    helperText={false}
+                    fullWidth
+                    sx={responseMetaInputSx}
+                  />
+                </Box>
+              </Box>
               <TextInput
                 source="output.delay"
                 label="Delay"
-                helperText="Optional response delay in milliseconds (e.g. 100)."
+                variant="outlined"
+                helperText={false}
                 fullWidth
+                sx={responseMetaInputSx}
               />
-            </Box>
-            <Box
-              sx={{
-                width: "100%",
-                display: "grid",
-                gridTemplateColumns: { xs: "1fr", md: "2fr 3fr" },
-                gap: 2,
-                alignItems: "start",
-                minHeight: 0,
-                "& > *": { minHeight: 0 },
-              }}
-            >
               <KeyValueTableInput
                 source="output.headers"
-                label="Response headers"
-                helperText="Metadata returned to client."
+                label="Response metadata"
+                helperText={undefined}
                 maxTableHeight={140}
               />
+            </Box>
+            <Box sx={{ width: "100%", minHeight: 0, mt: { xs: 0, md: "-23px" } }}>
+              {outputPayloadType === "data" ? (
+                <JsonTextAreaInput
+                  source="output.data"
+                  label={(
+                    <FormControl size="small" sx={responseTypeHeaderSelectSx}>
+                      <Select
+                        value={outputPayloadType}
+                        variant="standard"
+                        disableUnderline
+                        IconComponent={KeyboardArrowDownRoundedIcon}
+                        onChange={(event) => {
+                          handleOutputPayloadTypeChange(event.target.value as OutputPayloadType);
+                        }}
+                      >
+                        <MenuItem value="data">Data</MenuItem>
+                        <MenuItem value="stream">Stream</MenuItem>
+                      </Select>
+                    </FormControl>
+                  )}
+                  minRows={12}
+                  placeholder="{}"
+                />
+              ) : (
+                <JsonTextAreaInput
+                  source="output.stream"
+                  label={(
+                    <FormControl size="small" sx={responseTypeHeaderSelectSx}>
+                      <Select
+                        value={outputPayloadType}
+                        variant="standard"
+                        disableUnderline
+                        IconComponent={KeyboardArrowDownRoundedIcon}
+                        onChange={(event) => {
+                          handleOutputPayloadTypeChange(event.target.value as OutputPayloadType);
+                        }}
+                      >
+                        <MenuItem value="data">Data</MenuItem>
+                        <MenuItem value="stream">Stream</MenuItem>
+                      </Select>
+                    </FormControl>
+                  )}
+                  minRows={12}
+                  placeholder="[]"
+                />
+              )}
+            </Box>
+            <Box sx={{ width: "100%", minHeight: 0, mt: { xs: 0, md: "-23px" } }}>
               <JsonTextAreaInput
-                source="output"
-                label="Data / Stream / Details"
-                minRows={8}
-                syncNestedFields={["code", "error", "delay", "headers"]}
-                visibleKeys={["data", "stream", "details"]}
-                placeholder={OUTPUT_PLACEHOLDER_TEMPLATE}
+                source="output.details"
+                label="Details"
+                minRows={12}
+                placeholder="[]"
               />
             </Box>
           </Box>

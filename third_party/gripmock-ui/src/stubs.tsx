@@ -158,28 +158,9 @@ const rememberStubsSelection = (service: unknown, method: unknown): void => {
 };
 
 const DEFAULT_OUTPUT_TEMPLATE = {
-  data: {
-    message: "ok",
-    userId: "42",
-  },
-  stream: [
-    {
-      message: "part-1",
-    },
-    {
-      message: "part-2",
-    },
-  ],
   headers: {},
   error: "",
   code: 0,
-  details: [
-    {
-      type: "type.googleapis.com/google.rpc.ErrorInfo",
-      reason: "EXAMPLE_REASON",
-      domain: "example.service",
-    },
-  ],
 };
 
 // Service Autocomplete Filter

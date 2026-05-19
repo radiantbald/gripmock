@@ -12,12 +12,13 @@ import {
   Typography,
 } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { InputProps, useInput } from "react-admin";
 import { useFormContext, useWatch } from "react-hook-form";
 
 type JsonTextAreaInputProps = {
   source: string;
-  label?: string;
+  label?: ReactNode;
   helperText?: string;
   minRows?: number;
   syncNestedFields?: string[];
@@ -27,6 +28,10 @@ type JsonTextAreaInputProps = {
 
 const prettyJson = (value: unknown) => {
   if (value === undefined || value === null) {
+    return "";
+  }
+
+  if (typeof value === "string" && value.trim().length === 0) {
     return "";
   }
 
