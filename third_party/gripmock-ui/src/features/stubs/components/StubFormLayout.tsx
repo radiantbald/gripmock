@@ -1,7 +1,21 @@
 import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
-import { Box, FormControl, MenuItem, Select, Typography } from "@mui/material";
+import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import {
+  Alert,
+  Box,
+  Button,
+  FormControl,
+  IconButton,
+  MenuItem,
+  Modal,
+  Select,
+  TextField,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import { SelectInput, TextInput } from "react-admin";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { reflectionHostInputSx } from "../../../components/inputs/reflectionHostInputSx";
 import { JsonTextAreaInput } from "../../../components/json/JsonTextAreaInput";
@@ -13,6 +27,7 @@ const CARD_RADIUS_PX = "10px";
 type OutputPayloadType = "data" | "stream";
 
 type StubFormLayoutMode = "create" | "edit";
+type RawPreviewTarget = "matcher" | "response" | null;
 
 type StubFormLayoutProps = {
   mode: StubFormLayoutMode;
@@ -130,6 +145,162 @@ const responseMetaInputSx = {
   },
 } as const;
 
+const MATCHER_ANY_OF_MODE_KEY = "__anyOfEnabled";
+const MATCHER_SCALAR_KEYS = ["equals", "contains"] as const;
+const MATCHER_KEYS = new Set(["equals", "contains", "matches", "glob", "anyOf", "ignoreArrayOrder"]);
+
+const isRecordValue = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const stripMatcherUiKeys = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map((entry) => stripMatcherUiKeys(entry));
+  }
+  if (!isRecordValue(value)) {
+    return value;
+  }
+
+  const next: Record<string, unknown> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (key === MATCHER_ANY_OF_MODE_KEY) {
+      continue;
+    }
+    next[key] = stripMatcherUiKeys(raw);
+  }
+
+  return next;
+};
+
+const serializeMatcherForPreview = (value: unknown): unknown => {
+  const stripped = stripMatcherUiKeys(value);
+  if (!isRecordValue(value) || !isRecordValue(stripped)) {
+    return stripped;
+  }
+
+  const anyOfEnabled = value[MATCHER_ANY_OF_MODE_KEY] === true;
+  if (!anyOfEnabled) {
+    delete stripped.anyOf;
+    return stripped;
+  }
+
+  const anyOfRules: Record<string, unknown>[] = [];
+  for (const key of MATCHER_SCALAR_KEYS) {
+    const section = stripped[key];
+    if (!isRecordValue(section) || Object.keys(section).length === 0) {
+      continue;
+    }
+    anyOfRules.push({ [key]: section });
+    delete stripped[key];
+  }
+
+  if (anyOfRules.length > 0) {
+    stripped.anyOf = anyOfRules;
+  } else {
+    delete stripped.anyOf;
+  }
+
+  return stripped;
+};
+
+const isEmptyObject = (value: unknown): boolean => isRecordValue(value) && Object.keys(value).length === 0;
+
+const formatPreviewJson = (value: unknown): string => {
+  try {
+    return JSON.stringify(value ?? {}, null, 2);
+  } catch {
+    return "{}";
+  }
+};
+
+const isMatcherObject = (value: unknown): value is Record<string, unknown> =>
+  isRecordValue(value) && Object.keys(value).some((key) => MATCHER_KEYS.has(key));
+
+const normalizeInputMatcher = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      if (!isRecordValue(item)) {
+        return item;
+      }
+
+      return isMatcherObject(item) ? item : { equals: item };
+    });
+  }
+
+  if (!isRecordValue(value)) {
+    return value;
+  }
+
+  return isMatcherObject(value) ? value : { equals: value };
+};
+
+const normalizeMatcherForFields = (value: unknown): Record<string, unknown> => {
+  if (!isRecordValue(value)) {
+    return {};
+  }
+
+  const normalized: Record<string, unknown> = {};
+
+  if (value.ignoreArrayOrder === true) {
+    normalized.ignoreArrayOrder = true;
+  }
+
+  for (const key of MATCHER_SCALAR_KEYS) {
+    const section = value[key];
+    if (!isRecordValue(section)) {
+      continue;
+    }
+    normalized[key] = {
+      ...(isRecordValue(normalized[key]) ? (normalized[key] as Record<string, unknown>) : {}),
+      ...section,
+    };
+  }
+
+  if (Array.isArray(value.anyOf)) {
+    for (const rule of value.anyOf) {
+      if (!isRecordValue(rule)) {
+        continue;
+      }
+      if (rule.ignoreArrayOrder === true) {
+        normalized.ignoreArrayOrder = true;
+      }
+      for (const key of MATCHER_SCALAR_KEYS) {
+        const section = rule[key];
+        if (!isRecordValue(section)) {
+          continue;
+        }
+        normalized[key] = {
+          ...(isRecordValue(normalized[key]) ? (normalized[key] as Record<string, unknown>) : {}),
+          ...section,
+        };
+      }
+    }
+  }
+
+  for (const [key, rawValue] of Object.entries(value)) {
+    if (!MATCHER_KEYS.has(key) && rawValue !== undefined && key !== MATCHER_ANY_OF_MODE_KEY) {
+      normalized[key] = rawValue;
+    }
+  }
+
+  const explicitAnyOfMode = value[MATCHER_ANY_OF_MODE_KEY];
+  normalized[MATCHER_ANY_OF_MODE_KEY] =
+    typeof explicitAnyOfMode === "boolean"
+      ? explicitAnyOfMode
+      : Array.isArray(value.anyOf) && value.anyOf.length > 0;
+
+  return normalized;
+};
+
+const normalizeHeadersForFields = (value: unknown): Record<string, unknown> | undefined => {
+  if (!isRecordValue(value) || isEmptyObject(value)) {
+    return undefined;
+  }
+  if (isRecordValue(value.equals) || isRecordValue(value.contains)) {
+    return value;
+  }
+  return { equals: value };
+};
+
 export const stubFormSx = {
   height: "100%",
   minHeight: 0,
@@ -166,13 +337,49 @@ export const stubFormSx = {
 export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) => {
   const { setValue } = useFormContext();
   const stubIdValue = useWatch({ name: "id" });
+  const matcherHeaders = useWatch({ name: "headers" });
+  const matcherInput = useWatch({ name: "input" });
+  const matcherInputs = useWatch({ name: "inputs" });
+  const outputValue = useWatch({ name: "output" });
   const outputData = useWatch({ name: "output.data" });
   const outputStream = useWatch({ name: "output.stream" });
   const outputCode = useWatch({ name: "output.code" });
   const [outputPayloadType, setOutputPayloadType] = useState<OutputPayloadType>("data");
   const [outputTypeInitialized, setOutputTypeInitialized] = useState(false);
+  const [rawPreviewTarget, setRawPreviewTarget] = useState<RawPreviewTarget>(null);
+  const [rawEditorText, setRawEditorText] = useState("");
+  const [rawEditorError, setRawEditorError] = useState<string | null>(null);
   const parsedOutputCode = typeof outputCode === "string" ? Number(outputCode.trim() || "0") : Number(outputCode);
   const hasNonZeroStatusCode = Number.isFinite(parsedOutputCode) && parsedOutputCode !== 0;
+
+  const matcherPreviewPayload = useMemo(() => {
+    const payload: Record<string, unknown> = {};
+
+    if (isRecordValue(matcherHeaders) && !isEmptyObject(matcherHeaders)) {
+      payload.headers = matcherHeaders;
+    }
+
+    const normalizedInput = serializeMatcherForPreview(matcherInput);
+    const normalizedInputs = serializeMatcherForPreview(matcherInputs);
+    if (Array.isArray(normalizedInputs) && normalizedInputs.length > 0) {
+      payload.inputs = normalizedInputs;
+    } else if (isRecordValue(normalizedInput) && !isEmptyObject(normalizedInput)) {
+      payload.input = normalizedInput;
+    }
+
+    return payload;
+  }, [matcherHeaders, matcherInput, matcherInputs]);
+
+  const responsePreviewPayload = useMemo(() => {
+    if (isRecordValue(outputValue)) {
+      return outputValue;
+    }
+
+    return {};
+  }, [outputValue]);
+
+  const previewTitle = rawPreviewTarget === "matcher" ? "Request Match Raw JSON" : "Response Stub Raw JSON";
+  const previewText = formatPreviewJson(rawPreviewTarget === "matcher" ? matcherPreviewPayload : responsePreviewPayload);
 
   useEffect(() => {
     if (outputTypeInitialized) {
@@ -196,6 +403,74 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
     }
 
     setValue("output.data", unsetValue, { shouldDirty: true });
+  };
+
+  const openRawEditor = (target: RawPreviewTarget) => {
+    if (target === null) {
+      return;
+    }
+    setRawEditorError(null);
+    setRawEditorText(formatPreviewJson(target === "matcher" ? matcherPreviewPayload : responsePreviewPayload));
+    setRawPreviewTarget(target);
+  };
+
+  const applyMatcherPreview = (value: unknown) => {
+    if (!isRecordValue(value)) {
+      throw new Error("Matcher JSON must be an object.");
+    }
+
+    const unsetValue = mode === "edit" ? null : undefined;
+    const headers = normalizeHeadersForFields(value.headers);
+    setValue("headers", headers ?? unsetValue, { shouldDirty: true });
+
+    let nextMatcher: unknown = value.input;
+    if (nextMatcher === undefined && Array.isArray(value.inputs) && value.inputs.length > 0) {
+      nextMatcher = value.inputs.find((item) => isRecordValue(item)) ?? value.inputs[0];
+    }
+
+    const normalizedInputMatcher = normalizeInputMatcher(nextMatcher);
+    if (isRecordValue(normalizedInputMatcher)) {
+      setValue("input", normalizeMatcherForFields(normalizedInputMatcher), { shouldDirty: true });
+    } else {
+      setValue("input", unsetValue, { shouldDirty: true });
+    }
+    setValue("inputs", unsetValue, { shouldDirty: true });
+  };
+
+  const applyResponsePreview = (value: unknown) => {
+    if (!isRecordValue(value)) {
+      throw new Error("Response JSON must be an object.");
+    }
+
+    setValue("output", value, { shouldDirty: true });
+    const hasStream = Array.isArray(value.stream) && value.stream.length > 0;
+    const hasData = value.data !== undefined && value.data !== null;
+    setOutputPayloadType(hasStream && !hasData ? "stream" : "data");
+  };
+
+  const applyRawEditorParsedValue = (parsed: unknown) => {
+    if (rawPreviewTarget === "matcher") {
+      applyMatcherPreview(parsed);
+    } else if (rawPreviewTarget === "response") {
+      applyResponsePreview(parsed);
+    }
+  };
+
+  const handleRawEditorTextChange = (nextText: string) => {
+    setRawEditorText(nextText);
+    const trimmed = nextText.trim();
+    if (!trimmed) {
+      setRawEditorError("JSON cannot be empty.");
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(nextText) as unknown;
+      applyRawEditorParsedValue(parsed);
+      setRawEditorError(null);
+    } catch (error) {
+      setRawEditorError((error as Error).message || "Invalid JSON");
+    }
   };
 
   return (
@@ -262,8 +537,35 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
         }}
       >
         <Box sx={sectionCardSx}>
-          <Box sx={{ width: "100%", fontSize: 16, fontWeight: 600, color: "#FF6C37", mb: 1 }}>
-            Request Match
+          <Box sx={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "flex-start", mb: 1, gap: 0.5 }}>
+            <Box sx={{ fontSize: 16, fontWeight: 600, color: "#FF6C37" }}>
+              Request Match
+            </Box>
+            <Tooltip title="View matcher raw JSON">
+              <Button
+                size="small"
+                variant="text"
+                aria-label="View matcher raw JSON"
+                startIcon={<VisibilityOutlinedIcon sx={{ fontSize: 16 }} />}
+                onClick={() => {
+                  openRawEditor("matcher");
+                }}
+                sx={{
+                  color: "text.secondary",
+                  minWidth: "unset",
+                  width: 22,
+                  height: 22,
+                  p: 0,
+                  borderRadius: 1,
+                  backgroundColor: "transparent",
+                  "& .MuiButton-startIcon": { m: 0 },
+                  "&:hover": {
+                    color: "#FF6C37",
+                    backgroundColor: "transparent",
+                  },
+                }}
+              />
+            </Tooltip>
           </Box>
           <Box
             sx={{
@@ -292,8 +594,35 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
         </Box>
 
         <Box sx={{ ...sectionCardSx, alignSelf: "start", overflow: "visible" }}>
-          <Box sx={{ width: "100%", fontSize: 16, fontWeight: 600, color: "#FF6C37", mb: 1 }}>
-            Response Stub
+          <Box sx={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "flex-start", mb: 1, gap: 0.5 }}>
+            <Box sx={{ fontSize: 16, fontWeight: 600, color: "#FF6C37" }}>
+              Response Stub
+            </Box>
+            <Tooltip title="View response raw JSON">
+              <Button
+                size="small"
+                variant="text"
+                aria-label="View response raw JSON"
+                startIcon={<VisibilityOutlinedIcon sx={{ fontSize: 16 }} />}
+                onClick={() => {
+                  openRawEditor("response");
+                }}
+                sx={{
+                  color: "text.secondary",
+                  minWidth: "unset",
+                  width: 22,
+                  height: 22,
+                  p: 0,
+                  borderRadius: 1,
+                  backgroundColor: "transparent",
+                  "& .MuiButton-startIcon": { m: 0 },
+                  "&:hover": {
+                    color: "#FF6C37",
+                    backgroundColor: "transparent",
+                  },
+                }}
+              />
+            </Tooltip>
           </Box>
           <Box
             sx={{
@@ -441,6 +770,96 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
           </Box>
         </Box>
       </Box>
+      <Modal
+        open={rawPreviewTarget !== null}
+        onClose={() => {
+          setRawPreviewTarget(null);
+          setRawEditorError(null);
+        }}
+      >
+        <Box
+          sx={{
+            position: "fixed",
+            top: 20,
+            right: 20,
+            width: { xs: "calc(100vw - 24px)", md: "max(33vw, 400px)" },
+            height: "calc(100dvh - 40px)",
+            bgcolor: "background.paper",
+            border: "1px solid",
+            borderColor: "divider",
+            borderRadius: 1.5,
+            p: 1.5,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+            <Typography variant="body2" sx={{ color: "#FF6C37", fontWeight: 500 }}>
+              {previewTitle}
+            </Typography>
+            <IconButton
+              size="small"
+              aria-label="Close raw editor"
+              onClick={() => {
+                setRawPreviewTarget(null);
+                setRawEditorError(null);
+            }}
+              sx={{
+                m: 0,
+                p: 0,
+                width: 14,
+                height: 14,
+                borderRadius: 0,
+                bgcolor: "transparent",
+                color: "text.secondary",
+                transition: "color 0.15s ease",
+                "&:hover": {
+                  color: "primary.main",
+                  bgcolor: "transparent",
+                },
+              }}
+            >
+              <CloseRoundedIcon sx={{ fontSize: 12, display: "block" }} />
+            </IconButton>
+          </Box>
+          <Box sx={{ flex: 1, minHeight: 0 }}>
+            <TextField
+              value={rawEditorText}
+              onChange={(event) => {
+                handleRawEditorTextChange(event.target.value);
+              }}
+              multiline
+              fullWidth
+              placeholder={previewText}
+              variant="outlined"
+              sx={{ height: "100%" }}
+              slotProps={{
+                input: {
+                  sx: {
+                    height: "100%",
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                    p: "14px",
+                    alignItems: "flex-start",
+                    "& textarea": {
+                      height: "100% !important",
+                      overflowY: "auto !important",
+                      resize: "none",
+                    },
+                  },
+                },
+              }}
+            />
+          </Box>
+          {rawEditorError ? (
+            <Alert severity="error" sx={{ mt: 1, py: 0 }}>
+              {rawEditorError}
+            </Alert>
+          ) : null}
+        </Box>
+      </Modal>
     </>
   );
 };
