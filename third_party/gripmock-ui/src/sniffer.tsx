@@ -499,8 +499,7 @@ const nextResponseContainerSx = {
   justifyContent: "flex-start",
   px: 1,
   py: 0,
-  overflowY: "auto",
-  overflowX: "hidden",
+  overflow: "visible",
 } as const;
 const nextResponseViewportSx = {
   minHeight: "100%",
@@ -510,8 +509,8 @@ const nextResponseViewportSx = {
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
-  justifyContent: "center",
-  py: 2.5,
+  justifyContent: "safe center",
+  py: 1,
 } as const;
 const nextResponseCardSx = {
   ...stateBlockCardSx,
@@ -544,7 +543,7 @@ const nextResponseControlsSx = {
   flexDirection: "column",
   alignItems: "center",
   gap: 1,
-  overflowX: "hidden",
+  overflow: "visible",
 } as const;
 const nextResponseControlSx = {
   width: "min(100%, 260px)",
@@ -818,6 +817,7 @@ const nextResponseReflectionHostInputSx = {
 const nextResponseProtoActionsRowSx = {
   ...nextResponseReflectionHostSx,
   justifyContent: "center",
+  flexWrap: "wrap",
 } as const;
 const nextResponseInlineSeparatorSx = {
   fontSize: 13,
@@ -862,7 +862,7 @@ const nextResponseStubControlSx = {
   gap: 0.75,
   width: "100%",
   minWidth: 0,
-  overflowX: "hidden",
+  overflow: "visible",
 } as const;
 const nextResponseActionsSx = {
   ...stateBlockActionsSx,
@@ -2057,8 +2057,15 @@ export const SnifferPage = () => {
     !shouldHideResponsePayload && showMissingStubHint;
   const shouldShowInvalidStubBlock =
     !shouldHideResponsePayload && showResponseSchemaHint;
+  const shouldShowProxyNextResponseBlock =
+    responsePanelMode === "response" &&
+    selectedNextResponseSource === "reflection" &&
+    selectedReflectionServedBy === "proxy" &&
+    !shouldHideResponsePayload &&
+    (shouldShowInvalidStubBlock || shouldShowMissingStubBlock);
   const shouldShowResponsePayloadBlock =
     !shouldHideResponsePayload &&
+    !shouldShowProxyNextResponseBlock &&
     !shouldShowInvalidStubBlock &&
     !shouldShowMissingStubBlock;
   const shouldPromptEnterRoomToSetup =
@@ -2146,7 +2153,7 @@ export const SnifferPage = () => {
       },
     );
   const hasAnyMatchingStubs = (matchingStubsTotal ?? matchingStubs.length) > 0;
-  const hasSelectedRouteStub = Boolean(selectedStubId);
+  const hasSelectedRouteStub = Boolean(selectedStubId) && hasAnyMatchingStubs;
   const selectedProtofileName =
     (selectedRouteKey ? selectedProtofilesByRoute[selectedRouteKey] : "") || "";
   const protofileOptions = useMemo<ProtofileOption[]>(() => {
@@ -3259,7 +3266,7 @@ export const SnifferPage = () => {
         one.
       </Typography>
       <Box sx={nextResponseActionsSx}>
-        {selectedStubId ? (
+        {hasSelectedRouteStub ? (
           <Button
             variant="contained"
             component={RouterLink}
@@ -3269,44 +3276,36 @@ export const SnifferPage = () => {
           >
             Edit selected stub
           </Button>
-        ) : hasAnyMatchingStubs ? (
-          <Button
-            variant="outlined"
-            component={RouterLink}
-            to={stubsListPath}
-            disabled={!canCreateStubFromSelectedCall}
-            sx={nextResponseActionButtonSx}
-          >
-            Select stub
-          </Button>
         ) : (
-          <Button
-            variant="contained"
-            component={RouterLink}
-            to={stubCreatePath}
-            disabled={!canCreateStubFromSelectedCall}
-            state={{
-              returnTo: snifferPath,
-              prefillService: selectedService,
-              prefillMethod: selectedMethod,
-            }}
-            sx={nextResponseActionButtonSx}
-          >
-            Create stub
-          </Button>
+          <>
+            {hasAnyMatchingStubs ? (
+              <Button
+                variant="outlined"
+                component={RouterLink}
+                to={stubsListPath}
+                disabled={!canCreateStubFromSelectedCall}
+                sx={nextResponseActionButtonSx}
+              >
+                Select stub
+              </Button>
+            ) : null}
+            <Button
+              variant="contained"
+              component={RouterLink}
+              to={stubCreatePath}
+              disabled={!canCreateStubFromSelectedCall}
+              state={{
+                returnTo: snifferPath,
+                prefillService: selectedService,
+                prefillMethod: selectedMethod,
+              }}
+              sx={nextResponseActionButtonSx}
+            >
+              Create stub
+            </Button>
+          </>
         )}
-        {selectedStubId || !hasAnyMatchingStubs ? null : (
-          <Button
-            variant="contained"
-            component={RouterLink}
-            to={routeStubEditPath}
-            state={{ returnTo: snifferPath }}
-            sx={nextResponseActionButtonSx}
-          >
-            Edit stub
-          </Button>
-        )}
-        {selectedStubId && hasAnyMatchingStubs ? (
+        {hasSelectedRouteStub ? (
           <Button
             variant="outlined"
             component={RouterLink}
@@ -4955,6 +4954,20 @@ export const SnifferPage = () => {
                       )}
                     </Box>
                   </Box>
+                </Box>
+              </Box>
+            ) : shouldShowProxyNextResponseBlock ? (
+              <Box sx={stateBlockContainerSx}>
+                <Box sx={responseStateCardSx}>
+                  <Typography variant="h5" sx={nextResponseTitleSx}>
+                    Proxy selected for next response
+                  </Typography>
+                  <Typography variant="body1" sx={nextResponseBodySx}>
+                    Proxy mode is selected for this route.
+                  </Typography>
+                  <Typography variant="body1" sx={nextResponseBodySx}>
+                    The next request will be forwarded to the server and served by its response.
+                  </Typography>
                 </Box>
               </Box>
             ) : shouldShowInvalidStubBlock ? (
