@@ -85,6 +85,61 @@ const exportStubs = (stubs: object[]) => {
 };
 
 const PLAIN_MILLISECONDS_RE = /^\d+(\.\d+)?$/;
+const MATCHER_ANY_OF_MODE_KEY = "__anyOfEnabled";
+const MATCHER_SCALAR_KEYS = ["equals", "contains", "matches", "glob"] as const;
+
+const isRecordValue = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const stripMatcherUiKeys = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map((entry) => stripMatcherUiKeys(entry));
+  }
+  if (!isRecordValue(value)) {
+    return value;
+  }
+
+  const next: Record<string, unknown> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (key === MATCHER_ANY_OF_MODE_KEY) {
+      continue;
+    }
+    next[key] = stripMatcherUiKeys(raw);
+  }
+
+  return next;
+};
+
+const serializeMatcherForApi = (value: unknown): unknown => {
+  const stripped = stripMatcherUiKeys(value);
+  if (!isRecordValue(value) || !isRecordValue(stripped)) {
+    return stripped;
+  }
+
+  const anyOfEnabled = value[MATCHER_ANY_OF_MODE_KEY] === true;
+  if (!anyOfEnabled) {
+    delete stripped.anyOf;
+    return stripped;
+  }
+
+  const anyOfRules: Record<string, unknown>[] = [];
+  for (const key of MATCHER_SCALAR_KEYS) {
+    const section = stripped[key];
+    if (!isRecordValue(section) || Object.keys(section).length === 0) {
+      continue;
+    }
+    anyOfRules.push({ [key]: section });
+    delete stripped[key];
+  }
+
+  if (anyOfRules.length > 0) {
+    stripped.anyOf = anyOfRules;
+  } else {
+    delete stripped.anyOf;
+  }
+
+  return stripped;
+};
 
 const normalizeDelayValue = (value: unknown): unknown => {
   if (typeof value !== "string") {
@@ -106,15 +161,16 @@ const normalizeDelayValue = (value: unknown): unknown => {
 
 const normalizeStubDelay = <T extends Record<string, unknown>>(data: T): T => {
   const output = data.output;
-  if (!output || typeof output !== "object") {
-    return data;
-  }
+  const normalizedInput = serializeMatcherForApi(data.input);
+  const normalizedInputs = serializeMatcherForApi(data.inputs);
 
   return {
     ...data,
+    input: normalizedInput,
+    inputs: normalizedInputs,
     output: {
-      ...(output as Record<string, unknown>),
-      delay: normalizeDelayValue((output as Record<string, unknown>).delay),
+      ...(isRecordValue(output) ? output : {}),
+      delay: normalizeDelayValue(isRecordValue(output) ? output.delay : undefined),
     },
   };
 };

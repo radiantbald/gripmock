@@ -200,19 +200,25 @@ const pickMatcherPayload = (value: unknown): unknown => {
   }
 
   const matcherOrder = ["equals", "contains", "matches", "glob"] as const;
+  const normalized: Record<string, unknown> = {};
+
+  if (value.ignoreArrayOrder === true) {
+    normalized.ignoreArrayOrder = true;
+  }
+
   for (const key of matcherOrder) {
     const candidate = value[key];
     if (hasOwnEntries(candidate)) {
-      return candidate;
+      normalized[key] = candidate;
     }
   }
 
   if (Array.isArray(value.anyOf) && value.anyOf.length > 0) {
-    return value.anyOf.map((item) => pickMatcherPayload(item));
+    normalized.anyOf = value.anyOf.map((item) => pickMatcherPayload(item));
   }
 
-  if (value.ignoreArrayOrder === true) {
-    return { ignoreArrayOrder: true };
+  if (Object.keys(normalized).length > 0) {
+    return normalized;
   }
 
   return hasOwnEntries(value) ? value : {};

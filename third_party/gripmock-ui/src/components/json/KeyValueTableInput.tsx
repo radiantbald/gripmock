@@ -22,6 +22,7 @@ type KeyValueTableInputProps = {
   source: string;
   label?: string;
   helperText?: string;
+  hideLabel?: boolean;
   keyPlaceholder?: string;
   valuePlaceholder?: string;
   maxTableHeight?: number;
@@ -79,6 +80,7 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
     source,
     label,
     helperText,
+    hideLabel = false,
     keyPlaceholder = "Header name",
     valuePlaceholder = "Header value",
     maxTableHeight = 170,
@@ -155,35 +157,37 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
 
   return (
     <div>
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
-        <Box sx={{ fontSize: 14, color: "text.secondary" }}>
-          {label || source}
-          {isRequired ? " *" : ""}
-        </Box>
-        <IconButton
-          size="small"
-          aria-label="Expand table"
-          onClick={() => {
-            setExpanded(true);
-          }}
-          sx={{
-            m: 0,
-            p: 0,
-            width: 14,
-            height: 14,
-            borderRadius: 0,
-            bgcolor: "transparent",
-            color: "text.secondary",
-            transition: "color 0.15s ease",
-            "&:hover": {
-              color: "primary.main",
+      {!hideLabel ? (
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
+          <Box sx={{ fontSize: 14, color: "text.secondary" }}>
+            {label || source}
+            {isRequired ? " *" : ""}
+          </Box>
+          <IconButton
+            size="small"
+            aria-label="Expand table"
+            onClick={() => {
+              setExpanded(true);
+            }}
+            sx={{
+              m: 0,
+              p: 0,
+              width: 14,
+              height: 14,
+              borderRadius: 0,
               bgcolor: "transparent",
-            },
-          }}
-        >
-          <OpenInFullRoundedIcon sx={{ fontSize: 12, display: "block" }} />
-        </IconButton>
-      </Box>
+              color: "text.secondary",
+              transition: "color 0.15s ease",
+              "&:hover": {
+                color: "primary.main",
+                bgcolor: "transparent",
+              },
+            }}
+          >
+            <OpenInFullRoundedIcon sx={{ fontSize: 12, display: "block" }} />
+          </IconButton>
+        </Box>
+      ) : null}
       <Stack spacing={0.5}>
         <Stack spacing={0.5}>
           <Box

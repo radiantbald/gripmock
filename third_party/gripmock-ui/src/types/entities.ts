@@ -70,6 +70,16 @@ export type HistoryRecord = {
   source?: "proto" | "reflection";
 };
 
+export type StubMatcherRule = {
+  equals?: Record<string, unknown>;
+  contains?: Record<string, unknown>;
+  matches?: Record<string, unknown>;
+  glob?: Record<string, unknown>;
+  ignoreArrayOrder?: boolean;
+  anyOf?: StubMatcherRule[];
+  [key: string]: unknown;
+};
+
 export type StubRecord = {
   id: string;
   name?: string;
@@ -77,11 +87,8 @@ export type StubRecord = {
   method?: string;
   enabled?: boolean;
   headers?: Record<string, unknown>;
-  input?: {
-    ignoreArrayOrder?: boolean;
-    [key: string]: unknown;
-  };
-  inputs?: unknown[];
+  input?: StubMatcherRule;
+  inputs?: StubMatcherRule[];
   output?: {
     stream?: unknown[];
     data?: unknown;

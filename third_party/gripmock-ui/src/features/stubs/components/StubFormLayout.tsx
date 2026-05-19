@@ -269,7 +269,7 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
             sx={{
               width: "100%",
               display: "grid",
-              gridTemplateColumns: { xs: "1fr", md: "minmax(220px, 1fr) minmax(0, 3fr)" },
+              gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) 250px minmax(0, 1fr)" },
               gap: 2,
               alignItems: "start",
               minHeight: 0,
@@ -282,10 +282,12 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
               helperText={undefined}
               maxTableHeight={140}
             />
-            <StubMatcherInput
-              mode={mode}
-              minRows={8}
-            />
+            <Box sx={{ width: "100%", minHeight: 0, gridColumn: { xs: "span 1", md: "2 / 4" } }}>
+              <StubMatcherInput
+                mode={mode}
+                minRows={8}
+              />
+            </Box>
           </Box>
         </Box>
 
