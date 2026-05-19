@@ -1,5 +1,5 @@
 import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
-import { Box, FormControl, MenuItem, Select } from "@mui/material";
+import { Box, FormControl, MenuItem, Select, Typography } from "@mui/material";
 import { SelectInput, TextInput } from "react-admin";
 import { useEffect, useState } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
@@ -110,6 +110,10 @@ const stubPrimaryInputSx = {
   ...reflectionHostInputSx,
   width: "100%",
   maxWidth: "100%",
+  m: 0,
+  "& .MuiFormControl-root": {
+    margin: 0,
+  },
 } as const;
 
 const responseMetaInputSx = {
@@ -161,6 +165,7 @@ export const stubFormSx = {
 
 export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) => {
   const { setValue } = useFormContext();
+  const stubIdValue = useWatch({ name: "id" });
   const outputData = useWatch({ name: "output.data" });
   const outputStream = useWatch({ name: "output.stream" });
   const outputCode = useWatch({ name: "output.code" });
@@ -200,23 +205,43 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
           width: "100%",
           display: "grid",
           gridTemplateColumns: showId
-            ? { xs: "1fr", md: "repeat(4, minmax(180px, 1fr))" }
-            : { xs: "1fr", md: "repeat(3, minmax(220px, 320px))" },
+            ? { xs: "1fr", md: "repeat(4, minmax(0, 1fr))" }
+            : { xs: "1fr", md: "repeat(3, minmax(0, 1fr))" },
+          pt: 0.5,
+          pb: 1,
           gap: 2,
           alignItems: "start",
-          justifyContent: "start",
           flexShrink: 0,
+          "& .ra-input": {
+            marginTop: 0,
+            marginBottom: 0,
+          },
+          "& .MuiFormControl-root": {
+            marginTop: 0,
+            marginBottom: 0,
+          },
         }}
       >
         {showId ? (
-          <TextInput
-            source="id"
-            label="Stub ID"
-            variant="outlined"
-            fullWidth
-            disabled
-            sx={stubPrimaryInputSx}
-          />
+          <Box
+            sx={{
+              width: "100%",
+              minHeight: 40,
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <Typography
+              sx={{
+                color: "#FF6C37",
+                fontWeight: 800,
+                fontSize: 28,
+                lineHeight: 1.1,
+              }}
+            >
+              {`Stub ID = ${stubIdValue ?? ""}`}
+            </Typography>
+          </Box>
         ) : null}
         <TextInput source="name" label="Stub Name" variant="outlined" fullWidth sx={stubPrimaryInputSx} />
         <TextInput source="service" variant="outlined" fullWidth sx={stubPrimaryInputSx} />
@@ -264,7 +289,7 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
           </Box>
         </Box>
 
-        <Box sx={{ ...sectionCardSx, alignSelf: "start" }}>
+        <Box sx={{ ...sectionCardSx, alignSelf: "start", overflow: "visible" }}>
           <Box sx={{ width: "100%", fontSize: 16, fontWeight: 600, color: "#FF6C37", mb: 1 }}>
             Response Stub
           </Box>
@@ -282,7 +307,8 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
                 width: "100%",
                 display: "flex",
                 flexDirection: "column",
-                gap: 0,
+                pt: 0.5,
+                gap: 1,
                 minHeight: 0,
               }}
             >
@@ -292,7 +318,7 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
                   display: "flex",
                   alignItems: "stretch",
                   gap: hasNonZeroStatusCode ? 1 : 0,
-                  overflow: "hidden",
+                  overflow: "visible",
                   transition: "gap 220ms ease",
                 }}
               >

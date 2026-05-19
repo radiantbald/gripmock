@@ -123,15 +123,21 @@ export const JsonTextAreaInput = (props: JsonTextAreaInputProps) => {
     if (isFocused) {
       return;
     }
+    if (parseError) {
+      return;
+    }
 
     setText((prev) => (prev === initialText ? prev : initialText));
-  }, [initialText, isFocused]);
+  }, [initialText, isFocused, parseError]);
 
   useEffect(() => {
     if (syncFieldNames.length === 0) {
       return;
     }
     if (isFocused) {
+      return;
+    }
+    if (parseError) {
       return;
     }
 
@@ -153,6 +159,7 @@ export const JsonTextAreaInput = (props: JsonTextAreaInputProps) => {
     visibleKeys,
     watchedSyncValues,
     isFocused,
+    parseError,
   ]);
 
   const updateValueFromText = (nextText: string) => {
