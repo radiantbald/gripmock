@@ -2146,6 +2146,7 @@ export const SnifferPage = () => {
       },
     );
   const hasAnyMatchingStubs = (matchingStubsTotal ?? matchingStubs.length) > 0;
+  const hasSelectedRouteStub = Boolean(selectedStubId);
   const selectedProtofileName =
     (selectedRouteKey ? selectedProtofilesByRoute[selectedRouteKey] : "") || "";
   const protofileOptions = useMemo<ProtofileOption[]>(() => {
@@ -5029,19 +5030,21 @@ export const SnifferPage = () => {
                     }}
                   />
                   <Typography variant="h5" sx={nextResponseTitleSx}>
-                    {hasAnyMatchingStubs
+                    {hasSelectedRouteStub
                       ? "Stub did not match request"
                       : "No stub assigned"}
                   </Typography>
                   <Typography variant="body1" sx={nextResponseBodySx}>
-                    {hasAnyMatchingStubs
+                    {hasSelectedRouteStub
                       ? "A stub exists for this route, but this request did not match its input or headers."
                       : "No stub is assigned for this call."}
                   </Typography>
                   <Typography variant="body1" sx={nextResponseBodySx}>
-                    {hasAnyMatchingStubs
+                    {hasSelectedRouteStub
                       ? "Edit the route stub or select another stub for this request."
-                      : "No stubs exist for this service/method yet. Create one for this call."}
+                      : hasAnyMatchingStubs
+                        ? "Select an existing stub for this route, or create a new one for this call."
+                        : "No stubs exist for this service/method yet. Create one for this call."}
                   </Typography>
                   <Box sx={responseStateActionsSx}>
                     {shouldShowStubCreatedAndAssignedRetryHint ? (
@@ -5071,7 +5074,7 @@ export const SnifferPage = () => {
                     ) : null}
                     {shouldShowStubAssignedRetryHint ? null : (
                       <>
-                        {hasAnyMatchingStubs ? (
+                        {hasSelectedRouteStub ? (
                           <Button
                             variant="contained"
                             component={RouterLink}
@@ -5082,7 +5085,7 @@ export const SnifferPage = () => {
                             Edit stub
                           </Button>
                         ) : null}
-                        {hasAnyMatchingStubs ? (
+                        {hasSelectedRouteStub ? (
                           <Button
                             variant="outlined"
                             component={RouterLink}
@@ -5093,20 +5096,33 @@ export const SnifferPage = () => {
                             Select another stub
                           </Button>
                         ) : shouldShowStubCreatedHint ? null : (
-                          <Button
-                            variant="contained"
-                            component={RouterLink}
-                            to={stubCreatePath}
-                            disabled={!canCreateStubFromSelectedCall}
-                            state={{
-                              returnTo: snifferPath,
-                              prefillService: selectedService,
-                              prefillMethod: selectedMethod,
-                            }}
-                            sx={nextResponseActionButtonSx}
-                          >
-                            Create stub
-                          </Button>
+                          <>
+                            {hasAnyMatchingStubs ? (
+                              <Button
+                                variant="outlined"
+                                component={RouterLink}
+                                to={stubsListPath}
+                                disabled={!canCreateStubFromSelectedCall}
+                                sx={nextResponseActionButtonSx}
+                              >
+                                Select stub
+                              </Button>
+                            ) : null}
+                            <Button
+                              variant="contained"
+                              component={RouterLink}
+                              to={stubCreatePath}
+                              disabled={!canCreateStubFromSelectedCall}
+                              state={{
+                                returnTo: snifferPath,
+                                prefillService: selectedService,
+                                prefillMethod: selectedMethod,
+                              }}
+                              sx={nextResponseActionButtonSx}
+                            >
+                              Create stub
+                            </Button>
+                          </>
                         )}
                       </>
                     )}
