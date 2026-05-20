@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	infrafaker "github.com/bavix/gripmock/v3/internal/infra/faker"
-	pkgplugins "github.com/bavix/gripmock/v3/pkg/plugintest"
+	infrafaker "github.com/radiantbald/gripmock/v3/internal/infra/faker"
+	pkgplugins "github.com/radiantbald/gripmock/v3/pkg/plugintest"
 )
 
 func TestRegisterBuiltins(t *testing.T) {

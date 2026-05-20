@@ -14,7 +14,7 @@ The GripMock Embedded SDK provides an integrated way to use GripMock directly wi
 
 Looking for a full project that uses embedded mode in practice?
 
-- [bavix/greeter-gripmock-embedded](https://github.com/bavix/greeter-gripmock-embedded) - End-to-end example of GripMock Embedded SDK usage
+- [radiantbald/greeter-gripmock-embedded](https://github.com/radiantbald/greeter-gripmock-embedded) - End-to-end example of GripMock Embedded SDK usage
 
 ## Why Use the Embedded SDK?
 

@@ -125,7 +125,12 @@ func (v *verifier) VerifyStubTimesErr() error {
 	if want == 0 {
 		return nil
 	}
-	got := v.recorder.Count()
+	got := 0
+	for _, call := range v.recorder.All() {
+		if call.StubID > 0 {
+			got++
+		}
+	}
 	if got != want {
 		return fmt.Errorf("gripmock: expected %d total calls (from stub Times), got %d", want, got)
 	}

@@ -13,8 +13,8 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/dynamicpb"
 
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
-	"github.com/bavix/gripmock/v3/internal/infra/types"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/infra/types"
 )
 
 // mockArrayStreamServerStream mocks grpc.ServerStream for array stream testing.

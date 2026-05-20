@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/bavix/gripmock/v3/internal/config"
+	"github.com/radiantbald/gripmock/v3/internal/config"
 )
 
 // StubWatcherTestSuite provides test suite for stub watcher functionality.

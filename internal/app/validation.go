@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
 )
 
 func NewStubValidator() (*validator.Validate, error) {

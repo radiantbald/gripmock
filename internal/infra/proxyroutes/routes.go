@@ -10,8 +10,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	protosetdom "github.com/bavix/gripmock/v3/internal/domain/protoset"
-	grpcclient "github.com/bavix/gripmock/v3/internal/infra/grpcclient"
+	protosetdom "github.com/radiantbald/gripmock/v3/internal/domain/protoset"
+	grpcclient "github.com/radiantbald/gripmock/v3/internal/infra/grpcclient"
 )
 
 var errRemoteClientNil = errors.New("remote client is not configured")

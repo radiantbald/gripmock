@@ -9,9 +9,9 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
-	"github.com/bavix/gripmock/v3/internal/deps"
-	"github.com/bavix/gripmock/v3/internal/domain/proto"
-	"github.com/bavix/gripmock/v3/internal/infra/build"
+	"github.com/radiantbald/gripmock/v3/internal/deps"
+	"github.com/radiantbald/gripmock/v3/internal/domain/proto"
+	"github.com/radiantbald/gripmock/v3/internal/infra/build"
 )
 
 var (

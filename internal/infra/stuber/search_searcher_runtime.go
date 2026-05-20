@@ -6,6 +6,10 @@ package stuber
 // The function returns a slice of IDs representing the keys of the
 // inserted or updated values.
 func (s *searcher) upsert(values ...*Stub) []uint64 {
+	s.lookupMu.Lock()
+	s.lookupCache = make(map[string]*searcherLookup)
+	s.lookupMu.Unlock()
+
 	return s.storage.upsert(values...)
 }
 
@@ -29,6 +33,10 @@ func (s *searcher) del(ids ...uint64) int {
 		}
 	}
 	s.mu.Unlock()
+
+	s.lookupMu.Lock()
+	s.lookupCache = make(map[string]*searcherLookup)
+	s.lookupMu.Unlock()
 
 	return s.storage.del(ids...)
 }

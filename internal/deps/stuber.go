@@ -3,12 +3,12 @@ package deps
 import (
 	"context"
 
-	internalplugins "github.com/bavix/gripmock/v3/internal/infra/plugins"
-	"github.com/bavix/gripmock/v3/internal/infra/storage"
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
-	"github.com/bavix/gripmock/v3/internal/infra/watcher"
-	"github.com/bavix/gripmock/v3/internal/infra/yaml2json"
-	"github.com/bavix/gripmock/v3/pkg/plugins"
+	internalplugins "github.com/radiantbald/gripmock/v3/internal/infra/plugins"
+	"github.com/radiantbald/gripmock/v3/internal/infra/storage"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/infra/watcher"
+	"github.com/radiantbald/gripmock/v3/internal/infra/yaml2json"
+	"github.com/radiantbald/gripmock/v3/pkg/plugins"
 )
 
 func (b *Builder) Budgerigar() *stuber.Budgerigar {

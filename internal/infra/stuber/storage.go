@@ -46,6 +46,7 @@ type storage struct {
 	itemSorted   map[uint64]map[string][]*Stub
 	itemsByID    map[uint64]*Stub
 	rooms        map[string]int
+	nextID       uint64
 }
 
 // newStorage creates a new instance of the storage struct.
@@ -71,6 +72,7 @@ func (s *storage) clear() {
 	s.itemSorted = make(map[uint64]map[string][]*Stub)
 	s.itemsByID = make(map[uint64]*Stub)
 	s.rooms = make(map[string]int)
+	s.nextID = 0
 }
 
 // findByMethodAvailable retrieves method stubs visible for room.
@@ -381,6 +383,12 @@ func (s *storage) posByPN(left, right string) ([]uint64, error) {
 		}
 	}
 
+	// When both exact service and alias resolve, prefer alias-first so short-name
+	// stubs win on equal specificity/score. This preserves historical precedence.
+	if len(resolvedIDs) == 2 && resolvedIDs[0] != resolvedIDs[1] {
+		resolvedIDs[0], resolvedIDs[1] = resolvedIDs[1], resolvedIDs[0]
+	}
+
 	// Return an error if no IDs were resolved.
 	if len(resolvedIDs) == 0 {
 		// Return the original error if we have it.
@@ -430,6 +438,13 @@ func (s *storage) upsert(values ...*Stub) []uint64 {
 
 	// Process all values in a single pass (direct field access for performance)
 	for i, v := range values {
+		if v.ID == 0 {
+			s.nextID++
+			v.ID = s.nextID
+		} else if v.ID > s.nextID {
+			s.nextID = v.ID
+		}
+
 		results[i] = v.ID
 
 		if old, exists := s.itemsByID[v.ID]; exists {

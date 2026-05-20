@@ -29,7 +29,7 @@ The service key `gripmock` is reserved for GripMock internal readiness.
 ## Example: `Check`
 
 ```yaml
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
 
 - service: grpc.health.v1.Health
   method: Check

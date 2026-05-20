@@ -1,7 +1,7 @@
-![GripMock](https://github.com/bavix/gripmock/assets/5111255/d1fc10ef-2149-4302-8e24-aef4fdfe043c)
+![GripMock](https://github.com/radiantbald/gripmock/assets/5111255/d1fc10ef-2149-4302-8e24-aef4fdfe043c)
 
-[![Coverage Status](https://coveralls.io/repos/github/bavix/gripmock/badge.svg?branch=master)](https://coveralls.io/github/bavix/gripmock?branch=master)
-[![Go Report Card](https://goreportcard.com/badge/github.com/bavix/gripmock/v3)](https://goreportcard.com/report/github.com/bavix/gripmock/v3)
+[![Coverage Status](https://coveralls.io/repos/github/radiantbald/gripmock/badge.svg?branch=master)](https://coveralls.io/github/radiantbald/gripmock?branch=master)
+[![Go Report Card](https://goreportcard.com/badge/github.com/radiantbald/gripmock/v3)](https://goreportcard.com/report/github.com/radiantbald/gripmock/v3)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 # GripMock 🚀
@@ -12,7 +12,7 @@
 
 GripMock creates a mock server from your `.proto` files or compiled `.pb` descriptors, making gRPC testing simple and efficient. Perfect for end-to-end testing, development environments, and CI/CD pipelines.
 
-![greeter](https://raw.githubusercontent.com/bavix/.github/master/svgs/gripmock-greeter.gif)
+![greeter](https://raw.githubusercontent.com/radiantbald/.github/master/svgs/gripmock-greeter.gif)
 
 ## ✨ Features
 
@@ -23,8 +23,10 @@ GripMock creates a mock server from your `.proto` files or compiled `.pb` descri
 - **Flexible Matching** - `equals`, `contains`, `matches`, `glob`, headers, priority, and match limits
 - **Array-Aware Matching** - Optional array-order flexibility to reduce brittle test assertions
 - **Dynamic Templates** - Build responses from request payload, headers, and stream context
+- **Stateful Effects** - Apply `upsert`/`delete` effects after match for stateful scenarios
 - **Complete gRPC Coverage** - Unary, server streaming, client streaming, and bidirectional streaming
 - **Error, Details, and Delay Simulation** - Return realistic gRPC status codes, details (`Any`), and response timing
+- **Rooms, History, and Verify** - Isolate state by room, inspect call history, and assert invocation counts
 - **TLS and mTLS Support** - Run secure gRPC/HTTP test environments with native TLS options
 - **Advanced Protobuf Type Support** - Handle well-known and extended protobuf types (`google.protobuf.*`, `google.type.*`)
 - **YAML/JSON + Schema** - Author stubs in either format with JSON Schema IDE validation
@@ -39,14 +41,14 @@ GripMock creates a mock server from your `.proto` files or compiled `.pb` descri
 
 ## 📚 Documentation
 
-**[Full Documentation](https://bavix.github.io/gripmock)** - Complete guide with examples
+**[Full Documentation](https://radiantbald.github.io/gripmock)** - Complete guide with examples
 
-- **Descriptor API (`/api/descriptors`)**: runtime loading of compiled proto descriptors (`.pb`) with validated curl workflow: [docs](https://bavix.github.io/gripmock/guide/api/descriptors)
-- **Upstream Modes (Experimental)**: `proxy`, `replay`, `capture` with practical rollout guidance: [docs](https://bavix.github.io/gripmock/guide/modes)
-- **Embedded SDK (Experimental)**: in-process testing with stubs, verification, `sdk.By(fullMethod)` helpers, and context-aware remote checks: [docs](https://bavix.github.io/gripmock/guide/embedded-sdk)
-- **Faker Reference**: built-in faker key-by-key catalog with examples: [docs](https://bavix.github.io/gripmock/guide/stubs/faker)
-- **OpenTelemetry + Metrics**: tracing env vars and `/metrics` behavior: [docs](https://bavix.github.io/gripmock/guide/introduction/advanced-usage)
-- **GitHub Actions (CI/CD)**: official workflow action to download, start, wait for readiness, and stop GripMock automatically: [docs](https://bavix.github.io/gripmock/guide/ci-cd/github-actions)
+- **Descriptor API (`/api/descriptors`)**: runtime loading of compiled proto descriptors (`.pb`) with validated curl workflow: [docs](https://radiantbald.github.io/gripmock/guide/api/descriptors)
+- **Upstream Modes (Experimental)**: `proxy`, `replay`, `capture` with practical rollout guidance: [docs](https://radiantbald.github.io/gripmock/guide/modes)
+- **Embedded SDK (Experimental)**: in-process testing with stubs, verification, `sdk.By(fullMethod)` helpers, and context-aware remote checks: [docs](https://radiantbald.github.io/gripmock/guide/embedded-sdk)
+- **Faker Reference**: built-in faker key-by-key catalog with examples: [docs](https://radiantbald.github.io/gripmock/guide/stubs/faker)
+- **OpenTelemetry + Metrics**: tracing env vars and `/metrics` behavior: [docs](https://radiantbald.github.io/gripmock/guide/introduction/advanced-usage)
+- **GitHub Actions (CI/CD)**: official workflow action to download, start, wait for readiness, and stop GripMock automatically: [docs](https://radiantbald.github.io/gripmock/guide/ci-cd/github-actions)
 
 ## 🧬 Project Evolution
 
@@ -58,11 +60,11 @@ Today GripMock is an independent runtime focused on practical testing workflows:
 - Flexible descriptor sources and runtime operations (hot stubs + descriptors API)
 - Production-style testing features (streaming, templates, upstream modes, plugins, SDK, MCP)
 
-For architecture details and benchmark methodology, see: [Performance Comparison](https://bavix.github.io/gripmock/guide/introduction/performance-comparison)
+For architecture details and benchmark methodology, see: [Performance Comparison](https://radiantbald.github.io/gripmock/guide/introduction/performance-comparison)
 
 ## 🖥️ Web Interface
 
-![gripmock-ui](https://raw.githubusercontent.com/bavix/.github/master/svgs/gripmock-ui.gif)
+![gripmock-ui](https://raw.githubusercontent.com/radiantbald/.github/master/svgs/gripmock-ui.gif)
 
 Access the web dashboard at `http://localhost:4771/` to manage your stubs visually.
 
@@ -80,33 +82,58 @@ brew install --cask gripmock
 
 #### Shell Script
 ```bash
-curl -s https://raw.githubusercontent.com/bavix/gripmock/refs/heads/master/setup.sh | sh -s
+curl -s https://raw.githubusercontent.com/radiantbald/gripmock/refs/heads/master/setup.sh | sh -s
 ```
 
 #### PowerShell (Windows)
 ```powershell
-irm https://raw.githubusercontent.com/bavix/gripmock/refs/heads/master/setup.ps1 | iex
+irm https://raw.githubusercontent.com/radiantbald/gripmock/refs/heads/master/setup.ps1 | iex
 ```
 
 #### Docker
 ```bash
-docker pull bavix/gripmock
+docker pull radiantbald/gripmock
 ```
 
 For plugin builds, use the paired builder image:
 
 ```bash
-docker pull bavix/gripmock:v3.7.1-builder
+docker pull radiantbald/gripmock:v3.12.0-builder
 ```
 
 #### Go Install
 ```bash
-go install github.com/bavix/gripmock/v3@latest
+go install github.com/radiantbald/gripmock/v3@latest
 ```
 
 ### Basic Usage
 
-**Start with a `.proto` file:**
+**Recommended startup for this repository:**
+```bash
+make up
+```
+
+Prerequisites:
+
+- Docker is installed.
+- Docker daemon is running.
+- Optional but recommended: create `.env` before first run and set custom values.
+
+```bash
+cp .env.example .env
+```
+
+Set only what you need (for example DB credentials/ports). If `.env` is missing, `make up` creates it automatically from `.env.example`.
+
+**What `make up` does:**
+
+- creates `.env` from `.env.example` when missing
+- verifies/builds UI assets (`third_party/gripmock-ui`)
+- starts PostgreSQL + GripMock via Docker Compose
+- waits on PostgreSQL health before GripMock startup (`depends_on: service_healthy`)
+- exposes gRPC/UI ports from `.env` (defaults `4770` / `4771`)
+
+**Manual startup with a `.proto` file (without `make up`):**
 ```bash
 POSTGRES_DSN=postgres://user:pass@localhost:5432/gripmock?sslmode=disable \
 gripmock service.proto
@@ -120,12 +147,15 @@ gripmock --stub stubs/ service.proto
 
 **Load API directly from Buf Schema Registry (BSR):**
 ```bash
+POSTGRES_DSN=postgres://user:pass@localhost:5432/gripmock?sslmode=disable \
 gripmock --stub third_party/bsr/eliza buf.build/connectrpc/eliza
 ```
 
 **Load API from live gRPC server reflection:**
 ```bash
+POSTGRES_DSN=postgres://user:pass@localhost:5432/gripmock?sslmode=disable \
 gripmock grpc://localhost:50051
+POSTGRES_DSN=postgres://user:pass@localhost:5432/gripmock?sslmode=disable \
 gripmock grpcs://api.company.local:443
 ```
 
@@ -139,12 +169,15 @@ gripmock grpc://localhost:50051?bearer=<token>
 **Use upstream modes over reflection (Experimental):**
 ```bash
 # Pure reverse proxy through GripMock
+POSTGRES_DSN=postgres://user:pass@localhost:5432/gripmock?sslmode=disable \
 gripmock grpc+proxy://localhost:50051
 
 # Local stubs first, then upstream fallback on matcher miss
+POSTGRES_DSN=postgres://user:pass@localhost:5432/gripmock?sslmode=disable \
 gripmock grpc+replay://localhost:50051
 
 # Replay + record upstream misses into GripMock stubs
+POSTGRES_DSN=postgres://user:pass@localhost:5432/gripmock?sslmode=disable \
 gripmock grpc+capture://localhost:50051
 ```
 
@@ -166,7 +199,7 @@ docker run -p 4770:4770 -p 4771:4771 \
   -e POSTGRES_DSN=postgres://user:pass@host.docker.internal:5432/gripmock?sslmode=disable \
   -v $(pwd)/stubs:/stubs \
   -v $(pwd)/proto:/proto \
-  bavix/gripmock --stub=/stubs /proto/service.proto
+  radiantbald/gripmock --stub=/stubs /proto/service.proto
 ```
 
 **Using Docker Compose (single file + one-command startup):**
@@ -235,6 +268,27 @@ docker volume ls | grep -E "postgres_data|gripmock"
 docker volume rm <volume_name>
 ```
 
+### Primary and Secondary Start
+
+- **Primary start (recommended):** run `make up`.
+- **Secondary start (recommended):** run `make up` again; persisted state is reused from PostgreSQL volume.
+- **Manual mode:** set `POSTGRES_DSN`, run `gripmock` directly.
+- Prefer `gripmock check` for gRPC readiness, and use `/api/health/readiness` for HTTP readiness probes.
+
+```bash
+POSTGRES_DSN=postgres://user:pass@localhost:5432/gripmock?sslmode=disable \
+gripmock service.proto --stub ./stubs &
+
+gripmock check --timeout 20s
+curl http://127.0.0.1:4771/api/health/readiness
+```
+
+### Troubleshooting Startup
+
+- `POSTGRES_DSN is required`: set a valid DSN and ensure database connectivity.
+- Readiness fails after restart: reset local volume (`make reset-db`) if persisted metadata conflicts with new descriptors.
+- Tests race startup: use `gripmock check` with timeout before executing test suites.
+
 ### Observability (v3.10.0)
 
 ```bash
@@ -249,7 +303,7 @@ gripmock --stub stubs/ service.proto
 
 ## 🤖 GitHub Actions (CI/CD)
 
-Use the official action [`bavix/gripmock-action`](https://github.com/bavix/gripmock-action) to run GripMock in CI pipelines.
+Use the official action [`radiantbald/gripmock-action`](https://github.com/radiantbald/gripmock-action) to run GripMock in CI pipelines.
 
 ```yaml
 name: test
@@ -263,7 +317,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Start GripMock
-        uses: bavix/gripmock-action@v1
+        uses: radiantbald/gripmock-action@v1
         with:
           source: proto/service.proto
           stub: stubs
@@ -279,11 +333,11 @@ What the action does:
 - Exposes addresses via outputs (`grpc-addr`, `http-addr`) for test steps
 - Stops GripMock automatically in the post step
 
-More examples and full inputs/outputs: [GitHub Actions guide](https://bavix.github.io/gripmock/guide/ci-cd/github-actions).
+More examples and full inputs/outputs: [GitHub Actions guide](https://radiantbald.github.io/gripmock/guide/ci-cd/github-actions).
 
 ## 📖 Examples
 
-Check out our comprehensive examples in the [`examples`](https://github.com/bavix/gripmock/tree/master/examples) folder:
+Check out our comprehensive examples in the [`examples`](https://github.com/radiantbald/gripmock/tree/master/examples) folder:
 
 - **Streaming** - Server, client, and bidirectional streaming
 - **File Uploads** - Test chunked file uploads
@@ -297,7 +351,7 @@ Check out our comprehensive examples in the [`examples`](https://github.com/bavi
 Stub (universal):
 
 ```yaml
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
 # examples/projects/greeter/stub_say_hello.yaml
 - service: helloworld.Greeter
   method: SayHello
@@ -315,6 +369,7 @@ Notes:
 
 ```bash
 # Start server
+POSTGRES_DSN=postgres://user:pass@localhost:5432/gripmock?sslmode=disable \
 go run main.go examples/projects/greeter/service.proto --stub examples/projects/greeter
 
 # Call via grpcurl
@@ -382,6 +437,28 @@ output:
       timestamp: "2024-01-01T12:00:00Z"
     - position: {"lat": 40.7130, "lng": -74.0062}
       timestamp: "2024-01-01T12:00:05Z"
+```
+
+**Stateful Effects:**
+```yaml
+service: CartService
+method: AddItem
+input:
+  equals:
+    id: "item-1"
+output:
+  data:
+    ok: true
+effects:
+  upsert:
+    - service: CartService
+      method: GetCart
+      input:
+        equals: {}
+      output:
+        data:
+          items:
+            - id: "item-1"
 ```
 
 ### Dynamic Templates
@@ -454,20 +531,23 @@ input:
 
 ## 🛠️ API
 
-### REST API Endpoints
+### REST API Surface
 
-- `GET /api/stubs` - List all stubs
-- `POST /api/descriptors` - Load protobuf descriptor set (`FileDescriptorSet`) at runtime
-- `POST /api/stubs` - Add new stub
-- `POST /api/stubs/search` - Find matching stub
-- `DELETE /api/stubs` - Clear all stubs
-- `GET /api/health/liveness` - Health check
-- `GET /api/health/readiness` - Readiness check
+Core groups:
+
+- Health: `/api/health/liveness`, `/api/health/readiness`
+- Dashboard: `/api/dashboard`, `/api/dashboard/overview`, `/api/dashboard/info`
+- Services/descriptors: `/api/services*`, `/api/descriptors*`
+- Stubs: `/api/stubs*` (`list`, `search`, `inspect`, `used`, `unused`, `batchDelete`, `patch`, `delete`)
+- History/verify: `/api/history*`, `/api/verify`
+- Rooms: `/api/rooms*`
+- MCP endpoint: `POST /api/mcp` (experimental)
+
+OpenAPI is the source of truth for REST schema and payloads: [OpenAPI](https://radiantbald.github.io/gripmock-openapi/).
 
 ### Example API Usage
 
 ```bash
-# Add a stub
 curl -X POST http://localhost:4771/api/stubs \
   -H "Content-Type: application/json" \
   -d '{
@@ -476,16 +556,21 @@ curl -X POST http://localhost:4771/api/stubs \
     "input": {"equals": {"name": "world"}},
     "output": {"data": {"message": "Hello World!"}}
   }'
-
-# Search for matching stub
-curl -X POST http://localhost:4771/api/stubs/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "service": "Greeter",
-    "method": "SayHello",
-    "data": {"name": "world"}
-  }'
 ```
+
+## 🧰 CLI Utilities
+
+- `gripmock check` - wait for gRPC health (`SERVING`)
+- `gripmock dump` - export stubs from a running instance
+- `gripmock info` - print build/runtime/plugin capabilities
+- `gripmock proto export` - compile `.proto` roots into `.pb` / `.pbs`
+
+Utility docs:
+
+- [Check](https://radiantbald.github.io/gripmock/guide/utility/check)
+- [Dump](https://radiantbald.github.io/gripmock/guide/utility/dump)
+- [Info](https://radiantbald.github.io/gripmock/guide/utility/info)
+- [Proto Export](https://radiantbald.github.io/gripmock/guide/utility/proto-export)
 
 ## 📋 JSON Schema Support
 
@@ -494,7 +579,7 @@ Add schema validation to your stub files for IDE support:
 **JSON files:**
 ```json
 {
-  "$schema": "https://bavix.github.io/gripmock/schema/stub.json",
+  "$schema": "https://radiantbald.github.io/gripmock/schema/stub.json",
   "service": "MyService",
   "method": "MyMethod"
 }
@@ -502,7 +587,7 @@ Add schema validation to your stub files for IDE support:
 
 **YAML files:**
 ```yaml
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
 service: MyService
 method: MyMethod
 ```
@@ -542,7 +627,7 @@ GripMock automatically routes modules:
 - `buf.build/owner/repo` → uses Buf profile
 - `bsr.company.local/owner/repo` → uses Self profile
 
-For details see [BSR Documentation](https://bavix.github.io/gripmock/guide/sources/bsr).
+For details see [BSR Documentation](https://radiantbald.github.io/gripmock/guide/sources/bsr).
 
 ## 🔎 gRPC Reflection Source
 
@@ -565,7 +650,7 @@ gripmock grpcs://api.company.local:443
 gripmock grpcs://10.0.0.5:8443?serverName=api.company.local
 ```
 
-Full guide: [gRPC Reflection Source](https://bavix.github.io/gripmock/guide/sources/grpc-reflection).
+Full guide: [gRPC Reflection Source](https://radiantbald.github.io/gripmock/guide/sources/grpc-reflection).
 
 ## 🔁 Upstream Modes (Experimental)
 
@@ -579,10 +664,10 @@ Upstream modes work on top of reflection sources and define runtime behavior:
 
 Mode guides:
 
-- [Upstream Modes Overview](https://bavix.github.io/gripmock/guide/modes)
-- [Proxy Mode](https://bavix.github.io/gripmock/guide/modes/proxy)
-- [Replay Mode](https://bavix.github.io/gripmock/guide/modes/replay)
-- [Capture Mode](https://bavix.github.io/gripmock/guide/modes/capture)
+- [Upstream Modes Overview](https://radiantbald.github.io/gripmock/guide/modes)
+- [Proxy Mode](https://radiantbald.github.io/gripmock/guide/modes/proxy)
+- [Replay Mode](https://radiantbald.github.io/gripmock/guide/modes/replay)
+- [Capture Mode](https://radiantbald.github.io/gripmock/guide/modes/capture)
 
 ## 📊 Benchmark Charts
 
@@ -593,10 +678,10 @@ Mode guides:
 
 ## 🔗 Useful Resources
 
-- 📖 **[Documentation](https://bavix.github.io/gripmock)** - Complete guides and examples
+- 📖 **[Documentation](https://radiantbald.github.io/gripmock)** - Complete guides and examples
 - 🧪 **[Testing gRPC with Testcontainers](https://medium.com/skyro-tech/testing-grpc-client-with-mock-server-and-testcontainers-f51cb8a6be9a)** - Article by [@AndrewIISM](https://github.com/AndrewIISM)
-- 📋 **[JSON Schema](https://bavix.github.io/gripmock/schema/stub.json)** - Stub validation schema
-- 🔗 **[OpenAPI](https://bavix.github.io/gripmock-openapi/)** - REST API documentation
+- 📋 **[JSON Schema](https://radiantbald.github.io/gripmock/schema/stub.json)** - Stub validation schema
+- 🔗 **[OpenAPI](https://radiantbald.github.io/gripmock-openapi/)** - REST API documentation
 
 ## 🤝 Contributing
 

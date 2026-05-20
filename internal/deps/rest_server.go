@@ -14,13 +14,13 @@ import (
 	"github.com/gorilla/mux"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/bavix/gripmock/v3/internal/app"
-	"github.com/bavix/gripmock/v3/internal/domain/history"
-	"github.com/bavix/gripmock/v3/internal/domain/rest"
-	"github.com/bavix/gripmock/v3/internal/infra/httputil"
-	"github.com/bavix/gripmock/v3/internal/infra/muxmiddleware"
-	"github.com/bavix/gripmock/v3/internal/infra/telemetry"
-	infraTLS "github.com/bavix/gripmock/v3/internal/infra/tls"
+	"github.com/radiantbald/gripmock/v3/internal/app"
+	"github.com/radiantbald/gripmock/v3/internal/domain/history"
+	"github.com/radiantbald/gripmock/v3/internal/domain/rest"
+	"github.com/radiantbald/gripmock/v3/internal/infra/httputil"
+	"github.com/radiantbald/gripmock/v3/internal/infra/muxmiddleware"
+	"github.com/radiantbald/gripmock/v3/internal/infra/telemetry"
+	infraTLS "github.com/radiantbald/gripmock/v3/internal/infra/tls"
 )
 
 type RestServer struct {

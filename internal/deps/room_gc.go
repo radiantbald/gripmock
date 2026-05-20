@@ -6,7 +6,7 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/bavix/gripmock/v3/internal/infra/room"
+	"github.com/radiantbald/gripmock/v3/internal/infra/room"
 )
 
 func (b *Builder) StartRoomGC(ctx context.Context) {

@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
 
 # Client Streaming - Calculate average with dynamic processing (universal - works with any numbers)
 - service: calculator.CalculatorService

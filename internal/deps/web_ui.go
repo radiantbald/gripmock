@@ -10,7 +10,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog"
 
-	gripmockui "github.com/bavix/gripmock-ui"
+	gripmockui "github.com/radiantbald/gripmock-ui"
 )
 
 const (

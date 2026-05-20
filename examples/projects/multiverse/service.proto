@@ -4,7 +4,7 @@ package multiverse.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/bavix/gripmock/examples/projects/multiverse";
+option go_package = "github.com/radiantbald/gripmock/examples/projects/multiverse";
 
 // MultiverseService demonstrates all types of gRPC streaming
 service MultiverseService {

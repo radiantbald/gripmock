@@ -7,7 +7,7 @@ YAML provides human-readable syntax with advanced features like comments and mul
 GripMock provides a JSON Schema for validating stub definitions. Add this to your YAML files for IDE support:
 
 ```yaml
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
 
 service: MyService
 method: MyMethod
@@ -81,7 +81,7 @@ docker run \
   -p 4771:4771 \  
   -v $(pwd)/proto:/proto:ro \  
   -v $(pwd)/stubs:/stubs:ro \  
-  bavix/gripmock \  
+  radiantbald/gripmock \  
   --stub=/stubs \  
   /proto/simple.proto  
 ```  
@@ -132,4 +132,4 @@ input:
 - 🔄 API Compatibility: Works alongside HTTP API for hybrid setups
 - 🎯 Priority System: Use `priority` field to control stub matching order  
 
-For schema details, see [JSON Schema for stubs](https://bavix.github.io/gripmock/schema/stub.json).  
+For schema details, see [JSON Schema for stubs](https://radiantbald.github.io/gripmock/schema/stub.json).  

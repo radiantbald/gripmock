@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	"github.com/bavix/gripmock/v3/internal/domain/protoset"
+	"github.com/radiantbald/gripmock/v3/internal/domain/protoset"
 )
 
 type mockBSRClient struct {

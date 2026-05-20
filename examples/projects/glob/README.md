@@ -1,3 +1,38 @@
+## Operational Runbook
+
+### Prerequisites
+
+- PostgreSQL is running and reachable.
+- `POSTGRES_DSN` is set.
+
+```bash
+export POSTGRES_DSN='postgres://user:pass@localhost:5432/gripmock?sslmode=disable'
+```
+
+### Primary Run
+
+```bash
+gripmock --stub ./examples/projects/glob ./examples/projects/glob
+```
+
+### Secondary Run (restart)
+
+```bash
+gripmock ./examples/projects/glob
+```
+
+### Verify
+
+```bash
+gripmock check --timeout 20s
+curl http://127.0.0.1:4771/api/health/readiness
+```
+
+### Troubleshooting
+
+- If startup fails, verify `POSTGRES_DSN` and DB connectivity.
+- If descriptors conflict after local refactors, reset local compose DB (`make reset-db`).
+- If tests race startup, wait with `gripmock check` before test execution.
 # Glob Matching Example
 
 Demonstrates glob pattern matching for flexible stub routing.

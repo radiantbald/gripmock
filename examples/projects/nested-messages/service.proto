@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package nested;
 
-option go_package = "github.com/bavix/gripmock/v3/examples/nested";
+option go_package = "github.com/radiantbald/gripmock/v3/examples/nested";
 
 // Service demonstrating nested message support
 service ConfigurationService {

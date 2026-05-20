@@ -105,7 +105,7 @@ get_latest_version() {
         CURL_CMD="$CURL_CMD -H \"Authorization: token $GITHUB_TOKEN\""
     fi
     
-    LATEST_RELEASE=$($CURL_CMD https://api.github.com/repos/bavix/gripmock/releases/latest)
+    LATEST_RELEASE=$($CURL_CMD https://api.github.com/repos/radiantbald/gripmock/releases/latest)
     if [ $? -ne 0 ]; then
         log_error "Failed to connect to GitHub API. Check your internet connection."
     fi
@@ -114,7 +114,7 @@ get_latest_version() {
     if echo "$LATEST_RELEASE" | grep -q "API rate limit exceeded"; then
         log_info "GitHub API rate limit exceeded, trying alternative method..."
         # Try to get version from releases page as fallback
-        LATEST_VERSION=$(curl --retry 3 --retry-delay 2 --retry-all-errors --connect-timeout 30 --max-time 60 -s https://github.com/bavix/gripmock/releases | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
+        LATEST_VERSION=$(curl --retry 3 --retry-delay 2 --retry-all-errors --connect-timeout 30 --max-time 60 -s https://github.com/radiantbald/gripmock/releases | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
         if [ -z "$LATEST_VERSION" ]; then
             log_error "GitHub API rate limit exceeded and fallback method failed. Please try again later or set GITHUB_TOKEN environment variable."
         fi
@@ -134,7 +134,7 @@ get_latest_version() {
 }
 
 download_checksums() {
-    CHECKSUM_URL="https://github.com/bavix/gripmock/releases/download/v${LATEST_VERSION}/checksums.txt"
+    CHECKSUM_URL="https://github.com/radiantbald/gripmock/releases/download/v${LATEST_VERSION}/checksums.txt"
 
     TMP_DIR=$(mktemp -d)
     CHECKSUM_FILE="$TMP_DIR/checksums.txt"
@@ -154,7 +154,7 @@ download_checksums() {
 }
 
 download_gripmock() {
-    DOWNLOAD_URL="https://github.com/bavix/gripmock/releases/download/v${LATEST_VERSION}/gripmock_${LATEST_VERSION}_${OS}_${ARCH}.tar.gz"
+    DOWNLOAD_URL="https://github.com/radiantbald/gripmock/releases/download/v${LATEST_VERSION}/gripmock_${LATEST_VERSION}_${OS}_${ARCH}.tar.gz"
 
     DOWNLOAD_FILE="$TMP_DIR/gripmock.tar.gz"
 

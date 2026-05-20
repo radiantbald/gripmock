@@ -3,7 +3,7 @@ package plugintest
 import (
 	"context"
 
-	"github.com/bavix/gripmock/v3/pkg/plugins"
+	"github.com/radiantbald/gripmock/v3/pkg/plugins"
 )
 
 // Invocation captures a single call to a spied function, including arguments and

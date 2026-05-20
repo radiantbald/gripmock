@@ -3,7 +3,7 @@ package mcp
 import (
 	"net/http"
 
-	"github.com/bavix/gripmock/v3/internal/infra/muxmiddleware"
+	"github.com/radiantbald/gripmock/v3/internal/infra/muxmiddleware"
 )
 
 func ApplyTransportRoom(r *http.Request, toolName string, args map[string]any) map[string]any {

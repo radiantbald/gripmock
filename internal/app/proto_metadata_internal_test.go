@@ -13,9 +13,9 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	protoloc "github.com/bavix/gripmock/v3/internal/domain/proto"
-	protosetdom "github.com/bavix/gripmock/v3/internal/domain/protoset"
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
+	protoloc "github.com/radiantbald/gripmock/v3/internal/domain/proto"
+	protosetdom "github.com/radiantbald/gripmock/v3/internal/domain/protoset"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
 )
 
 type protoMetadataWriterMock struct {

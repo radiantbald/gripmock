@@ -87,5 +87,5 @@ curl http://127.0.0.1:4771/api/stubs/used
 
 ## Schema References
 For complete schema details, see:
-- [OpenAPI Stub Definition](https://bavix.github.io/gripmock-openapi/)
-- [JSON Schema for Stubs](https://bavix.github.io/gripmock/schema/stub.json)
+- [OpenAPI Stub Definition](https://radiantbald.github.io/gripmock-openapi/)
+- [JSON Schema for Stubs](https://radiantbald.github.io/gripmock/schema/stub.json)

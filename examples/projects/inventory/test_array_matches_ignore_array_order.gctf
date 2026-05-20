@@ -4,7 +4,7 @@ summary: Test matches with ignoreArrayOrder for repeated field
 tags: [array, matching, matches, ignoreArrayOrder]
 owner: team/gripmock
 links:
-  - https://github.com/bavix/gripmock/issues/840
+  - https://github.com/radiantbald/gripmock/issues/840
 
 --- ENDPOINT ---
 inventory.InventoryService/GetResourceDecorationByIPsStream

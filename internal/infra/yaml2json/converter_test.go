@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bavix/gripmock/v3/internal/infra/plugins"
-	"github.com/bavix/gripmock/v3/internal/infra/yaml2json"
+	"github.com/radiantbald/gripmock/v3/internal/infra/plugins"
+	"github.com/radiantbald/gripmock/v3/internal/infra/yaml2json"
 )
 
 func TestConverter(t *testing.T) {
@@ -17,7 +17,7 @@ func TestConverter(t *testing.T) {
 
 	convertor := yaml2json.New(nil)
 
-	// see: https://bavix.github.io/uuid-ui/
+	// see: https://radiantbald.github.io/uuid-ui/
 	// 77465064-a0ce-48a3-b7e4-d50f88e55093 => d0ZQZKDOSKO35NUPiOVQkw==
 	// e351220b-4847-42f5-8abb-c052b87ff2d4 => {"high":-773977811204288029,"low":-3102276763665777782}
 	bytes, err := convertor.Execute(t.Context(), "hello", []byte(`

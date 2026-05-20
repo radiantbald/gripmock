@@ -8,15 +8,15 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	pgallowlist "github.com/bavix/gripmock/v3/internal/infra/postgres/allowlist"
-	pgclients "github.com/bavix/gripmock/v3/internal/infra/postgres/clients"
-	pgmigrations "github.com/bavix/gripmock/v3/internal/infra/postgres/migrations"
-	pgprotometadata "github.com/bavix/gripmock/v3/internal/infra/postgres/protometadata"
-	pgreflectionhosts "github.com/bavix/gripmock/v3/internal/infra/postgres/reflectionhosts"
-	pgrooms "github.com/bavix/gripmock/v3/internal/infra/postgres/rooms"
-	pgstubs "github.com/bavix/gripmock/v3/internal/infra/postgres/stubs"
-	pgusers "github.com/bavix/gripmock/v3/internal/infra/postgres/users"
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
+	pgallowlist "github.com/radiantbald/gripmock/v3/internal/infra/postgres/allowlist"
+	pgclients "github.com/radiantbald/gripmock/v3/internal/infra/postgres/clients"
+	pgmigrations "github.com/radiantbald/gripmock/v3/internal/infra/postgres/migrations"
+	pgprotometadata "github.com/radiantbald/gripmock/v3/internal/infra/postgres/protometadata"
+	pgreflectionhosts "github.com/radiantbald/gripmock/v3/internal/infra/postgres/reflectionhosts"
+	pgrooms "github.com/radiantbald/gripmock/v3/internal/infra/postgres/rooms"
+	pgstubs "github.com/radiantbald/gripmock/v3/internal/infra/postgres/stubs"
+	pgusers "github.com/radiantbald/gripmock/v3/internal/infra/postgres/users"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
 )
 
 const postgresPingTimeout = 5 * time.Second

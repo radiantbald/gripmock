@@ -20,7 +20,7 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w -X github.com/bavix/gripmock/v3/internal/infra/build.Version={{.Version}} -X github.com/bavix/gripmock/v3/internal/infra/build.Commit={{.ShortCommit}} -X github.com/bavix/gripmock/v3/internal/infra/build.Date={{.CommitDate}}
+      - -s -w -X github.com/radiantbald/gripmock/v3/internal/infra/build.Version={{.Version}} -X github.com/radiantbald/gripmock/v3/internal/infra/build.Commit={{.ShortCommit}} -X github.com/radiantbald/gripmock/v3/internal/infra/build.Date={{.CommitDate}}
 
 archives:
   - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
@@ -39,7 +39,7 @@ checksum:
 
 release:
   github:
-    owner: bavix
+    owner: radiantbald
     name: gripmock
   draft: true
   prerelease: auto
@@ -58,10 +58,10 @@ brews:
       name: homebrew-tap
       branch: master
     directory: Formula
-    homepage: https://bavix.github.io/gripmock/
+    homepage: https://radiantbald.github.io/gripmock/
     description: "A mock server for gRPC services using .proto files or compiled .pb descriptors"
     license: "MIT"
-    url_template: "https://github.com/bavix/gripmock/releases/download/v{{ .Version }}/gripmock_{{ .Version }}_{{ .Os }}_{{ .Arch }}.tar.gz"
+    url_template: "https://github.com/radiantbald/gripmock/releases/download/v{{ .Version }}/gripmock_{{ .Version }}_{{ .Os }}_{{ .Arch }}.tar.gz"
     commit_author:
       name: Github bot
       email: bot@babichev.net
@@ -93,12 +93,12 @@ homebrew_casks:
       branch: master
     # Casks should live in the Casks directory (default). Keep explicit for clarity.
     directory: Casks
-    homepage: https://bavix.github.io/gripmock/
+    homepage: https://radiantbald.github.io/gripmock/
     description: "A mock server for gRPC services using .proto files or compiled .pb descriptors"
     license: "MIT"
     url:
-      verified: github.com/bavix/gripmock
-      template: "https://github.com/bavix/gripmock/releases/download/v{{ .Version }}/gripmock_{{ .Version }}_{{ .Os }}_{{ .Arch }}.tar.gz"
+      verified: github.com/radiantbald/gripmock
+      template: "https://github.com/radiantbald/gripmock/releases/download/v{{ .Version }}/gripmock_{{ .Version }}_{{ .Os }}_{{ .Arch }}.tar.gz"
     commit_author:
       name: Github bot
       email: bot@babichev.net

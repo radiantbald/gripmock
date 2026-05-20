@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	gptypes "github.com/bavix/gripmock/v3/internal/infra/types"
+	gptypes "github.com/radiantbald/gripmock/v3/internal/infra/types"
 	"github.com/gorilla/mux"
 	"github.com/oapi-codegen/runtime"
 	codes "google.golang.org/grpc/codes"

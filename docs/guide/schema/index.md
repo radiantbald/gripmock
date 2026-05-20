@@ -4,7 +4,7 @@ Ever wondered if your stub definitions are correct? GripMock's JSON Schema is he
 
 ## Overview
 
-You can find the JSON Schema at: **https://bavix.github.io/gripmock/schema/stub.json**
+You can find the JSON Schema at: **https://radiantbald.github.io/gripmock/schema/stub.json**
 
 Think of this schema as your stub definition rulebook. It covers everything you might want to do:
 - ✅ Single stub objects (the basics)
@@ -22,7 +22,7 @@ Think of this schema as your stub definition rulebook. It covers everything you 
 Add this line to the top of your YAML stub files:
 
 ```yaml
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
 
 service: MyService
 method: MyMethod
@@ -37,7 +37,7 @@ Add this to your JSON stub files:
 
 ```json
 {
-  "$schema": "https://bavix.github.io/gripmock/schema/stub.json",
+  "$schema": "https://radiantbald.github.io/gripmock/schema/stub.json",
   "service": "MyService",
   "method": "MyMethod",
   "output": {
@@ -70,7 +70,7 @@ python -m json.tool your-stubs.json
 
 # Validate with schema (requires jsonschema package)
 pip install jsonschema
-jsonschema -i your-stubs.json https://bavix.github.io/gripmock/schema/stub.json
+jsonschema -i your-stubs.json https://radiantbald.github.io/gripmock/schema/stub.json
 ```
 
 ### CI/CD Integration
@@ -80,7 +80,7 @@ jsonschema -i your-stubs.json https://bavix.github.io/gripmock/schema/stub.json
 - name: Validate Stubs
   run: |
     pip install jsonschema
-    jsonschema -i stubs.json https://bavix.github.io/gripmock/schema/stub.json
+    jsonschema -i stubs.json https://radiantbald.github.io/gripmock/schema/stub.json
 ```
 
 ## Schema Features
@@ -139,7 +139,7 @@ output:
 ### Simple Stub
 
 ```yaml
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
 
 service: Greeter
 method: SayHello
@@ -155,7 +155,7 @@ output:
 ### Multiple Stubs
 
 ```yaml
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
 
 - service: Greeter
   method: SayHello
@@ -179,7 +179,7 @@ output:
 ### Streaming Response
 
 ```yaml
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
 
 service: StreamService
 method: StreamData
@@ -195,7 +195,7 @@ output:
 ### Error Response
 
 ```yaml
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
 
 service: ErrorService
 method: SimulateError

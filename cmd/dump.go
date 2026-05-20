@@ -8,8 +8,8 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 
-	"github.com/bavix/gripmock/v3/internal/config"
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/config"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
 )
 
 var ErrUnexpectedStatus = errors.New("unexpected status")

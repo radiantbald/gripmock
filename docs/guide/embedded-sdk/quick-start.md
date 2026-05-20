@@ -28,7 +28,7 @@ import (
     "testing"
 
     "github.com/stretchr/testify/require"
-    sdk "github.com/bavix/gripmock/v3/pkg/sdk"
+    sdk "github.com/radiantbald/gripmock/v3/pkg/sdk"
 )
 
 func TestMyService_Call(t *testing.T) {
@@ -98,7 +98,7 @@ import (
     "time"
 
     "github.com/stretchr/testify/require"
-    sdk "github.com/bavix/gripmock/v3/pkg/sdk"
+    sdk "github.com/radiantbald/gripmock/v3/pkg/sdk"
 )
 
 func TestGreeter_SayHello_WithDelay(t *testing.T) {

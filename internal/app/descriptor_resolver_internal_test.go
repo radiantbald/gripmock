@@ -9,8 +9,8 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	"github.com/bavix/gripmock/v3/internal/domain/protoset"
-	protosetinfra "github.com/bavix/gripmock/v3/internal/infra/protoset"
+	"github.com/radiantbald/gripmock/v3/internal/domain/protoset"
+	protosetinfra "github.com/radiantbald/gripmock/v3/internal/infra/protoset"
 )
 
 func TestFallbackResolverUsesPrimaryThenFallback(t *testing.T) {

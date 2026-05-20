@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bavix/gripmock/v3/internal/infra/protobundle"
+	"github.com/radiantbald/gripmock/v3/internal/infra/protobundle"
 )
 
 func fixturesDir(t *testing.T) string {

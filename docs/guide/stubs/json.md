@@ -10,7 +10,7 @@ GripMock provides a JSON Schema for validating stub definitions. Add this to you
 
 ```json
 {
-  "$schema": "https://bavix.github.io/gripmock/schema/stub.json",
+  "$schema": "https://radiantbald.github.io/gripmock/schema/stub.json",
   "service": "MyService",
   "method": "MyMethod",
   "output": {
@@ -80,7 +80,7 @@ docker run \
   -p 4771:4771 \  
   -v $(pwd)/proto:/proto:ro \  
   -v $(pwd)/stubs:/stubs:ro \  
-  bavix/gripmock \  
+  radiantbald/gripmock \  
   --stub=/stubs \  
   /proto/simple.proto  
 ```  
@@ -140,4 +140,4 @@ Disable array sorting checks with `ignoreArrayOrder`:
 - File extensions: `.json`, `.yaml`, `.yml` (auto-detected).
 - **Priority System**: Use `priority` field to control stub matching order (higher numbers = higher priority).  
 
-For schema details, see the [JSON Schema for stubs](https://bavix.github.io/gripmock/schema/stub.json).  
+For schema details, see the [JSON Schema for stubs](https://radiantbald.github.io/gripmock/schema/stub.json).  

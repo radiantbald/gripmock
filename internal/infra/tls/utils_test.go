@@ -16,7 +16,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	infraTLS "github.com/bavix/gripmock/v3/internal/infra/tls"
+	infraTLS "github.com/radiantbald/gripmock/v3/internal/infra/tls"
 )
 
 func TestBuildTLSConfigDisabled(t *testing.T) {

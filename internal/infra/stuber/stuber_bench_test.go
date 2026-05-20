@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
 )
 
 // BenchmarkPutMany measures the performance of inserting multiple Stub values.

@@ -11,7 +11,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/bavix/gripmock/v3/pkg/plugins"
+	"github.com/radiantbald/gripmock/v3/pkg/plugins"
 )
 
 // ErrMaxRecursionDepthExceeded is returned when structure nesting exceeds MaxRecursionDepth.

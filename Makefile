@@ -15,7 +15,7 @@ env:
 	fi
 
 build:
-	docker buildx build --load -t bavix/gripmock:${version} .
+	docker buildx build --load -t radiantbald/gripmock:${version} .
 
 deps-check:
 	@if [ ! -d "$(UI_DIR)/node_modules" ] || [ ! -f "$(UI_DEPS_STAMP)" ] || [ ! -x "$(UI_VITE_BIN)" ] || [ "$(UI_DIR)/package-lock.json" -nt "$(UI_DEPS_STAMP)" ]; then \
@@ -60,7 +60,7 @@ plugins:
 	done
 
 semgrep:
-	docker run --rm -v $$(pwd):/src bavix/semgrep:master semgrep scan --error --config=p/golang -f /semgrep-go
+	docker run --rm -v $$(pwd):/src radiantbald/semgrep:master semgrep scan --error --config=p/golang -f /semgrep-go
 
 gen-rest:
 	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -generate gorilla,types -package rest ${OPENAPI} > internal/domain/rest/api.gen.go
@@ -108,5 +108,5 @@ gen-imports:
 gen-sdk-examples:
 	rm -rf pkg/sdk/internal/examplefds/gen
 	mkdir -p pkg/sdk/internal/examplefds/gen
-	protoc --proto_path=. --go_out=pkg/sdk/internal/examplefds/gen --go_opt=paths=source_relative --go_opt=Mexamples/projects/chat/service.proto=github.com/bavix/gripmock/v3/pkg/sdk/internal/examplefds/gen/examples/projects/chat --go-grpc_out=pkg/sdk/internal/examplefds/gen --go-grpc_opt=paths=source_relative --go-grpc_opt=Mexamples/projects/chat/service.proto=github.com/bavix/gripmock/v3/pkg/sdk/internal/examplefds/gen/examples/projects/chat examples/projects/chat/service.proto
+	protoc --proto_path=. --go_out=pkg/sdk/internal/examplefds/gen --go_opt=paths=source_relative --go_opt=Mexamples/projects/chat/service.proto=github.com/radiantbald/gripmock/v3/pkg/sdk/internal/examplefds/gen/examples/projects/chat --go-grpc_out=pkg/sdk/internal/examplefds/gen --go-grpc_opt=paths=source_relative --go-grpc_opt=Mexamples/projects/chat/service.proto=github.com/radiantbald/gripmock/v3/pkg/sdk/internal/examplefds/gen/examples/projects/chat examples/projects/chat/service.proto
 	protoc --proto_path=. --go_out=pkg/sdk/internal/examplefds/gen --go_opt=paths=source_relative --go-grpc_out=pkg/sdk/internal/examplefds/gen --go-grpc_opt=paths=source_relative examples/projects/multiverse/service.proto

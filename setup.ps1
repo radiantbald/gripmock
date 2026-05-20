@@ -27,7 +27,7 @@ function Resolve-InstallDir {
 }
 
 function Get-LatestVersion {
-    $apiUrl = "https://api.github.com/repos/bavix/gripmock/releases/latest"
+    $apiUrl = "https://api.github.com/repos/radiantbald/gripmock/releases/latest"
     $headers = @{}
     if ($env:GITHUB_TOKEN) {
         $headers["Authorization"] = "token $($env:GITHUB_TOKEN)"
@@ -74,7 +74,7 @@ $arch = Get-Arch
 $version = Get-LatestVersion
 
 $assetName = "gripmock_${version}_windows_${arch}.zip"
-$releaseBaseUrl = "https://github.com/bavix/gripmock/releases/download/v$version"
+$releaseBaseUrl = "https://github.com/radiantbald/gripmock/releases/download/v$version"
 $assetUrl = "$releaseBaseUrl/$assetName"
 $checksumUrl = "$releaseBaseUrl/checksums.txt"
 

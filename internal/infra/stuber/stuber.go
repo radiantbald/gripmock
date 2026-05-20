@@ -62,14 +62,7 @@ func (b *Budgerigar) HydrateFromPersistent(ctx context.Context) error {
 	}
 	b.replaceRoomState(roomState)
 
-	related := b.ensureSingleEnabledByRoute(all...)
-	candidates := dedupeStubsByID(append(all, related...))
-
-	if len(related) > 0 {
-		if _, err := b.persistent.UpsertMany(ctx, candidates...); err != nil {
-			return err
-		}
-	}
+	candidates := dedupeStubsByID(all)
 
 	b.searcher.clear()
 	if len(candidates) > 0 {
@@ -106,8 +99,7 @@ func (b *Budgerigar) PutMany(values ...*Stub) []uint64 {
 	b.persistentLock.Lock()
 	defer b.persistentLock.Unlock()
 
-	related := b.ensureSingleEnabledByRoute(values...)
-	candidates := dedupeStubsByID(append(values, related...))
+	candidates := dedupeStubsByID(values)
 	b.refreshNextID(candidates...)
 
 	if b.persistent != nil {
@@ -185,6 +177,9 @@ func (b *Budgerigar) SetRoomEnabled(room string, id uint64, enabled bool) error 
 			if existing.ID == target.ID || !sameEnabledRoute(existing, target) {
 				continue
 			}
+			if strings.TrimSpace(existing.Room) != room {
+				continue
+			}
 			if !b.stubEnabledForSpecificRoom(existing.ID, room) {
 				continue
 			}
@@ -218,7 +213,7 @@ func (b *Budgerigar) ensureSingleEnabledByRoute(values ...*Stub) []*Stub {
 	latestEnabled := make([]*Stub, 0, len(values))
 	changed := make([]*Stub, 0, len(values))
 	for _, stub := range values {
-		if !stub.IsEnabled() {
+		if stub.Enabled == nil || !stub.IsEnabled() {
 			continue
 		}
 
@@ -278,6 +273,10 @@ func (b *Budgerigar) isEnabledForRoom(stub *Stub, room string) bool {
 			return enabled
 		}
 
+		if b.hasAnyRoomState() {
+			return false
+		}
+
 		return stub.IsEnabled()
 	}
 
@@ -285,7 +284,48 @@ func (b *Budgerigar) isEnabledForRoom(stub *Stub, room string) bool {
 		return enabled
 	}
 
-	// New room defaults to "all stubs disabled" until explicitly enabled per-room.
+	if b.roomStateExists(room) {
+		return false
+	}
+
+	if b.roomHasScopedStubs(room) {
+		stubRoom := strings.TrimSpace(stub.Room)
+
+		return (stubRoom == room || stubRoom == "") && stub.IsEnabled()
+	}
+
+	stubRoom := strings.TrimSpace(stub.Room)
+	if stubRoom == room {
+		return stub.IsEnabled()
+	}
+
+	// Default behavior: for new rooms without explicit state, global stubs are visible.
+	return stub.IsEnabled()
+}
+
+func (b *Budgerigar) roomStateExists(room string) bool {
+	b.stateLock.RLock()
+	defer b.stateLock.RUnlock()
+
+	_, exists := b.roomEnabled[room]
+
+	return exists
+}
+
+func (b *Budgerigar) hasAnyRoomState() bool {
+	b.stateLock.RLock()
+	defer b.stateLock.RUnlock()
+
+	return len(b.roomEnabled) > 0
+}
+
+func (b *Budgerigar) roomHasScopedStubs(room string) bool {
+	for _, candidate := range b.searcher.rooms() {
+		if candidate == room {
+			return true
+		}
+	}
+
 	return false
 }
 
@@ -442,13 +482,24 @@ func (b *Budgerigar) DeleteRoom(room string) int {
 	delete(b.roomEnabled, room)
 	b.stateLock.Unlock()
 
-	if len(idsByRoom) == 0 {
+	idSet := make(map[uint64]struct{}, len(idsByRoom))
+	for id := range idsByRoom {
+		idSet[id] = struct{}{}
+	}
+
+	for _, stub := range b.searcher.all() {
+		if strings.TrimSpace(stub.Room) == room {
+			idSet[stub.ID] = struct{}{}
+		}
+	}
+
+	if len(idSet) == 0 {
 		b.resetNextIDIfEmpty()
 		return 0
 	}
 
-	ids := make([]uint64, 0, len(idsByRoom))
-	for id := range idsByRoom {
+	ids := make([]uint64, 0, len(idSet))
+	for id := range idSet {
 		ids = append(ids, id)
 	}
 

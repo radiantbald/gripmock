@@ -1,3 +1,38 @@
+## Operational Runbook
+
+### Prerequisites
+
+- PostgreSQL is running and reachable.
+- `POSTGRES_DSN` is set.
+
+```bash
+export POSTGRES_DSN='postgres://user:pass@localhost:5432/gripmock?sslmode=disable'
+```
+
+### Primary Run
+
+```bash
+gripmock --stub ./examples/projects/ecommerce ./examples/projects/ecommerce
+```
+
+### Secondary Run (restart)
+
+```bash
+gripmock ./examples/projects/ecommerce
+```
+
+### Verify
+
+```bash
+gripmock check --timeout 20s
+curl http://127.0.0.1:4771/api/health/readiness
+```
+
+### Troubleshooting
+
+- If startup fails, verify `POSTGRES_DSN` and DB connectivity.
+- If descriptors conflict after local refactors, reset local compose DB (`make reset-db`).
+- If tests race startup, wait with `gripmock check` before test execution.
 # E-commerce Dynamic Stubs Example
 
 This example demonstrates dynamic template functionality in GripMock using a realistic e-commerce scenario with all streaming types.

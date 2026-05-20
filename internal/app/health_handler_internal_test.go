@@ -15,8 +15,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
-	"github.com/bavix/gripmock/v3/internal/infra/types"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/infra/types"
 )
 
 var errNilHealthResponse = stderrors.New("nil health response")

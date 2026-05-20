@@ -3,7 +3,7 @@ package stuber_test
 import (
 	"testing"
 
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
 )
 
 func BenchmarkInspectQuery(b *testing.B) {

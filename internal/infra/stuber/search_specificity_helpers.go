@@ -1,6 +1,6 @@
 package stuber
 
-import "github.com/bavix/gripmock/v3/internal/infra/protoconv"
+import "github.com/radiantbald/gripmock/v3/internal/infra/protoconv"
 
 // calcSpecificity calculates the specificity score for a stub against a query.
 // Higher specificity means more fields match between stub and query.

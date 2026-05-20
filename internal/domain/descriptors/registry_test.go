@@ -9,8 +9,8 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 
-	"github.com/bavix/gripmock/v3/internal/domain/descriptors"
-	"github.com/bavix/gripmock/v3/internal/domain/protoset"
+	"github.com/radiantbald/gripmock/v3/internal/domain/descriptors"
+	"github.com/radiantbald/gripmock/v3/internal/domain/protoset"
 )
 
 func mustFileDesc(t *testing.T, protoPath string) protoreflect.FileDescriptor { //nolint:ireturn

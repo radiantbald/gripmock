@@ -8,6 +8,7 @@ type rankStrategy interface {
 	Score(query Query, stub *Stub) float64
 	Specificity(query Query, stub *Stub) int
 	FieldCount(stub *Stub) int
+	InsertionOrder(stub *Stub) uint64
 }
 
 type defaultMatchStrategy struct {
@@ -40,6 +41,14 @@ func (d *defaultRankStrategy) Specificity(query Query, stub *Stub) int {
 
 func (d *defaultRankStrategy) FieldCount(stub *Stub) int {
 	return countStubFields(stub)
+}
+
+func (d *defaultRankStrategy) InsertionOrder(stub *Stub) uint64 {
+	if stub == nil {
+		return 0
+	}
+
+	return stub.ID
 }
 
 func countStubFields(stub *Stub) int {

@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bavix/gripmock/v3/internal/infra/protobundle"
+	"github.com/radiantbald/gripmock/v3/internal/infra/protobundle"
 )
 
 func TestCompileSingleFile(t *testing.T) {

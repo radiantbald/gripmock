@@ -10,10 +10,10 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/bavix/gripmock/v3/internal/domain/history"
-	"github.com/bavix/gripmock/v3/internal/infra/proxycapture"
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
-	"github.com/bavix/gripmock/v3/internal/infra/types"
+	"github.com/radiantbald/gripmock/v3/internal/domain/history"
+	"github.com/radiantbald/gripmock/v3/internal/infra/proxycapture"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/infra/types"
 )
 
 func requestHeadersFromMetadata(md metadata.MD) map[string]any {

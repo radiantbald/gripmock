@@ -376,7 +376,7 @@ import "google/api/annotations.proto";
 import "google/protobuf/empty.proto";
 import "google/type/date.proto";
 
-option go_package = "github.com/bavix/gripmock/example/weather;weather";
+option go_package = "github.com/radiantbald/gripmock/example/weather;weather";
 
 service WeatherService {
   rpc GetCurrentForecast(google.protobuf.Empty) returns (WeatherReport) {

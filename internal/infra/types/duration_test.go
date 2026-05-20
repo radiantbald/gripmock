@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bavix/gripmock/v3/internal/infra/types"
+	"github.com/radiantbald/gripmock/v3/internal/infra/types"
 )
 
 func TestDurationUnmarshalJSON(t *testing.T) {

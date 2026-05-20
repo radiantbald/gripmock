@@ -14,10 +14,10 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/reflect/protodesc"
 
-	"github.com/bavix/gripmock/v3/internal/infra/proxycapture"
-	"github.com/bavix/gripmock/v3/internal/infra/proxyroutes"
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
-	"github.com/bavix/gripmock/v3/internal/infra/types"
+	"github.com/radiantbald/gripmock/v3/internal/infra/proxycapture"
+	"github.com/radiantbald/gripmock/v3/internal/infra/proxyroutes"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/infra/types"
 )
 
 const (

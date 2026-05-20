@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/bavix/gripmock/v3/pkg/plugins"
+	"github.com/radiantbald/gripmock/v3/pkg/plugins"
 )
 
 type engine struct {

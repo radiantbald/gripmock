@@ -14,8 +14,8 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	"github.com/bavix/gripmock/v3/internal/app"
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/app"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
 )
 
 const bufconnSize = 1024 * 1024

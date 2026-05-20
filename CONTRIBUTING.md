@@ -9,10 +9,15 @@ Thank you for your interest in contributing to GripMock! This document provides 
 1. **Fork the repository** and clone your fork locally
 2. **Set up your development environment**:
    - Install [grpctestify](https://github.com/gripmock/grpctestify-rust) for integration tests (see [grpctestify documentation](https://gripmock.github.io/grpctestify-rust/) for installation instructions)
+   - Start PostgreSQL and prepare `POSTGRES_DSN` (required for GripMock server startup)
    - Ensure you have Go installed and configured
    - If you change files under `third_party/gripmock-ui/src`, rebuild UI assets before running GripMock:
      ```bash
      make ui-build
+     ```
+   - Optional: verify local CLI toolchain state with:
+     ```bash
+     gripmock info
      ```
 
 ## Testing Requirements
@@ -58,7 +63,11 @@ Before submitting a PR, ensure all tests pass:
 **For integration tests with grpctestify:**
 ```bash
 # Start the server (in a separate terminal)
-go run main.go examples -s examples
+POSTGRES_DSN='postgres://user:pass@localhost:5432/gripmock?sslmode=disable' \
+gripmock --stub ./examples ./examples
+
+# Wait for readiness
+gripmock check --timeout 20s
 
 # Run integration tests
 grpctestify examples/
@@ -125,15 +134,21 @@ Documentation locations:
 - Examples: `examples/` directory
 - Main README: `README.md`
 
+When docs include runnable commands, keep all runbooks aligned with:
+
+- required `POSTGRES_DSN`
+- primary run vs secondary run
+- troubleshooting and readiness checks (`gripmock check` / `/api/health/readiness`)
+
 ## Questions?
 
 - Check existing issues and discussions
 - Open a new issue with the `question` label
-- Review the [documentation](https://bavix.github.io/gripmock/)
+- Review the [documentation](https://radiantbald.github.io/gripmock/)
 
 ## Additional Resources
 
-- [Project Documentation](https://bavix.github.io/gripmock/)
+- [Project Documentation](https://radiantbald.github.io/gripmock/)
 - [grpctestify Documentation](https://gripmock.github.io/grpctestify-rust/)
 
 Thank you for contributing to GripMock! 🚀

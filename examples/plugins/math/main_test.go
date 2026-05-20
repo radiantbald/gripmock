@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bavix/gripmock/v3/pkg/plugintest"
+	"github.com/radiantbald/gripmock/v3/pkg/plugintest"
 )
 
 func TestRoundDeactivated(t *testing.T) {

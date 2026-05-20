@@ -7,7 +7,7 @@ import (
 	"maps"
 	"strings"
 
-	"github.com/bavix/gripmock/v3/pkg/sdk/internal/remoteapi"
+	"github.com/radiantbald/gripmock/v3/pkg/sdk/internal/remoteapi"
 )
 
 // remoteHistory fetches call history from GET /api/history.

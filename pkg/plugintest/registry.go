@@ -8,7 +8,7 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/bavix/gripmock/v3/pkg/plugins"
+	"github.com/radiantbald/gripmock/v3/pkg/plugins"
 )
 
 // TestRegistry is a lightweight, in-memory Registry implementation dedicated to

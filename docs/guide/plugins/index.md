@@ -17,7 +17,7 @@ Use custom plugins only for domain-specific logic that is not covered by built-i
 ```go
 package main
 
-import "github.com/bavix/gripmock/v3/pkg/plugins"
+import "github.com/radiantbald/gripmock/v3/pkg/plugins"
 
 func Register(reg plugins.Registry) {
 	reg.AddPlugin(plugins.PluginInfo{

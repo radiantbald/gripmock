@@ -1,3 +1,3 @@
-module github.com/bavix/gripmock-ui
+module github.com/radiantbald/gripmock-ui
 
 go 1.22.1

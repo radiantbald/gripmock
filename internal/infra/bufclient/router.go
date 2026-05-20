@@ -8,7 +8,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	"github.com/bavix/gripmock/v3/internal/config"
+	"github.com/radiantbald/gripmock/v3/internal/config"
 )
 
 const defaultBufBaseURL = "https://buf.build"

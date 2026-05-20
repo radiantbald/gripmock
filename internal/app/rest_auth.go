@@ -9,7 +9,7 @@ import (
 	"github.com/goccy/go-json"
 	"github.com/jackc/pgx/v5"
 
-	pgallowlist "github.com/bavix/gripmock/v3/internal/infra/postgres/allowlist"
+	pgallowlist "github.com/radiantbald/gripmock/v3/internal/infra/postgres/allowlist"
 )
 
 const phoneAuthCodeTTL = 5 * time.Minute

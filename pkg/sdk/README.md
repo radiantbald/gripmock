@@ -5,6 +5,15 @@ Go SDK for embedding a gRPC mock server in tests or connecting to a remote GripM
 > **⚠️ Experimental SDK**  
 > This SDK is experimental and may be discontinued or never released. Use at your own risk.
 
+## Runtime prerequisites
+
+- **Embedded mode** (`sdk.Run` without `WithRemote`): no external database required.
+- **Remote mode** (`WithRemote`): target GripMock server must already be running and configured with valid `POSTGRES_DSN`.
+- Recommended remote readiness gate:
+  ```bash
+  gripmock check --timeout 20s
+  ```
+
 ## Quick start (tests)
 
 ```go
@@ -184,8 +193,15 @@ mock.Stub(sdk.By(helloworld.Greeter_SayHello_FullMethodName)).
 client := helloworld.NewGreeterClient(mock.Conn())
 ```
 
+### Remote troubleshooting
+
+- `connection refused`: verify gRPC and HTTP addresses passed to `WithRemote`.
+- verify/dump/history errors: ensure remote server admin API is reachable (`/api/*`) and healthy.
+- descriptor upload failures: validate descriptor set and service conflicts on the running server.
+- flaky startup in CI: start server first, then gate test execution with `gripmock check`.
+
 ## Installation
 
 ```bash
-go get github.com/bavix/gripmock/v3/pkg/sdk
+go get github.com/radiantbald/gripmock/v3/pkg/sdk
 ```

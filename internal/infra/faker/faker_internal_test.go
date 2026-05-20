@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	infrafaker "github.com/bavix/gripmock/v3/internal/infra/faker"
+	infrafaker "github.com/radiantbald/gripmock/v3/internal/infra/faker"
 )
 
 func TestNewContracts(t *testing.T) {

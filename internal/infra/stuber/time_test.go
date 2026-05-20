@@ -6,9 +6,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
-	"github.com/bavix/gripmock/v3/internal/infra/template"
-	"github.com/bavix/gripmock/v3/internal/infra/types"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/infra/template"
+	"github.com/radiantbald/gripmock/v3/internal/infra/types"
 )
 
 // TestDelayWithGo125TimeAPI demonstrates using Go 1.25 time API for deterministic testing.

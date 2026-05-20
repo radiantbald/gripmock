@@ -14,9 +14,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 
-	"github.com/bavix/gripmock/v3/internal/deps"
-	"github.com/bavix/gripmock/v3/internal/infra/build"
-	"github.com/bavix/gripmock/v3/pkg/plugins"
+	"github.com/radiantbald/gripmock/v3/internal/deps"
+	"github.com/radiantbald/gripmock/v3/internal/infra/build"
+	"github.com/radiantbald/gripmock/v3/pkg/plugins"
 )
 
 func init() { //nolint:gochecknoinits

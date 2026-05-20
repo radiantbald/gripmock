@@ -8,7 +8,7 @@ Ready to see the JSON Schema in action? This guide shows you real examples of ho
 
 ```json
 {
-  "$schema": "https://bavix.github.io/gripmock/schema/stub.json",
+  "$schema": "https://radiantbald.github.io/gripmock/schema/stub.json",
   "service": "UserService",
   "method": "GetUser",
   "input": {
@@ -29,7 +29,7 @@ Ready to see the JSON Schema in action? This guide shows you real examples of ho
 ### Single Stub (YAML)
 
 ```yaml
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
 
 service: UserService
 method: GetUser
@@ -46,7 +46,7 @@ output:
 ### Multiple Stubs (Array)
 
 ```yaml
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
 
 - service: UserService
   method: GetUser
@@ -373,7 +373,7 @@ output:
 ### E-commerce Order Service
 
 ```yaml
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
 
 - service: OrderService
   method: CreateOrder
@@ -419,7 +419,7 @@ output:
 ### Authentication Service
 
 ```yaml
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
 
 - service: AuthService
   method: Login

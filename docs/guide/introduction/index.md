@@ -4,13 +4,15 @@ title: Introduction
 
 # Introduction
 
-![GripMock](https://github.com/bavix/gripmock/assets/5111255/023aae40-5950-43ba-abd1-0803de6fd246)
+![GripMock](https://github.com/radiantbald/gripmock/assets/5111255/023aae40-5950-43ba-abd1-0803de6fd246)
 
 GripMock is your go-to tool for testing gRPC services. It creates a mock server that responds exactly how you want it to, making testing faster and more reliable.
 
 ## What is GripMock?
 
 GripMock is a **mock server** for **gRPC** services. Give it your `.proto` files, and it instantly creates a working server that responds with your predefined test data. Perfect for testing your applications without needing a real backend server.
+
+`POSTGRES_DSN` is required for server startup because GripMock persists stubs/metadata in PostgreSQL.
 
 ## Why Use GripMock?
 
@@ -34,11 +36,13 @@ The modern GripMock engine is fundamentally different:
 
 - **Quick Start**: Use your `.proto` files to start a mock server instantly
 - **YAML & JSON**: Define test responses in the format you prefer
-- **Header & Input Matching**: Fine-grained request matching with `equals`, `contains`, `matches`, `anyOf` <VersionTag version="v3.11.0" />
+- **Header & Input Matching**: Fine-grained request matching with `equals`, `contains`, `matches`, `glob`, `anyOf` <VersionTag version="v3.12.0" />
 - **Streaming**: Server, client, and bidirectional streaming support
 - **Error Simulation**: Test error handling with codes and details
 - **Dynamic Templates**: Generate realistic data with `faker.*`, `{{uuid}}`, etc. <VersionTag version="v3.10.0" />
 - **Effects**: Stateful stubs with automatic upsert/delete after match <VersionTag version="v3.11.0" />
+- **Room Isolation**: Split scenarios per room via metadata header for multi-tenant tests
+- **History & Verify**: Record calls and assert invocation counts through API/SDK
 - **Health Checks**: Built-in health endpoints + mockable health service <VersionTag version="v3.9.3" />
 - **TLS/mTLS**: Native TLS support for secure gRPC <VersionTag version="v3.8.1" />
 - **Plugins**: Extend template functions with Go plugins <VersionTag version="v3.5.0" />
@@ -89,4 +93,4 @@ Need to load `.pb` descriptors into a running server without restart? See [Descr
 
 ## Need Help?
 
-Stuck with something? Check out our [GitHub issues page](https://github.com/bavix/gripmock/issues) or join our community discussions.
+Stuck with something? Check out our [GitHub issues page](https://github.com/radiantbald/gripmock/issues) or join our community discussions.

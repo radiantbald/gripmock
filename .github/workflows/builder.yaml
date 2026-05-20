@@ -21,8 +21,8 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: |
-            bavix/gripmock
-            ghcr.io/bavix/gripmock
+            radiantbald/gripmock
+            ghcr.io/radiantbald/gripmock
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -35,8 +35,8 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: |
-            bavix/gripmock
-            ghcr.io/bavix/gripmock
+            radiantbald/gripmock
+            ghcr.io/radiantbald/gripmock
           flavor: |
             latest=false
           tags: |

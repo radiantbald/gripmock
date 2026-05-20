@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	"github.com/bavix/gripmock/v3/internal/infra/protobundle"
+	"github.com/radiantbald/gripmock/v3/internal/infra/protobundle"
 )
 
 func registerProtoExport(parent *cobra.Command) {

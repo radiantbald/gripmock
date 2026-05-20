@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bavix/gripmock/v3/internal/infra/lifecycle"
+	"github.com/radiantbald/gripmock/v3/internal/infra/lifecycle"
 )
 
 type testLogger struct {

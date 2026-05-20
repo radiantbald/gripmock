@@ -46,10 +46,31 @@ BEGIN
         ALTER TABLE stubs ADD CONSTRAINT stubs_pkey PRIMARY KEY (id);
     END IF;
 
-    ALTER TABLE stubs DROP CONSTRAINT IF EXISTS stubs_room_fkey;
-    ALTER TABLE stubs
-        ADD CONSTRAINT stubs_room_fkey
-        FOREIGN KEY (room) REFERENCES rooms(id) ON DELETE CASCADE;
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'stubs'
+          AND column_name = 'room'
+    ) THEN
+        ALTER TABLE stubs DROP CONSTRAINT IF EXISTS stubs_room_fkey;
+        ALTER TABLE stubs
+            ADD CONSTRAINT stubs_room_fkey
+            FOREIGN KEY (room) REFERENCES rooms(id) ON DELETE CASCADE;
+    END IF;
 END $$;
 
-CREATE INDEX IF NOT EXISTS idx_stubs_service_method_room ON stubs(service, method, room);
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'stubs'
+          AND column_name = 'room'
+    ) THEN
+        CREATE INDEX IF NOT EXISTS idx_stubs_service_method_room ON stubs(service, method, room);
+    ELSE
+        CREATE INDEX IF NOT EXISTS idx_stubs_service_method ON stubs(service, method);
+    END IF;
+END $$;

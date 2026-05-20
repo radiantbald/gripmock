@@ -23,7 +23,7 @@ Every stub **MUST** have a UUIDv4 identifier:
 ```  
 
 - ❌ Don't use custom strings like `my_stub_123`  
-- ✅ Generate with `uuidgen` or [online tools](https://bavix.github.io/uuid-ui/)
+- ✅ Generate with `uuidgen` or [online tools](https://radiantbald.github.io/uuid-ui/)
 
 ## 2. Admin Panel Efficiency 🚀  
 Instantly locate stubs in the web UI:  

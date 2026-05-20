@@ -1,3 +1,38 @@
+## Operational Runbook
+
+### Prerequisites
+
+- PostgreSQL is running and reachable.
+- `POSTGRES_DSN` is set.
+
+```bash
+export POSTGRES_DSN='postgres://user:pass@localhost:5432/gripmock?sslmode=disable'
+```
+
+### Primary Run
+
+```bash
+gripmock --stub ./examples/projects/multiverse ./examples/projects/multiverse
+```
+
+### Secondary Run (restart)
+
+```bash
+gripmock ./examples/projects/multiverse
+```
+
+### Verify
+
+```bash
+gripmock check --timeout 20s
+curl http://127.0.0.1:4771/api/health/readiness
+```
+
+### Troubleshooting
+
+- If startup fails, verify `POSTGRES_DSN` and DB connectivity.
+- If descriptors conflict after local refactors, reset local compose DB (`make reset-db`).
+- If tests race startup, wait with `gripmock check` before test execution.
 # Multiverse - All Streaming Types Demo
 
 This project demonstrates all four types of gRPC streaming in a single service:
@@ -32,16 +67,19 @@ multiverse/
 ├── tests/                          # Test cases organized by streaming type
 │   ├── unary/                      # Unary streaming tests
 │   │   ├── case_*.gctf            # Test cases
-│   │   └── stubs.yaml             # Stubs for unary tests
-│   ├── client-streaming/           # Client streaming tests
+│   │   └── case_*.yaml            # Stubs for unary tests
+│   ├── client-streaming-small/     # Small client-streaming dataset
 │   │   ├── case_*.gctf            # Test cases
-│   │   └── stubs.yaml             # Stubs for client streaming tests
+│   │   └── case_*.yaml            # Stubs
+│   ├── client-streaming-large/     # Large client-streaming dataset
+│   │   ├── case_*.gctf            # Test cases
+│   │   └── case_*.yaml            # Stubs
 │   ├── server-streaming/           # Server streaming tests
 │   │   ├── case_*.gctf            # Test cases
-│   │   └── stubs.yaml             # Stubs for server streaming tests
+│   │   └── case_*.yaml            # Stubs for server streaming tests
 │   └── bidi-streaming/             # Bidirectional streaming tests
 │       ├── case_*.gctf            # Test cases
-│       └── stubs.yaml             # Stubs for bidirectional streaming tests
+│       └── case_*.yaml            # Stubs for bidirectional streaming tests
 └── README.md                       # This file
 ```
 
@@ -50,13 +88,15 @@ multiverse/
 ```bash
 # Run all tests by type
 grpctestify tests/unary/case_*.gctf           # Unary tests
-grpctestify tests/client-streaming/case_*.gctf # Client streaming tests
+grpctestify tests/client-streaming-small/case_*.gctf # Client streaming small tests
+grpctestify tests/client-streaming-large/case_*.gctf # Client streaming large tests
 grpctestify tests/server-streaming/case_*.gctf # Server streaming tests
 grpctestify tests/bidi-streaming/case_*.gctf   # Bidirectional streaming tests
 
 # Run individual tests
 grpctestify tests/unary/case_unary_ping.gctf
-grpctestify tests/client-streaming/case_client_streaming_upload.gctf
+grpctestify tests/client-streaming-small/case_client_streaming_upload.gctf
+grpctestify tests/client-streaming-large/case_client_streaming_large.gctf
 grpctestify tests/server-streaming/case_server_streaming_data.gctf
 grpctestify tests/bidi-streaming/case_bidi_streaming_chat.gctf
 
@@ -66,7 +106,7 @@ grpctestify tests/*/case_*.gctf
 
 ## Features Demonstrated
 
-- **Individual Stub Files**: Each test has its own `.stub.yaml` file for clarity
+- **Individual Stub Files**: Each test has its own `case_*.yaml` file for clarity
 - **Stream Keys**: All streaming stubs use `inputs` keys for input and `stream` keys for output
 - **Multiple Scenarios**: Each streaming type has multiple test scenarios
 - **Real-world Patterns**: Practical examples like file uploads and chat

@@ -14,7 +14,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/bavix/gripmock/v3/internal/infra/telemetry"
+	"github.com/radiantbald/gripmock/v3/internal/infra/telemetry"
 )
 
 func newRegistry() *prometheus.Registry {

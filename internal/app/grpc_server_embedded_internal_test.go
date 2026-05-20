@@ -19,12 +19,12 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/dynamicpb"
 
-	"github.com/bavix/gripmock/v3/internal/domain/descriptors"
-	"github.com/bavix/gripmock/v3/internal/domain/history"
-	"github.com/bavix/gripmock/v3/internal/domain/protoset"
-	protosetdom "github.com/bavix/gripmock/v3/internal/domain/protoset"
-	"github.com/bavix/gripmock/v3/internal/infra/proxyroutes"
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/domain/descriptors"
+	"github.com/radiantbald/gripmock/v3/internal/domain/history"
+	"github.com/radiantbald/gripmock/v3/internal/domain/protoset"
+	protosetdom "github.com/radiantbald/gripmock/v3/internal/domain/protoset"
+	"github.com/radiantbald/gripmock/v3/internal/infra/proxyroutes"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
 )
 
 //nolint:paralleltest

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bavix/gripmock/v3/internal/infra/room"
+	"github.com/radiantbald/gripmock/v3/internal/infra/room"
 )
 
 const (
@@ -80,6 +80,10 @@ func FromRequest(r *http.Request) string {
 	}
 
 	if v := strings.TrimSpace(r.Header.Get(HeaderName)); v != "" {
+		return v
+	}
+
+	if v := strings.TrimSpace(r.URL.Query().Get("room")); v != "" {
 		return v
 	}
 

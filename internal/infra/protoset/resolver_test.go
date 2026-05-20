@@ -8,7 +8,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
-	"github.com/bavix/gripmock/v3/internal/infra/protoset"
+	"github.com/radiantbald/gripmock/v3/internal/infra/protoset"
 )
 
 type fakeResolver struct {

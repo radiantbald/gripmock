@@ -12,8 +12,8 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	"github.com/bavix/gripmock/v3/internal/domain/protoset"
-	grpcclient "github.com/bavix/gripmock/v3/internal/infra/grpcclient"
+	"github.com/radiantbald/gripmock/v3/internal/domain/protoset"
+	grpcclient "github.com/radiantbald/gripmock/v3/internal/infra/grpcclient"
 )
 
 const (

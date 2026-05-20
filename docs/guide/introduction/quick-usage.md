@@ -2,293 +2,230 @@
 
 ## Installation
 
-Choose your preferred way to install GripMock:
+Choose one installation method:
 
-### 1. **Using Homebrew (Recommended)**
-Homebrew provides an easy way to install GripMock on macOS and Linux.
+- Homebrew:
+  ```bash
+  brew tap gripmock/tap
+  brew install --cask gripmock
+  ```
+- Shell installer:
+  ```bash
+  curl -s https://raw.githubusercontent.com/radiantbald/gripmock/refs/heads/master/setup.sh | sh -s
+  ```
+- Go:
+  ```bash
+  go install github.com/radiantbald/gripmock/v3@latest
+  ```
+- Docker:
+  ```bash
+  docker pull radiantbald/gripmock
+  ```
 
-#### Step 1: Add the Repository
-Add the official Homebrew repository for GripMock:
-```bash
-brew tap gripmock/tap
-```
+Check installation:
 
-#### Step 2: Install GripMock <VersionTag version="v3.2.4" />
-Install GripMock with the following command:
-```bash
-brew install --cask gripmock
-```
-
-#### Step 3: Check Installation
-Make sure GripMock is installed correctly by checking its version:
 ```bash
 gripmock --version
 ```
-You should see output similar to:
-```
-gripmock version v3.2.4
-```
 
-### 2. **Using Shell Script (curl)**
-For Linux/macOS on **arm64/amd64** architectures:
-```bash
-curl -s https://raw.githubusercontent.com/bavix/gripmock/refs/heads/master/setup.sh | sh -s
-```
+## Recommended startup: `make up`
 
-**Example installation output:**
-```bash
-ℹ Starting GripMock installation... 🚀
-ℹ Checking dependencies...
-✔ Dependencies are ready.
-ℹ Detecting system information...
-✔ Detected OS: linux 🌍
-✔ Detected architecture: amd64 💻
-ℹ Fetching the latest version of GripMock from GitHub...
-✔ Latest version: 3.2.8 🎉
-ℹ Downloading checksums file...
-✔ Checksums file downloaded.
-ℹ Downloading GripMock for linux/amd64...
-✔ Downloaded GripMock (9.59 MB)
-✔ Checksum verified successfully.
-ℹ Installing GripMock...
-✔ GripMock has been successfully installed.
-ℹ You can now run 'gripmock --help' to get started.
-✔ Installation complete! You're all set to use GripMock 🎉
-```
+This repository is designed to be started with `make up`.
 
-This script automatically:
-1. Detects your system (Linux/macOS) and architecture (arm64/amd64)
-2. Checks system dependencies
-3. Downloads the latest release securely
-4. Validates checksums
-5. Installs to your system PATH
+Prerequisites:
 
-### 3. **Download Pre-built Binaries**
-Ready-to-use binaries for various platforms are available on the [Releases](https://github.com/bavix/gripmock/releases) page. Download the right binary for your system and add it to your `PATH`.
+- Docker is installed.
+- Docker daemon is running.
+- You run commands from repository root.
+- Configure `.env` values when you need non-default ports/credentials/example paths.
 
-### 4. **Using Docker**
-GripMock comes as a Docker image for easy use. Make sure Docker is installed:  
-[Install Docker](https://docs.docker.com/engine/install/).
-
-Pull the latest GripMock Docker image:
-```bash
-docker pull bavix/gripmock
-```
-
-### 5. **Using Go**
-If you have Go installed, you can install GripMock directly:
-```bash
-go install github.com/bavix/gripmock/v3@latest
-```
-
-## Preparation
-
-Assume we have a gRPC service defined in `simple.proto`:
-```proto
-syntax = "proto3";
-
-package simple;
-
-service Gripmock {
-  rpc SayHello (Request) returns (Reply);
-}
-
-message Request {
-  string name = 1;
-}
-
-message Reply {
-  string message = 1;
-  int32 returnCode = 2;
-}
-```
-
-## Run GripMock
-
-### Single Service (Traditional .proto)
-```bash
-docker run \
-  -p 4770:4770 \
-  -p 4771:4771 \
-  -v ./api/proto:/proto:ro \
-  bavix/gripmock /proto/simple.proto
-```
-
-### Using Proto Descriptors (New)
-GripMock now supports compiled proto descriptors (`.pb` files) for better dependency management:
-
-1. **Generate descriptor file**:
-   Using Protocol Buffers Compiler (`protoc`):
-   ```bash
-   protoc --proto_path=. --descriptor_set_out=service.pb service.proto
-   ```
-   
-   Or using Buf (modern build tool):
-   ```bash
-   buf build -o service.pb
-   ```
-
-2. **Run with descriptor**:
-   ```bash
-   docker run \
-     -p 4770:4770 \
-     -p 4771:4771 \
-     -v ./api/proto:/proto:ro \
-     bavix/gripmock /proto/service.pb
-   ```
-
-> **Note**:  
-> - When using `protoc`, add `--include_imports` for multi-file dependencies  
-> - Buf automatically handles dependencies and requires no extra flags  
-> - Descriptors package services/dependencies into a single binary file  
-> - Buf requires a valid `buf.yaml` configuration in your project
-
-### Multiple Services
-#### Option 1: Specify Multiple Files
-```bash
-docker run \
-  -p 4770:4770 \
-  -p 4771:4771 \
-  -v ./protos:/proto:ro \
-  bavix/gripmock /proto/service1.proto /proto/service2.proto
-```
-
-#### Option 2: Auto-Load Folder
-Mount a directory containing **multiple `.proto` and `.pb` files**:
-```bash
-docker run \
-  -p 4770:4770 \
-  -p 4771:4771 \
-  -v ./protos:/proto:ro \
-  bavix/gripmock /proto
-```
-This will **automatically load all `.proto` and `.pb` files** in the `/proto` directory.
-
-> **Note**:  
-> - All `.proto` and `.pb` files in the specified directory will be processed  
-> - Ensure there are no conflicting service/message definitions across files  
-> - Subdirectories are scanned recursively  
-> - **Important**: If duplicate services are found in both `.proto` and `.pb` files, GripMock will fail to start. In such cases, specify files manually instead of using folder auto-load.
-
-### Load from Buf Schema Registry (BSR) <VersionTag version="v3.8.4" />
-
-You can start GripMock from a BSR module reference directly:
+Recommended before first run:
 
 ```bash
-gripmock --stub ./stubs buf.build/connectrpc/eliza
+cp .env.example .env
 ```
 
-See the dedicated BSR page for refs, private modules, and env vars: [BSR](/guide/sources/bsr).
+Then edit `.env` as needed (`POSTGRES_*`, `GRIPMOCK_*`, `TRAEFIK_*`).
 
-## Web UI (v3.0+)
-Access the admin panel at:  
-**http://localhost:4771/** (default port).  
-Features:
-- Create, edit, and delete stubs.
-- View lists of used/unused stubs.
+### Primary start
 
-## Stubbing
+From repository root:
 
-### Dynamic Stubs (API)
-Add a stub via `curl`:
 ```bash
-curl -X POST -d '{
-  "service": "Gripmock",
-  "method": "SayHello",
-  "input": { "equals": { "name": "gripmock" } },
-  "output": { "data": { "message": "Hello GripMock" } }
-}' http://127.0.0.1:4771/api/stubs
+make up
 ```
 
-Response (stub ID):
-```json
-["6c85b0fa-caaf-4640-a672-f56b7dd8074d"]
-```
+### What happens during `make up`
 
-### Static Stubs (YAML/JSON)
-Mount a stubs directory and use `--stub`:
+`make up` runs `env`, `ui-build`, then Docker Compose startup:
+
+1. `env`:
+   - creates `.env` from `.env.example` if `.env` does not exist.
+   - if `.env` already exists, keeps your custom values.
+2. `ui-build`:
+   - checks UI dependencies in `third_party/gripmock-ui`.
+   - runs `npm ci` when dependencies are missing/outdated.
+   - builds UI assets.
+3. `docker compose up -d --build --scale gripmock=1 postgres gripmock`:
+   - starts PostgreSQL first.
+   - waits for PostgreSQL healthcheck.
+   - builds and starts GripMock container.
+   - exposes ports from `.env` (`GRIPMOCK_GRPC_PORT`, `GRIPMOCK_HTTP_PORT`).
+
+### Defaults from `.env.example`
+
+- stubs: `./examples/projects/greeter/stubs`
+- proto source: `./examples/projects/greeter/service.proto`
+- ports: `4770` (gRPC), `4771` (HTTP/UI)
+
+### Verify readiness after `make up`
+
 ```bash
-docker run ... -v ./stubs:/stubs bavix/gripmock --stub=/stubs /proto/simple.proto
-```
-
-## Verification
-
-### Check Stubs
-- **API**:  
-  ```bash
-  curl http://127.0.0.1:4771/api/stubs
-  ```
-- **UI**: Visit **http://localhost:4771/** and navigate to the stubs section.
-
-## Advanced Features
-
-### Binary Descriptor Support <VersionTag version="v3.1.0" />
-When using `.pb` descriptors:
-- No need for original `.proto` files in the container
-- Faster startup with pre-compiled definitions
-- Better handling of complex proto dependencies
-- Supports all features available with regular `.proto` files
-
-> **Tip**: Use Buf for modern proto workflows:
-> ```bash
-> buf build --exclude-source-info -o service.pb
-> ```
-> This creates leaner descriptors optimized for runtime use
-
-### Headers Matching <VersionTag version="v2.1.0" />
-Add headers to stubs for fine-grained control:
-```json
-{
-  "headers": {
-    "equals": { "authorization": "Bearer token123" }
-  },
-  "input": { ... },
-  "output": { ... }
-}
-```
-
-### Array Order Flexibility <VersionTag version="v2.6.0" />
-Use `ignoreArrayOrder: true` to disable array sorting checks:
-```json
-{
-  "input": {
-    "ignoreArrayOrder": true,
-    "equals": { "ids": ["id2", "id1"] }
-  }
-}
-```
-
-### Health checks <VersionTag version="v2.0.2" />
-Check service status:
-```bash
-curl http://127.0.0.1:4771/api/health/liveness
+gripmock check --timeout 20s
 curl http://127.0.0.1:4771/api/health/readiness
 ```
 
-### Plugins <VersionTag version="v3.5.0" />
-Extend template functions with custom plugins:
+### Secondary start (restart)
+
 ```bash
-# Build plugins
-make plugins
-
-# Load plugins
-gripmock --plugins=./plugins/hash.so --plugins=./plugins/math.so service.proto
+make up
 ```
-Use plugin functions in dynamic templates:
-```yaml
-output:
-  data:
-    hash: "{{.Request.data | sha256}}"
-    result: "{{pow .Request.base .Request.exponent}}"
-```
-See [Plugins](../plugins/) for detailed documentation.
 
-## Cleanup
-- **Delete all stubs**:  
+`make up` reuses persisted PostgreSQL data between restarts.
+
+### Troubleshooting for `make up`
+
+- reset persisted metadata:
   ```bash
-  curl -X DELETE http://127.0.0.1:4771/api/stubs
+  make reset-db
+  make up
   ```
-- **Delete specific stub**:  
+- full clean restart:
   ```bash
-  curl -X DELETE http://127.0.0.1:4771/api/stubs/{uuid}
+  make reup-clean
   ```
+
+## Manual startup (when you do not use `make up`)
+
+`POSTGRES_DSN` is required for direct `gripmock` server startup.
+
+Example:
+
+```bash
+export POSTGRES_DSN='postgres://user:pass@localhost:5432/gripmock?sslmode=disable'
+```
+
+Other defaults:
+
+- gRPC: `0.0.0.0:4770`
+- HTTP (API + UI): `0.0.0.0:4771`
+- Dashboard: `http://localhost:4771/`
+
+See full env list in [Environment Variables](/guide/introduction/environment-variables).
+
+Assume you have `service.proto` and optional stubs in `./stubs`.
+
+### Local binary
+
+```bash
+POSTGRES_DSN='postgres://user:pass@localhost:5432/gripmock?sslmode=disable' \
+gripmock --stub ./stubs ./service.proto
+```
+
+### Docker
+
+```bash
+docker run -p 4770:4770 -p 4771:4771 \
+  -e POSTGRES_DSN='postgres://user:pass@host.docker.internal:5432/gripmock?sslmode=disable' \
+  -v $(pwd)/stubs:/stubs \
+  -v $(pwd)/proto:/proto \
+  radiantbald/gripmock --stub=/stubs /proto/service.proto
+```
+
+### Verify readiness
+
+HTTP readiness:
+
+```bash
+curl http://127.0.0.1:4771/api/health/readiness
+```
+
+gRPC health (`service=gripmock`):
+
+```bash
+gripmock check --timeout 20s
+```
+
+## Manual secondary start (restart with persisted state)
+
+GripMock restores persisted stubs/descriptors from PostgreSQL on restart.
+
+Restart with the same `POSTGRES_DSN`:
+
+```bash
+POSTGRES_DSN='postgres://user:pass@localhost:5432/gripmock?sslmode=disable' \
+gripmock ./service.proto
+```
+
+If startup still succeeds but your local files changed, reapply static stubs:
+
+```bash
+POSTGRES_DSN='postgres://user:pass@localhost:5432/gripmock?sslmode=disable' \
+gripmock --stub ./stubs ./service.proto
+```
+
+## Descriptor Sources
+
+GripMock can load descriptors from:
+
+- `.proto` file(s)
+- compiled `.pb` / `.protoset`
+- a directory with `.proto` and `.pb`
+- Buf Schema Registry (BSR)
+- gRPC reflection (`grpc://`, `grpcs://`)
+- upstream reflection modes (`grpc+proxy://`, `grpc+replay://`, `grpc+capture://`)
+
+Example (BSR):
+
+```bash
+POSTGRES_DSN='postgres://user:pass@localhost:5432/gripmock?sslmode=disable' \
+gripmock --stub ./stubs buf.build/connectrpc/eliza
+```
+
+## Troubleshooting
+
+### `POSTGRES_DSN is required` or database connection failure
+
+- Ensure PostgreSQL is running and reachable.
+- Validate DSN credentials/host/database.
+- For Docker Desktop on macOS, use `host.docker.internal`.
+
+### HTTP readiness is OK, but tests still fail
+
+- Readiness (`/api/health/readiness`) is HTTP-level startup status.
+- `gripmock check` validates gRPC health service state (`SERVING` for `gripmock`).
+- In CI, prefer waiting with `gripmock check`.
+
+### Startup fails after schema/proto changes
+
+- Persisted descriptors may conflict with your new local source set.
+- For local docker-compose development, reset DB:
+  ```bash
+  make reset-db
+  make up
+  ```
+
+### Stubs are missing after restart
+
+- Confirm stubs were loaded from files (`--stub`) or created via API.
+- Export runtime stubs before cleanup:
+  ```bash
+  gripmock dump --output ./stubs_export
+  ```
+
+## Next Steps
+
+- Stubs authoring: [Stubs](/guide/stubs/json)
+- Matching strategies: [Matcher](/guide/matcher/)
+- Runtime descriptor loading: [Descriptors API](/guide/api/descriptors)
+- Utility commands: [Tooling](/guide/utility/check)

@@ -5,7 +5,7 @@ import (
 
 	"github.com/goccy/go-json"
 
-	"github.com/bavix/features"
+	"github.com/radiantbald/features"
 )
 
 const (

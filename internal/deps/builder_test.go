@@ -5,9 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bavix/gripmock/v3/internal/config"
-	"github.com/bavix/gripmock/v3/internal/deps"
-	"github.com/bavix/gripmock/v3/internal/domain/history"
+	"github.com/radiantbald/gripmock/v3/internal/config"
+	"github.com/radiantbald/gripmock/v3/internal/deps"
+	"github.com/radiantbald/gripmock/v3/internal/domain/history"
 )
 
 func TestBuilderHIstoryStoreWithRedactKeys(t *testing.T) {

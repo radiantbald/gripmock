@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	roominfra "github.com/bavix/gripmock/v3/internal/infra/room"
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
+	roominfra "github.com/radiantbald/gripmock/v3/internal/infra/room"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
 )
 
 func TestSplitClientID(t *testing.T) {

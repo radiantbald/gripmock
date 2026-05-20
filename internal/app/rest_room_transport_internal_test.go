@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bavix/gripmock/v3/internal/infra/muxmiddleware"
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/infra/muxmiddleware"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
 )
 
 type nopExtender struct{}

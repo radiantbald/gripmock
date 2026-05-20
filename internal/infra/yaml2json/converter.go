@@ -5,7 +5,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"github.com/bavix/gripmock/v3/pkg/plugins"
+	"github.com/radiantbald/gripmock/v3/pkg/plugins"
 )
 
 // Convertor provides functionality for converting YAML data to JSON format.

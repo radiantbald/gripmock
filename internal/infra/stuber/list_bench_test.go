@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
 )
 
 func BenchmarkListFilterSortPaginate(b *testing.B) {

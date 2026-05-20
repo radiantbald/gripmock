@@ -10,9 +10,9 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
-	"github.com/bavix/gripmock/v3/internal/infra/template"
-	"github.com/bavix/gripmock/v3/pkg/plugintest"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/infra/template"
+	"github.com/radiantbald/gripmock/v3/pkg/plugintest"
 )
 
 func createTestMocker(t *testing.T) *grpcMocker {

@@ -19,38 +19,17 @@ CREATE TABLE IF NOT EXISTS stubs (
 
 DO $$
 BEGIN
-    -- Compatibility for legacy databases where "stubs" already existed
-    -- with older column set and migration history table was absent.
-    IF NOT EXISTS (
+    IF EXISTS (
         SELECT 1
         FROM information_schema.columns
         WHERE table_schema = 'public'
           AND table_name = 'stubs'
           AND column_name = 'room'
     ) THEN
-        ALTER TABLE stubs ADD COLUMN room TEXT NOT NULL DEFAULT '';
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'stubs'
-          AND column_name = 'priority'
-    ) THEN
-        ALTER TABLE stubs ADD COLUMN priority INTEGER NOT NULL DEFAULT 0;
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'stubs'
-          AND column_name = 'enabled'
-    ) THEN
-        ALTER TABLE stubs ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT TRUE;
+        CREATE INDEX IF NOT EXISTS idx_stubs_service_method_room ON stubs(service, method, room);
+    ELSE
+        CREATE INDEX IF NOT EXISTS idx_stubs_service_method ON stubs(service, method);
     END IF;
 END $$;
 
-CREATE INDEX IF NOT EXISTS idx_stubs_service_method_room ON stubs(service, method, room);
 CREATE INDEX IF NOT EXISTS idx_stubs_source ON stubs(source);

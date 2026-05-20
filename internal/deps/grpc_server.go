@@ -9,10 +9,10 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog"
 
-	"github.com/bavix/gripmock/v3/internal/app"
-	"github.com/bavix/gripmock/v3/internal/domain/history"
-	"github.com/bavix/gripmock/v3/internal/domain/proto"
-	protosetdom "github.com/bavix/gripmock/v3/internal/domain/protoset"
+	"github.com/radiantbald/gripmock/v3/internal/app"
+	"github.com/radiantbald/gripmock/v3/internal/domain/history"
+	"github.com/radiantbald/gripmock/v3/internal/domain/proto"
+	protosetdom "github.com/radiantbald/gripmock/v3/internal/domain/protoset"
 )
 
 //nolint:funlen,cyclop

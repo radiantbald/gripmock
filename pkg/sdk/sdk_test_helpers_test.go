@@ -13,7 +13,7 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/dynamicpb"
 
-	"github.com/bavix/gripmock/v3/internal/domain/protoset"
+	"github.com/radiantbald/gripmock/v3/internal/domain/protoset"
 )
 
 func sdkProtoPath(project string) string {

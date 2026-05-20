@@ -4,14 +4,14 @@
   "description": "Package documentation",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bavix/gripmock.git"
+    "url": "git+https://github.com/radiantbald/gripmock.git"
   },
   "author": "Maxim Babichev",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/bavix/gripmock/issues"
+    "url": "https://github.com/radiantbald/gripmock/issues"
   },
-  "homepage": "https://bavix.github.io/gripmock/",
+  "homepage": "https://radiantbald.github.io/gripmock/",
   "scripts": {
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",

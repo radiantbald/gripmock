@@ -3,8 +3,8 @@ package template
 import (
 	"context"
 
-	internalplugins "github.com/bavix/gripmock/v3/internal/infra/plugins"
-	pkgplugins "github.com/bavix/gripmock/v3/pkg/plugins"
+	internalplugins "github.com/radiantbald/gripmock/v3/internal/infra/plugins"
+	pkgplugins "github.com/radiantbald/gripmock/v3/pkg/plugins"
 )
 
 func Functions(ctx context.Context, reg pkgplugins.Registry) map[string]any {

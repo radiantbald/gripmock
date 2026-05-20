@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	mcpusecase "github.com/bavix/gripmock/v3/internal/app/usecase/mcp"
+	mcpusecase "github.com/radiantbald/gripmock/v3/internal/app/usecase/mcp"
 )
 
 var errDispatchBoom = errors.New("boom")

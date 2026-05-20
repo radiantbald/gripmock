@@ -281,4 +281,4 @@ Control which stub should be selected first:
 - 🔄 **Backward Compatibility**: Automatic support for old and new formats
 - ⚡ **Performance**: Efficient ranking and matching algorithms
 
-For advanced transformation functions, check out the [UUID Utilities Documentation](https://bavix.github.io/uuid-ui/).  
+For advanced transformation functions, check out the [UUID Utilities Documentation](https://radiantbald.github.io/uuid-ui/).  

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	protosetdom "github.com/bavix/gripmock/v3/internal/domain/protoset"
+	protosetdom "github.com/radiantbald/gripmock/v3/internal/domain/protoset"
 )
 
 type fakeRemoteClient struct {

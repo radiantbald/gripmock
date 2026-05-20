@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package com.bavix.echo.v1;
+package com.radiantbald.echo.v1;
 
 service EchoService {
     rpc SendMessage (EchoRequest) returns (EchoResponse) {}

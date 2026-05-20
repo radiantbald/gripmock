@@ -1,3 +1,38 @@
+## Operational Runbook
+
+### Prerequisites
+
+- PostgreSQL is running and reachable.
+- `POSTGRES_DSN` is set.
+
+```bash
+export POSTGRES_DSN='postgres://user:pass@localhost:5432/gripmock?sslmode=disable'
+```
+
+### Primary Run
+
+```bash
+gripmock --stub ./examples/projects/nested-messages ./examples/projects/nested-messages
+```
+
+### Secondary Run (restart)
+
+```bash
+gripmock ./examples/projects/nested-messages
+```
+
+### Verify
+
+```bash
+gripmock check --timeout 20s
+curl http://127.0.0.1:4771/api/health/readiness
+```
+
+### Troubleshooting
+
+- If startup fails, verify `POSTGRES_DSN` and DB connectivity.
+- If descriptors conflict after local refactors, reset local compose DB (`make reset-db`).
+- If tests race startup, wait with `gripmock check` before test execution.
 # Nested Messages Example
 
 This example demonstrates GripMock's support for nested message types in Protocol Buffers.
@@ -31,7 +66,7 @@ Or using Docker:
 ```bash
 docker run -p 4770:4770 -p 4771:4771 \
   -v $(pwd)/examples/projects/nested-messages:/proto \
-  bavix/gripmock /proto
+  radiantbald/gripmock /proto
 ```
 
 ## Testing with grpcurl

@@ -9,7 +9,7 @@ import (
 
 	"github.com/rs/zerolog"
 
-	pkgplugins "github.com/bavix/gripmock/v3/pkg/plugins"
+	pkgplugins "github.com/radiantbald/gripmock/v3/pkg/plugins"
 )
 
 type Loader struct {

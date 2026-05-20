@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
 )
 
 func TestFindByNotFound(t *testing.T) {

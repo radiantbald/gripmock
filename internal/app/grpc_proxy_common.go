@@ -6,7 +6,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/bavix/gripmock/v3/internal/infra/proxyroutes"
+	"github.com/radiantbald/gripmock/v3/internal/infra/proxyroutes"
 )
 
 const (

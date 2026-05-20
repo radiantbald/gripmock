@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	infrafaker "github.com/bavix/gripmock/v3/internal/infra/faker"
+	infrafaker "github.com/radiantbald/gripmock/v3/internal/infra/faker"
 )
 
 func benchmarkStringMethod(b *testing.B, fn func() string) {

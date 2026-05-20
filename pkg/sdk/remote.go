@@ -11,14 +11,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	grpcclient "github.com/bavix/gripmock/v3/internal/infra/grpcclient"
+	grpcclient "github.com/radiantbald/gripmock/v3/internal/infra/grpcclient"
 	"github.com/cockroachdb/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
-	"github.com/bavix/gripmock/v3/pkg/sdk/internal/remoteapi"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/pkg/sdk/internal/remoteapi"
 )
 
 type remoteMock struct {

@@ -6,8 +6,8 @@ title: Builder Image
 
 ## Main rule
 
-- build plugins in `bavix/gripmock:<tag>-builder`
-- run GripMock in `bavix/gripmock:<tag>`
+- build plugins in `radiantbald/gripmock:<tag>-builder`
+- run GripMock in `radiantbald/gripmock:<tag>`
 - always keep the same `<tag>`
 
 This is required because Go plugins are sensitive to toolchain and platform differences (`plugin.Open`).
@@ -16,10 +16,10 @@ This is required because Go plugins are sensitive to toolchain and platform diff
 
 For each release tag `<tag>`:
 
-- `bavix/gripmock:<tag>`
-- `bavix/gripmock:<tag>-builder`
+- `radiantbald/gripmock:<tag>`
+- `radiantbald/gripmock:<tag>-builder`
 
-Same tags are published to `ghcr.io/bavix/gripmock`.
+Same tags are published to `ghcr.io/radiantbald/gripmock`.
 
 ## CI behavior
 
@@ -35,7 +35,7 @@ This keeps runtime and builder strictly aligned.
 docker run --rm \
   -v "$PWD":/work \
   -w /work \
-  bavix/gripmock:v3.7.1-builder \
+  radiantbald/gripmock:v3.12.0-builder \
   sh -lc 'go build -buildmode=plugin -o ./plugins/myplugin.so ./cmd/myplugin'
 ```
 
@@ -44,7 +44,7 @@ docker run --rm \
   -p 4770:4770 -p 4771:4771 \
   -v "$PWD/plugins":/plugins \
   -v "$PWD/proto":/proto \
-  bavix/gripmock:v3.7.1 \
+  radiantbald/gripmock:v3.12.0 \
   --plugins=/plugins/myplugin.so /proto/service.proto
 ```
 

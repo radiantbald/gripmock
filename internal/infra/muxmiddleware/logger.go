@@ -8,8 +8,8 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/bavix/gripmock/v3/internal/infra/httputil"
-	"github.com/bavix/gripmock/v3/internal/infra/jsondecoder"
+	"github.com/radiantbald/gripmock/v3/internal/infra/httputil"
+	"github.com/radiantbald/gripmock/v3/internal/infra/jsondecoder"
 )
 
 const logBodyLimit = 4 << 10 // 4KB max body for structured logging

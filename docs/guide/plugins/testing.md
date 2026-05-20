@@ -12,7 +12,7 @@ package main
 import (
 	"testing"
 	"github.com/stretchr/testify/require"
-	"github.com/bavix/gripmock/v3/pkg/plugintest"
+	"github.com/radiantbald/gripmock/v3/pkg/plugintest"
 )
 
 func TestMyPlugin(t *testing.T) {

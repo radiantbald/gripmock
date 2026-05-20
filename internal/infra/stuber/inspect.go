@@ -1,7 +1,7 @@
 package stuber
 
 import (
-	"github.com/bavix/features"
+	"github.com/radiantbald/features"
 )
 
 type searchTrace struct {

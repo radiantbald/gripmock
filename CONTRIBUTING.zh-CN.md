@@ -127,11 +127,11 @@ make lint
 
 - 查看现有 issues 与 discussions
 - 使用 `question` 标签创建新 issue
-- 查阅 [documentation](https://bavix.github.io/gripmock/)
+- 查阅 [documentation](https://radiantbald.github.io/gripmock/)
 
 ## 附加资源
 
-- [Project Documentation](https://bavix.github.io/gripmock/)
+- [Project Documentation](https://radiantbald.github.io/gripmock/)
 - [grpctestify Documentation](https://gripmock.github.io/grpctestify-rust/)
 
 感谢你为 GripMock 做出贡献！🚀

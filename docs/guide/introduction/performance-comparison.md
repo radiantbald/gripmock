@@ -32,8 +32,8 @@ Latest measured highlights (example run):
 - Stub dataset loaded into both runtimes before GHZ: **5000 stubs** (same dataset, same matching key format)
 
 - Image size (compressed layers):
-  - `bavix/gripmock` amd64: **16.55 MB**, `tkpd/gripmock` amd64: **226.29 MB** (**92.69% smaller**)
-  - `bavix/gripmock` arm64: **16.02 MB**, `tkpd/gripmock` arm64: **219.90 MB** (**92.71% smaller**)
+  - `radiantbald/gripmock` amd64: **16.55 MB**, `tkpd/gripmock` amd64: **226.29 MB** (**92.69% smaller**)
+  - `radiantbald/gripmock` arm64: **16.02 MB**, `tkpd/gripmock` arm64: **219.90 MB** (**92.71% smaller**)
 - Startup readiness (both gRPC + HTTP ready):
   - simple proto: **0.398s vs 1.265s** (**68.54% faster**)
   - wkt proto: **0.477s vs 1.398s** (**65.88% faster**)

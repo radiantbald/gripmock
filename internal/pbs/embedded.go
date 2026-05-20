@@ -8,7 +8,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	"github.com/bavix/gripmock/v3/internal/infra/protobundle"
+	"github.com/radiantbald/gripmock/v3/internal/infra/protobundle"
 )
 
 //go:embed googleapis.pbs

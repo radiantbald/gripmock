@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bavix/gripmock/v3/internal/config"
+	"github.com/radiantbald/gripmock/v3/internal/config"
 )
 
 func TestNewClient(t *testing.T) {

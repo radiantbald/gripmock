@@ -12,7 +12,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/rs/zerolog"
 
-	"github.com/bavix/gripmock/v3/internal/config"
+	"github.com/radiantbald/gripmock/v3/internal/config"
 )
 
 type StubWatcher struct {

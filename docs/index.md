@@ -6,14 +6,14 @@ hero:
   name: GripMock
   text: Fast. Just. Comfortable.
   tagline: gRPC-MockServer
-  image: https://github.com/bavix/gripmock/assets/5111255/d33740c1-2c53-4c06-a7a7-d3a9cb6e7c00
+  image: https://github.com/radiantbald/gripmock/assets/5111255/d33740c1-2c53-4c06-a7a7-d3a9cb6e7c00
   actions:
     - theme: brand
       text: Getting started
       link: /guide/introduction/
     - theme: alt
       text: Star on GitHub ⭐
-      link: https://github.com/bavix/gripmock
+      link: https://github.com/radiantbald/gripmock
 
 features:
   - title: "Runtime `.pb` Descriptor Loading ⚡"
@@ -25,7 +25,7 @@ features:
   - title: "Dynamic Templates 🎭"
     details: "Generate realistic responses from request payloads, headers, and stream context in real time."
   - title: "Smart Request Matching 🔍"
-    details: "Combine exact, partial, regex, and header matching with priority rules for deterministic stub selection."
+    details: "Combine exact, partial, regex, glob, and header matching with priority rules for deterministic stub selection."
   - title: "Full gRPC Streaming Support 🔄"
     details: "Test all gRPC interaction patterns: unary, server streaming, client streaming, and bidirectional streaming."
   - title: "Error & Delay Simulation ❌"
@@ -38,6 +38,10 @@ features:
     details: "Export traces via OTLP and scrape `/metrics` for runtime and GripMock metrics in observability stacks."
   - title: "Built-in Faker for Templates 🎲"
     details: "Generate realistic dynamic values in stubs using semantic groups like `faker.Person`, `faker.Geo`, and `faker.Identity`."
+  - title: "Stateful Effects + Verify ✅"
+    details: "Use post-match effects (`upsert`/`delete`) and verify APIs to build deterministic stateful test flows."
+  - title: "Rooms + History Isolation 🧩"
+    details: "Partition mock state by room and inspect per-room request history for parallel test sessions."
   - title: "Upstream Modes (Experimental) 🔁"
     details: "Use `proxy`, `replay`, and `capture` modes to move from live upstream traffic to local deterministic mocks in controlled stages."
   - title: "Docker Ready 🐳"

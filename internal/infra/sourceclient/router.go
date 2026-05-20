@@ -6,7 +6,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	"github.com/bavix/gripmock/v3/internal/domain/protoset"
+	"github.com/radiantbald/gripmock/v3/internal/domain/protoset"
 )
 
 type Router struct {

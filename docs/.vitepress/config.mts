@@ -24,7 +24,7 @@ export default defineConfig({
       'link', 
       {
         rel: 'icon',
-        href: 'https://github.com/bavix/gripmock/assets/5111255/b835b1a7-f572-438d-9ddb-eda7e0842db0',
+        href: 'https://github.com/radiantbald/gripmock/assets/5111255/b835b1a7-f572-438d-9ddb-eda7e0842db0',
         sizes: "any",
         type: "image/svg+xml",
       }
@@ -44,12 +44,12 @@ export default defineConfig({
       }
     },
     editLink: {
-      pattern: 'https://github.com/bavix/gripmock/edit/master/docs/:path'
+      pattern: 'https://github.com/radiantbald/gripmock/edit/master/docs/:path'
     },
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Guide', link: '/guide/introduction/' },
-      { text: 'Issues', link: 'https://github.com/bavix/gripmock/issues' },
+      { text: 'Issues', link: 'https://github.com/radiantbald/gripmock/issues' },
       { text: 'Donate', link: 'https://buymeacoffee.com/babichev' },
     ],
 
@@ -163,8 +163,8 @@ export default defineConfig({
             ],
             collapsed: false,
           },
-          { text: 'OpenAPI', link: 'https://bavix.github.io/gripmock-openapi/' },
-          { text: 'JSON Schema', link: 'https://bavix.github.io/gripmock/schema/stub.json' },
+          { text: 'OpenAPI', link: 'https://radiantbald.github.io/gripmock-openapi/' },
+          { text: 'JSON Schema', link: 'https://radiantbald.github.io/gripmock/schema/stub.json' },
         ],
         collapsed: false,
       },
@@ -196,6 +196,8 @@ export default defineConfig({
         items: [
           { text: 'Check', link: '/guide/utility/check' },
           { text: 'Dump', link: '/guide/utility/dump' },
+          { text: 'Info', link: '/guide/utility/info' },
+          { text: 'Proto Export', link: '/guide/utility/proto-export' },
           { text: 'gRPC Testify', link: 'https://gripmock.github.io/grpctestify-rust/' },
         ],
         collapsed: false,
@@ -203,11 +205,11 @@ export default defineConfig({
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/bavix/gripmock' },
+      { icon: 'github', link: 'https://github.com/radiantbald/gripmock' },
     ],
 
     footer: {
-      message: 'Released under the <a href="https://github.com/bavix/gripmock/blob/master/LICENSE">MIT License</a> by <a href="https://github.com/bavix">Bavix</a> contributors.',
+      message: 'Released under the <a href="https://github.com/radiantbald/gripmock/blob/master/LICENSE">MIT License</a> by <a href="https://github.com/radiantbald">Bavix</a> contributors.',
       copyright: 'Copyright © 2023-present <a href="https://github.com/rez1dent3">Babichev Maksim</a>',
     },
   }

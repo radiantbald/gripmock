@@ -1,3 +1,38 @@
+## Operational Runbook
+
+### Prerequisites
+
+- PostgreSQL is running and reachable.
+- `POSTGRES_DSN` is set.
+
+```bash
+export POSTGRES_DSN='postgres://user:pass@localhost:5432/gripmock?sslmode=disable'
+```
+
+### Primary Run
+
+```bash
+gripmock --stub ./examples/projects/echo ./examples/projects/echo
+```
+
+### Secondary Run (restart)
+
+```bash
+gripmock ./examples/projects/echo
+```
+
+### Verify
+
+```bash
+gripmock check --timeout 20s
+curl http://127.0.0.1:4771/api/health/readiness
+```
+
+### Troubleshooting
+
+- If startup fails, verify `POSTGRES_DSN` and DB connectivity.
+- If descriptors conflict after local refactors, reset local compose DB (`make reset-db`).
+- If tests race startup, wait with `gripmock check` before test execution.
 # 🔊 Echo Service 🔊  
 **A versioned echo service demonstrating API evolution built with protocol buffers and tested with GripMock**
 
@@ -67,7 +102,7 @@ grpctestify examples/projects/echo/
 This example shows you how to handle API evolution in the real world:  
 - **Version Compatibility**: Testing both v1 and v2 service versions - because breaking changes happen  
 - **Method Naming Conventions**: Case-sensitive method names (SendMessage vs sendMessage) - because naming matters in APIs  
-- **Package Evolution**: Full package namespacing (`com.bavix.echo.v1`) - for proper version isolation  
+- **Package Evolution**: Full package namespacing (`com.radiantbald.echo.v1`) - for proper version isolation  
 - **Backward Compatibility**: Maintaining functionality across versions - so old clients don't break  
 - **Fallback Behavior**: Generic responses for unmatched requests - graceful degradation is important  
 

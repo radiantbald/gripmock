@@ -21,15 +21,15 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	mcpusecase "github.com/bavix/gripmock/v3/internal/app/usecase/mcp"
-	"github.com/bavix/gripmock/v3/internal/domain/history"
-	"github.com/bavix/gripmock/v3/internal/domain/protoset"
-	"github.com/bavix/gripmock/v3/internal/domain/rest"
-	"github.com/bavix/gripmock/v3/internal/infra/muxmiddleware"
-	pgprotometadata "github.com/bavix/gripmock/v3/internal/infra/postgres/protometadata"
-	"github.com/bavix/gripmock/v3/internal/infra/proxyroutes"
-	"github.com/bavix/gripmock/v3/internal/infra/room"
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
+	mcpusecase "github.com/radiantbald/gripmock/v3/internal/app/usecase/mcp"
+	"github.com/radiantbald/gripmock/v3/internal/domain/history"
+	"github.com/radiantbald/gripmock/v3/internal/domain/protoset"
+	"github.com/radiantbald/gripmock/v3/internal/domain/rest"
+	"github.com/radiantbald/gripmock/v3/internal/infra/muxmiddleware"
+	pgprotometadata "github.com/radiantbald/gripmock/v3/internal/infra/postgres/protometadata"
+	"github.com/radiantbald/gripmock/v3/internal/infra/proxyroutes"
+	"github.com/radiantbald/gripmock/v3/internal/infra/room"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
 )
 
 // mockExtender is a mock implementation of Extender for testing.
@@ -1092,7 +1092,7 @@ func (s *RestServerTestSuite) TestUpdateStubEnabledByID_RoomScopedRoute() {
 	s.Equal(1, enabledCount, "only one stub must be enabled for room/service/method route")
 }
 
-func (s *RestServerTestSuite) TestUpdateStubEnabledByID_RejectsWrongRoom() {
+func (s *RestServerTestSuite) TestUpdateStubEnabledByID_AllowsDifferentRoomContext() {
 	payload := `[
 		{
 			"service": "svc",
@@ -1126,7 +1126,43 @@ func (s *RestServerTestSuite) TestUpdateStubEnabledByID_RejectsWrongRoom() {
 
 	rec := httptest.NewRecorder()
 	s.server.UpdateStubEnabledByID(rec, req)
-	s.Equal(http.StatusNotFound, rec.Code)
+	s.Equal(http.StatusOK, rec.Code)
+}
+
+func (s *RestServerTestSuite) TestUpdateStubEnabledByID_AllowsGlobalStubInRoom() {
+	payload := `[
+		{
+			"service": "svc",
+			"method": "M",
+			"enabled": false,
+			"input": {"equals": {"x": "1"}},
+			"output": {"data": {"ok": true}}
+		}
+	]`
+
+	w := s.addStubJSONWithRequest(s.server, payload, nil)
+	s.Equal(http.StatusOK, w.Code)
+
+	stubs := s.budgerigar.All()
+	s.Require().Len(stubs, 1)
+	s.Equal("", stubs[0].Room)
+
+	publicID := s.server.ensurePublicID(stubs[0].ID)
+	req := httptest.NewRequestWithContext(
+		s.T().Context(),
+		http.MethodPut,
+		"/api/stubs/"+strconv.FormatUint(uint64(publicID), 10),
+		bytes.NewBufferString(`{"enabled":true}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Gripmock-Room", "A")
+	req = mux.SetURLVars(req, map[string]string{
+		"uuid": strconv.FormatUint(uint64(publicID), 10),
+	})
+
+	rec := httptest.NewRecorder()
+	s.server.UpdateStubEnabledByID(rec, req)
+	s.Equal(http.StatusOK, rec.Code)
 }
 
 func (s *RestServerTestSuite) TestUpdateStubEnabledByID_EnableFromAllDisabled() {

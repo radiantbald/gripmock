@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
 
 # Issue #827: First 2 calls return error (simulating transient failure)
 # Priority 10: higher priority, matches first

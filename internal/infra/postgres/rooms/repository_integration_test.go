@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
-	pgmigrations "github.com/bavix/gripmock/v3/internal/infra/postgres/migrations"
+	pgmigrations "github.com/radiantbald/gripmock/v3/internal/infra/postgres/migrations"
 )
 
 func TestRepositoryDeleteByName(t *testing.T) {

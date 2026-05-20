@@ -7,8 +7,8 @@ import (
 	"github.com/samber/lo"
 	"google.golang.org/grpc/codes"
 
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
-	"github.com/bavix/gripmock/v3/internal/infra/types"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/infra/types"
 )
 
 type StubBuilder interface {

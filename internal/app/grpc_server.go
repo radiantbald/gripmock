@@ -46,17 +46,17 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/dynamicpb"
 
-	"github.com/bavix/gripmock/v3/internal/domain/descriptors"
-	"github.com/bavix/gripmock/v3/internal/domain/history"
-	protoloc "github.com/bavix/gripmock/v3/internal/domain/proto"
-	protosetdom "github.com/bavix/gripmock/v3/internal/domain/protoset"
-	"github.com/bavix/gripmock/v3/internal/infra/grpccontext"
-	protosetinfra "github.com/bavix/gripmock/v3/internal/infra/protoset"
-	"github.com/bavix/gripmock/v3/internal/infra/proxyroutes"
-	"github.com/bavix/gripmock/v3/internal/infra/room"
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
-	"github.com/bavix/gripmock/v3/internal/infra/template"
-	"github.com/bavix/gripmock/v3/internal/infra/types"
+	"github.com/radiantbald/gripmock/v3/internal/domain/descriptors"
+	"github.com/radiantbald/gripmock/v3/internal/domain/history"
+	protoloc "github.com/radiantbald/gripmock/v3/internal/domain/proto"
+	protosetdom "github.com/radiantbald/gripmock/v3/internal/domain/protoset"
+	"github.com/radiantbald/gripmock/v3/internal/infra/grpccontext"
+	protosetinfra "github.com/radiantbald/gripmock/v3/internal/infra/protoset"
+	"github.com/radiantbald/gripmock/v3/internal/infra/proxyroutes"
+	"github.com/radiantbald/gripmock/v3/internal/infra/room"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/infra/template"
+	"github.com/radiantbald/gripmock/v3/internal/infra/types"
 )
 
 // excludedHeaders contains headers that should be excluded from stub matching.

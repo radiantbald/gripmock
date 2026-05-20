@@ -1,5 +1,5 @@
 --- ENDPOINT ---
-com.bavix.echo.v3.EchoService/SendMessage
+com.radiantbald.echo.v3.EchoService/SendMessage
 
 --- REQUEST ---
 {

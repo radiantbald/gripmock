@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bavix/gripmock/v3/internal/domain/descriptors"
+	"github.com/radiantbald/gripmock/v3/internal/domain/descriptors"
 )
 
 func TestRegistryPathsSorted(t *testing.T) {

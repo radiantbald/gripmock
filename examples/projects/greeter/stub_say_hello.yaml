@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
 
 # Unary - Dynamic greeting using request data
 - service: helloworld.Greeter

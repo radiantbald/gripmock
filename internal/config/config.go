@@ -5,7 +5,7 @@ import (
 
 	env "github.com/caarlos0/env/v11"
 
-	infraTypes "github.com/bavix/gripmock/v3/internal/infra/types"
+	infraTypes "github.com/radiantbald/gripmock/v3/internal/infra/types"
 )
 
 // ByteSize is kept for backward compatibility; defined in internal/infra/types.

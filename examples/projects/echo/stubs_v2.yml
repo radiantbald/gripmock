@@ -1,5 +1,5 @@
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
-- service: com.bavix.echo.v2.EchoService
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
+- service: com.radiantbald.echo.v2.EchoService
   method: SendMessage
   input:
     equals:
@@ -8,7 +8,7 @@
     data:
       response: "Hello from echo server v2 (SendMessage)"
 
-- service: com.bavix.echo.v2.EchoService
+- service: com.radiantbald.echo.v2.EchoService
   method: sendMessage
   input:
     equals:

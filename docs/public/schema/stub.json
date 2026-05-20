@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://bavix.github.io/gripmock/schema/stub.json",
+  "$id": "https://radiantbald.github.io/gripmock/schema/stub.json",
   "title": "GripMock Stub Schema",
   "description": "Unified schema for GripMock stub definitions (supports both JSON and YAML formats)",
   "examples": [
@@ -138,7 +138,7 @@
           "format": "uuid"
         },
         "service": {
-          "description": "gRPC service name (e.g., 'Gripmock', 'com.bavix.echo.v1.EchoService')",
+          "description": "gRPC service name (e.g., 'Gripmock', 'com.radiantbald.echo.v1.EchoService')",
           "type": "string",
           "minLength": 1
         },
@@ -202,7 +202,7 @@
             "format": "uuid"
           },
           "service": {
-            "description": "gRPC service name (e.g., 'Gripmock', 'com.bavix.echo.v1.EchoService')",
+            "description": "gRPC service name (e.g., 'Gripmock', 'com.radiantbald.echo.v1.EchoService')",
             "type": "string",
             "minLength": 1
           },

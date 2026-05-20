@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bavix/gripmock/v3/internal/infra/deeply"
+	"github.com/radiantbald/gripmock/v3/internal/infra/deeply"
 )
 
 func TestContainsSimple(t *testing.T) {

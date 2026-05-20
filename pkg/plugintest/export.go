@@ -1,6 +1,6 @@
 package plugintest
 
-import "github.com/bavix/gripmock/v3/pkg/plugins"
+import "github.com/radiantbald/gripmock/v3/pkg/plugins"
 
 // Re-exports public plugin API for tests.
 type (

@@ -10,10 +10,10 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/bavix/gripmock/v3/internal/domain/history"
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
-	"github.com/bavix/gripmock/v3/internal/infra/template"
-	"github.com/bavix/gripmock/v3/pkg/plugintest"
+	"github.com/radiantbald/gripmock/v3/internal/domain/history"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/infra/template"
+	"github.com/radiantbald/gripmock/v3/pkg/plugintest"
 )
 
 const testRecorderShouldBeMemoryStore = "recorder should be *MemoryStore"

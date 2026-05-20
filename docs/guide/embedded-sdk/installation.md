@@ -11,7 +11,7 @@
 Add GripMock SDK to your Go project:
 
 ```bash
-go get github.com/bavix/gripmock/v3/pkg/sdk
+go get github.com/radiantbald/gripmock/v3/pkg/sdk
 ```
 
 ## Prerequisites
@@ -24,5 +24,5 @@ go get github.com/bavix/gripmock/v3/pkg/sdk
 Import the SDK in your Go code:
 
 ```go
-import sdk "github.com/bavix/gripmock/v3/pkg/sdk"
+import sdk "github.com/radiantbald/gripmock/v3/pkg/sdk"
 ```

@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bavix/features"
+	"github.com/radiantbald/features"
 )
 
 func TestQueryRequestInternal(t *testing.T) {

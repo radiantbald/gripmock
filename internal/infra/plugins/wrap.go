@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"reflect"
 
-	pkgplugins "github.com/bavix/gripmock/v3/pkg/plugins"
+	pkgplugins "github.com/radiantbald/gripmock/v3/pkg/plugins"
 )
 
 var contextType = reflect.TypeOf((*context.Context)(nil)).Elem() //nolint:gochecknoglobals,modernize

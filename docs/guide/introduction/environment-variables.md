@@ -16,6 +16,7 @@ GripMock reads configuration from environment variables on startup.
 | `GRPC_HOST` | `0.0.0.0` | gRPC bind host. |
 | `GRPC_PORT` | `4770` | gRPC bind port. |
 | `GRPC_ADDR` | `$GRPC_HOST:$GRPC_PORT` | Full gRPC bind address. |
+| `GRPC_STRICT_PERSISTED_DESCRIPTORS` | `false` | Fail startup when persisted descriptors cannot be decoded. |
 
 ## HTTP admin server
 
@@ -90,6 +91,8 @@ GripMock reads configuration from environment variables on startup.
 | `POSTGRES_MAX_OPEN_CONNS` | `10` | Max connections in pool. |
 | `POSTGRES_MAX_IDLE_CONNS` | `5` | Min idle connections kept in pool. |
 | `POSTGRES_CONN_MAX_LIFETIME` | `30m` | Max lifetime per connection. |
+
+`POSTGRES_DSN` is required for `gripmock` server startup in both primary and secondary runs.
 
 ## Buf Schema Registry (BSR)
 

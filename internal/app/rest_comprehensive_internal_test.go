@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/bavix/gripmock/v3/internal/domain/rest"
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/domain/rest"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
 )
 
 // mockExtender is imported from test_utils.go

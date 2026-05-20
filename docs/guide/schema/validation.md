@@ -26,10 +26,10 @@ Validate against the schema:
 
 ```bash
 # Validate JSON file
-jsonschema -i your-stubs.json https://bavix.github.io/gripmock/schema/stub.json
+jsonschema -i your-stubs.json https://radiantbald.github.io/gripmock/schema/stub.json
 
 # Validate YAML file (convert to JSON first)
-python -c "import yaml, json; print(json.dumps(yaml.safe_load(open('your-stubs.yaml'))))" | jsonschema -i - https://bavix.github.io/gripmock/schema/stub.json
+python -c "import yaml, json; print(json.dumps(yaml.safe_load(open('your-stubs.yaml'))))" | jsonschema -i - https://radiantbald.github.io/gripmock/schema/stub.json
 ```
 
 ## IDE Validation
@@ -40,7 +40,7 @@ python -c "import yaml, json; print(json.dumps(yaml.safe_load(open('your-stubs.y
 2. Add schema reference to your files:
 
 ```yaml
-# yaml-language-server: $schema=https://bavix.github.io/gripmock/schema/stub.json
+# yaml-language-server: $schema=https://radiantbald.github.io/gripmock/schema/stub.json
 ```
 
 3. Get real-time validation and auto-completion
@@ -75,14 +75,14 @@ jobs:
         run: |
           for file in $(find . -name "*.json" -path "*/stubs/*"); do
             echo "Validating $file"
-            jsonschema -i "$file" https://bavix.github.io/gripmock/schema/stub.json
+            jsonschema -i "$file" https://radiantbald.github.io/gripmock/schema/stub.json
           done
           
       - name: Validate YAML stubs
         run: |
           for file in $(find . -name "*.yaml" -path "*/stubs/*" -o -name "*.yml" -path "*/stubs/*"); do
             echo "Validating $file"
-            python -c "import yaml, json; json.dumps(yaml.safe_load(open('$file')))" | jsonschema -i - https://bavix.github.io/gripmock/schema/stub.json
+            python -c "import yaml, json; json.dumps(yaml.safe_load(open('$file')))" | jsonschema -i - https://radiantbald.github.io/gripmock/schema/stub.json
           done
 ```
 
@@ -96,12 +96,12 @@ validate_stubs:
     - |
       for file in $(find . -name "*.json" -path "*/stubs/*"); do
         echo "Validating $file"
-        jsonschema -i "$file" https://bavix.github.io/gripmock/schema/stub.json
+        jsonschema -i "$file" https://radiantbald.github.io/gripmock/schema/stub.json
       done
     - |
       for file in $(find . -name "*.yaml" -path "*/stubs/*" -o -name "*.yml" -path "*/stubs/*"); do
         echo "Validating $file"
-        python -c "import yaml, json; json.dumps(yaml.safe_load(open('$file')))" | jsonschema -i - https://bavix.github.io/gripmock/schema/stub.json
+        python -c "import yaml, json; json.dumps(yaml.safe_load(open('$file')))" | jsonschema -i - https://radiantbald.github.io/gripmock/schema/stub.json
       done
 ```
 

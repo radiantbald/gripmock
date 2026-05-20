@@ -1,6 +1,6 @@
 package sdk
 
-import "github.com/bavix/gripmock/v3/internal/domain/history"
+import "github.com/radiantbald/gripmock/v3/internal/domain/history"
 
 // InMemoryRecorder is an alias for history.MemoryStore for backwards compatibility.
 // Use it for Recording and as HistoryReader.

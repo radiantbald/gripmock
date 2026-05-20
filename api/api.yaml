@@ -9,10 +9,10 @@ info:
   description: Documentation and API specification GripMock.
   contact:
     name: Maksim Babichev
-    url: https://github.com/bavix/gripmock-openapi
+    url: https://github.com/radiantbald/gripmock-openapi
   license:
     name: MIT
-    url: https://github.com/bavix/gripmock-openapi/blob/master/LICENSE
+    url: https://github.com/radiantbald/gripmock-openapi/blob/master/LICENSE
 tags:
   - name: healthcheck
     description: Healthcheck
@@ -1572,7 +1572,7 @@ components:
           x-go-type: gptypes.Duration
           x-go-type-import:
             name: gptypes
-            path: github.com/bavix/gripmock/v3/internal/infra/types
+            path: github.com/radiantbald/gripmock/v3/internal/infra/types
           description: Delay before sending the response
           example: "1s"
           x-omitzero: true

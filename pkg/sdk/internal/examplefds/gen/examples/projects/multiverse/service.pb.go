@@ -543,7 +543,7 @@ const file_examples_projects_multiverse_service_proto_rawDesc = "" +
 	"UploadData\x12\x18.multiverse.v1.DataChunk\x1a\x1b.multiverse.v1.UploadResult(\x01\x12F\n" +
 	"\n" +
 	"StreamData\x12\x1c.multiverse.v1.StreamRequest\x1a\x18.multiverse.v1.DataChunk0\x01\x12B\n" +
-	"\x04Chat\x12\x1a.multiverse.v1.ChatMessage\x1a\x1a.multiverse.v1.ChatMessage(\x010\x01B8Z6github.com/bavix/gripmock/examples/projects/multiverseb\x06proto3"
+	"\x04Chat\x12\x1a.multiverse.v1.ChatMessage\x1a\x1a.multiverse.v1.ChatMessage(\x010\x01B>Z<github.com/radiantbald/gripmock/examples/projects/multiverseb\x06proto3"
 
 var (
 	file_examples_projects_multiverse_service_proto_rawDescOnce sync.Once

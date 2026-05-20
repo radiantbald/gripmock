@@ -10,8 +10,8 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	protosetdom "github.com/bavix/gripmock/v3/internal/domain/protoset"
-	pgmigrations "github.com/bavix/gripmock/v3/internal/infra/postgres/migrations"
+	protosetdom "github.com/radiantbald/gripmock/v3/internal/domain/protoset"
+	pgmigrations "github.com/radiantbald/gripmock/v3/internal/infra/postgres/migrations"
 )
 
 func TestRepositoryReplaceDescriptorSets(t *testing.T) {

@@ -1,6 +1,6 @@
 # GitHub Actions (CI/CD)
 
-GripMock has an official GitHub Action: [`bavix/gripmock-action`](https://github.com/bavix/gripmock-action).
+GripMock has an official GitHub Action: [`radiantbald/gripmock-action`](https://github.com/radiantbald/gripmock-action).
 
 It is designed for CI/CD workflows and handles the full lifecycle for you:
 
@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Start GripMock
-        uses: bavix/gripmock-action@v1
+        uses: radiantbald/gripmock-action@v1
         with:
           source: proto/service.proto
           stub: stubs
@@ -39,7 +39,7 @@ jobs:
 
 ```yaml
 - name: Start GripMock (pinned)
-  uses: bavix/gripmock-action@v1
+  uses: radiantbald/gripmock-action@v1
   with:
     version: v3.9.0
     source: proto/service.proto
@@ -50,7 +50,7 @@ jobs:
 
 ```yaml
 - name: Start GripMock from BSR
-  uses: bavix/gripmock-action@v1
+  uses: radiantbald/gripmock-action@v1
   with:
     source: buf.build/connectrpc/eliza
     stub: stubs
@@ -62,7 +62,7 @@ jobs:
 
 ```yaml
 - name: Start replay mode
-  uses: bavix/gripmock-action@v1
+  uses: radiantbald/gripmock-action@v1
   with:
     source: grpc+replay://localhost:50051
     wait-timeout: 60s
@@ -82,7 +82,7 @@ Example:
 ```yaml
 - name: Start GripMock
   id: gripmock
-  uses: bavix/gripmock-action@v1
+  uses: radiantbald/gripmock-action@v1
   with:
     source: proto/service.proto
     stub: stubs
@@ -102,4 +102,4 @@ Example:
 
 Full action API (inputs/outputs):
 
-- [`bavix/gripmock-action` README](https://github.com/bavix/gripmock-action)
+- [`radiantbald/gripmock-action` README](https://github.com/radiantbald/gripmock-action)

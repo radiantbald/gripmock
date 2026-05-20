@@ -36,26 +36,26 @@ import (
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	mcpusecase "github.com/bavix/gripmock/v3/internal/app/usecase/mcp"
-	"github.com/bavix/gripmock/v3/internal/domain/descriptors"
-	"github.com/bavix/gripmock/v3/internal/domain/history"
-	protosetdom "github.com/bavix/gripmock/v3/internal/domain/protoset"
-	"github.com/bavix/gripmock/v3/internal/domain/rest"
-	"github.com/bavix/gripmock/v3/internal/infra/build"
-	"github.com/bavix/gripmock/v3/internal/infra/httputil"
-	"github.com/bavix/gripmock/v3/internal/infra/jsondecoder"
-	"github.com/bavix/gripmock/v3/internal/infra/muxmiddleware"
-	pgallowlist "github.com/bavix/gripmock/v3/internal/infra/postgres/allowlist"
-	pgclients "github.com/bavix/gripmock/v3/internal/infra/postgres/clients"
-	pgprotometadata "github.com/bavix/gripmock/v3/internal/infra/postgres/protometadata"
-	pgreflectionhosts "github.com/bavix/gripmock/v3/internal/infra/postgres/reflectionhosts"
-	pgrooms "github.com/bavix/gripmock/v3/internal/infra/postgres/rooms"
-	pgusers "github.com/bavix/gripmock/v3/internal/infra/postgres/users"
-	protosetinfra "github.com/bavix/gripmock/v3/internal/infra/protoset"
-	"github.com/bavix/gripmock/v3/internal/infra/proxyroutes"
-	roominfra "github.com/bavix/gripmock/v3/internal/infra/room"
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
-	"github.com/bavix/gripmock/v3/internal/pbs"
+	mcpusecase "github.com/radiantbald/gripmock/v3/internal/app/usecase/mcp"
+	"github.com/radiantbald/gripmock/v3/internal/domain/descriptors"
+	"github.com/radiantbald/gripmock/v3/internal/domain/history"
+	protosetdom "github.com/radiantbald/gripmock/v3/internal/domain/protoset"
+	"github.com/radiantbald/gripmock/v3/internal/domain/rest"
+	"github.com/radiantbald/gripmock/v3/internal/infra/build"
+	"github.com/radiantbald/gripmock/v3/internal/infra/httputil"
+	"github.com/radiantbald/gripmock/v3/internal/infra/jsondecoder"
+	"github.com/radiantbald/gripmock/v3/internal/infra/muxmiddleware"
+	pgallowlist "github.com/radiantbald/gripmock/v3/internal/infra/postgres/allowlist"
+	pgclients "github.com/radiantbald/gripmock/v3/internal/infra/postgres/clients"
+	pgprotometadata "github.com/radiantbald/gripmock/v3/internal/infra/postgres/protometadata"
+	pgreflectionhosts "github.com/radiantbald/gripmock/v3/internal/infra/postgres/reflectionhosts"
+	pgrooms "github.com/radiantbald/gripmock/v3/internal/infra/postgres/rooms"
+	pgusers "github.com/radiantbald/gripmock/v3/internal/infra/postgres/users"
+	protosetinfra "github.com/radiantbald/gripmock/v3/internal/infra/protoset"
+	"github.com/radiantbald/gripmock/v3/internal/infra/proxyroutes"
+	roominfra "github.com/radiantbald/gripmock/v3/internal/infra/room"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
+	"github.com/radiantbald/gripmock/v3/internal/pbs"
 )
 
 // Extender defines the interface for extending stub functionality.
@@ -229,7 +229,7 @@ func (h *RestServer) ProtoMetadataStatus(w http.ResponseWriter, r *http.Request)
 const (
 	servicesListCap                = 16
 	serviceMethodsCap              = 32
-	stubSchemaURL                  = "https://bavix.github.io/gripmock/schema/stub.json"
+	stubSchemaURL                  = "https://radiantbald.github.io/gripmock/schema/stub.json"
 	historyStreamTick              = 15 * time.Second
 	descriptorUploadFilenameHeader = "X-Gripmock-Descriptor-Filename"
 	descriptorSourceREST           = "rest"
@@ -919,8 +919,12 @@ func normalizeReflectionHostRequest(host string, source string) (string, string,
 func clientRoutingKey(peerID string, userAgent string) string {
 	peerID = strings.TrimSpace(peerID)
 	userAgent = strings.TrimSpace(userAgent)
-	if peerID == "" && userAgent == "" {
+	if peerID == "" {
 		return ""
+	}
+
+	if userAgent == "" {
+		return peerID
 	}
 
 	return peerID + "|" + userAgent
@@ -1860,7 +1864,8 @@ func mcpStubsBatchDelete(h *RestServer, args map[string]any) (map[string]any, er
 	for _, idString := range idStrings {
 		id, parseErr := strconv.ParseUint(strings.TrimSpace(idString), 10, 64)
 		if parseErr != nil {
-			return nil, mcpUUIDArgError("ids", idString, parseErr)
+			notFoundIDs = append(notFoundIDs, idString)
+			continue
 		}
 
 		ids = append(ids, id)
@@ -2765,6 +2770,7 @@ func (h *RestServer) AddStub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	legacyPath := !strings.HasPrefix(r.URL.Path, "/api/")
 	inputs := make([]*stuber.Stub, 0, len(payload))
 	for _, item := range payload {
 		stub, convertErr := h.toDomainStub(item)
@@ -2776,6 +2782,20 @@ func (h *RestServer) AddStub(w http.ResponseWriter, r *http.Request) {
 
 		stub.Room = ""
 		stub.Source = stuber.SourceRest
+
+		// Legacy /stubs endpoint expects explicit input matcher payloads.
+		if legacyPath && len(stub.Inputs) == 0 && !hasValidInputData(stub.Input) {
+			h.validationError(r.Context(), w, ErrInputCannotBeEmpty)
+			return
+		}
+
+		if inputID := item.Id; inputID != nil {
+			_, ok := h.resolvePrivateID(*inputID)
+			if !ok {
+				h.validationError(r.Context(), w, fmt.Errorf("stub with id %d not found", *inputID))
+				return
+			}
+		}
 
 		if err := h.validateStub(stub); err != nil {
 			h.validationError(r.Context(), w, err)
@@ -3290,7 +3310,7 @@ func (h *RestServer) PatchStubByID(w http.ResponseWriter, r *http.Request) {
 	updated.ID = target.ID
 	updated.Room = ""
 	if patchHasEnabled {
-		updated.Enabled = target.Enabled
+		updated.SetEnabled(enabledUpdate)
 	}
 
 	if err := h.validateStub(&updated); err != nil {
@@ -3668,10 +3688,7 @@ func (h *RestServer) toDomainStub(input rest.Stub) (*stuber.Stub, error) {
 		}
 
 		out.ID = privateID
-
 	}
-	out.Room = ""
-
 	return &out, nil
 }
 
@@ -3747,11 +3764,30 @@ func (h *RestServer) ensurePublicID(privateID uint64) rest.ID {
 
 func (h *RestServer) resolvePrivateID(publicID rest.ID) (uint64, bool) {
 	h.idMapMu.RLock()
-	defer h.idMapMu.RUnlock()
-
 	privateID, ok := h.publicIDs[publicID]
+	h.idMapMu.RUnlock()
 
-	return privateID, ok
+	if ok {
+		if h.budgerigar.FindByID(privateID) != nil {
+			return privateID, true
+		}
+
+		// Drop stale mapping and continue with direct-id fallback.
+		h.idMapMu.Lock()
+		delete(h.publicIDs, publicID)
+		delete(h.privateIDs, privateID)
+		h.idMapMu.Unlock()
+	}
+
+	// Fallback: public ID is equal to storage ID in current architecture.
+	directID := uint64(publicID)
+	if h.budgerigar.FindByID(directID) == nil {
+		return 0, false
+	}
+
+	h.ensurePublicID(directID)
+
+	return directID, true
 }
 
 func (h *RestServer) publicIDPtr(privateID uint64) *rest.ID {

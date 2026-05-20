@@ -7,7 +7,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 
-	"github.com/bavix/gripmock/v3/internal/deps"
+	"github.com/radiantbald/gripmock/v3/internal/deps"
 )
 
 var (

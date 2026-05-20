@@ -15,7 +15,7 @@ src/proto
 ```yaml
 services:
   gripmock:
-    image: bavix/gripmock
+    image: radiantbald/gripmock
     volumes:
       - ./src/proto:/proto:ro
       - ./mocks/user:/stubs:ro
@@ -70,7 +70,7 @@ protoc \
 ```yaml
 services:
   gripmock:
-    image: bavix/gripmock
+    image: radiantbald/gripmock
     volumes:
       - ./service.pb:/proto/service.pb:ro
       - ./mocks/user:/stubs:ro
@@ -109,7 +109,7 @@ services:
    docker run \
      -v $(pwd)/api.pb:/proto/api.pb \
      -v $(pwd)/stubs:/stubs \
-     bavix/gripmock \
+     radiantbald/gripmock \
      --stub=/stubs \
      /proto/api.pb
    ```
@@ -129,7 +129,7 @@ services:
    docker run \
      -v $(pwd)/api.pb:/proto/api.pb \
      -v $(pwd)/stubs:/stubs \
-     bavix/gripmock \
+     radiantbald/gripmock \
      --stub=/stubs \
      /proto/api.pb
    ```

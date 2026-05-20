@@ -114,6 +114,15 @@ func (f *fakeRankStrategy) FieldCount(stub *Stub) int {
 	return f.fieldCount[stub.ID]
 }
 
+func (f *fakeRankStrategy) InsertionOrder(stub *Stub) uint64 {
+	f.called = true
+	if stub == nil {
+		return 0
+	}
+
+	return stub.ID
+}
+
 func TestSearcherLookupFactoryMethodFallback(t *testing.T) {
 	t.Parallel()
 

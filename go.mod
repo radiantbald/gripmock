@@ -1,10 +1,10 @@
-module github.com/bavix/gripmock/v3
+module github.com/radiantbald/gripmock/v3
 
 go 1.26
 
 require (
-	github.com/bavix/features v1.0.4
-	github.com/bavix/gripmock-ui v1.2.0
+	github.com/radiantbald/features v1.0.4
+	github.com/radiantbald/gripmock-ui v1.2.0
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/brianvoe/gofakeit/v7 v7.14.1
 	github.com/bufbuild/protocompile v0.14.2-0.20260414195949-1188a46c0129
@@ -42,7 +42,9 @@ require (
 	google.golang.org/protobuf v1.36.11
 )
 
-replace github.com/bavix/gripmock-ui => ./third_party/gripmock-ui
+replace github.com/radiantbald/gripmock-ui => ./third_party/gripmock-ui
+
+replace github.com/radiantbald/features => ./third_party/features
 
 require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect

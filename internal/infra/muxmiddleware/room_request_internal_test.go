@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bavix/gripmock/v3/internal/infra/muxmiddleware"
-	"github.com/bavix/gripmock/v3/internal/infra/room"
+	"github.com/radiantbald/gripmock/v3/internal/infra/muxmiddleware"
+	"github.com/radiantbald/gripmock/v3/internal/infra/room"
 )
 
 func TestConsumeRequestMovesHeaderToContext(t *testing.T) {

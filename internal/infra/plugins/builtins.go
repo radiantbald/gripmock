@@ -13,9 +13,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/bavix/gripmock/v3/internal/infra/build"
-	infrafaker "github.com/bavix/gripmock/v3/internal/infra/faker"
-	pkgplugins "github.com/bavix/gripmock/v3/pkg/plugins"
+	"github.com/radiantbald/gripmock/v3/internal/infra/build"
+	infrafaker "github.com/radiantbald/gripmock/v3/internal/infra/faker"
+	pkgplugins "github.com/radiantbald/gripmock/v3/pkg/plugins"
 )
 
 const (

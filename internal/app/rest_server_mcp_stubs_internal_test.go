@@ -189,5 +189,5 @@ func (s *RestServerTestSuite) TestMCPSchemaStub() {
 	// Assert
 	schemaURL, ok := structured["schemaUrl"].(string)
 	s.Require().True(ok)
-	s.Require().Equal("https://bavix.github.io/gripmock/schema/stub.json", schemaURL)
+	s.Require().Equal("https://radiantbald.github.io/gripmock/schema/stub.json", schemaURL)
 }

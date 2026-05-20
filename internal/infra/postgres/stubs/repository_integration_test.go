@@ -7,8 +7,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
-	pgmigrations "github.com/bavix/gripmock/v3/internal/infra/postgres/migrations"
-	"github.com/bavix/gripmock/v3/internal/infra/stuber"
+	pgmigrations "github.com/radiantbald/gripmock/v3/internal/infra/postgres/migrations"
+	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
 )
 
 func TestRepositoryRoundTripAndHydrate(t *testing.T) {
