@@ -39,6 +39,18 @@ GripMock creates a mock server from your `.proto` files or compiled `.pb` descri
 - **MCP API (Experimental)** - Streamable MCP endpoint for agent and tool integrations
 - **Upstream Modes (Experimental)** - `proxy`, `replay`, `capture` modes for gradual migration from live upstream services to local mocks
 
+## 🧩 Core Functionality
+
+GripMock core functionality focuses on practical gRPC testing workflows:
+
+- **Mock gRPC APIs from protobuf descriptors** (`.proto`, `.pb`, BSR, reflection)
+- **Manage stubs at runtime** (create, update, delete without server restarts)
+- **Match requests flexibly** (`equals`, `contains`, `matches`, `glob`, headers, priority, limits)
+- **Support all gRPC call types** (unary, server streaming, client streaming, bidirectional streaming)
+- **Simulate real behavior** (errors, delays, status details, stateful effects)
+- **Inspect and verify calls** (rooms, request history, invocation assertions)
+- **Run in local and CI environments** (HTTP API, web UI, TLS/mTLS, metrics, health checks)
+
 ## 📚 Documentation
 
 **[Full Documentation](https://radiantbald.github.io/gripmock)** - Complete guide with examples
