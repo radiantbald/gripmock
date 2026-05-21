@@ -26,6 +26,12 @@ services:
     environment:
       POSTGRES_DSN: postgres://${POSTGRES_USER:-gripmock}:${POSTGRES_PASSWORD:-gripmock}@postgres:5432/${POSTGRES_DB:-gripmock}?sslmode=disable
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      GRPC_TLS_CERT_FILE: ${GRPC_TLS_CERT_FILE:-}
+      GRPC_TLS_KEY_FILE: ${GRPC_TLS_KEY_FILE:-}
+      GRPC_TLS_CLIENT_AUTH: ${GRPC_TLS_CLIENT_AUTH:-false}
+      GRPC_TLS_CA_FILE: ${GRPC_TLS_CA_FILE:-}
+    volumes:
+      - ./certs/gripmock-local:/certs/gripmock-local:ro
     ports:
       - "${GRIPMOCK_GRPC_PORT:-4770}:4770"
       - "${GRIPMOCK_HTTP_PORT:-4771}:4771"

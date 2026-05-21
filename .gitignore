@@ -15,3 +15,7 @@ plugins/*.so
 
 DEV-3.5.md
 test/bench/
+
+# Local TLS artifacts (do not commit private keys/certs)
+certs/gripmock-local/*
+!certs/gripmock-local/README.md
