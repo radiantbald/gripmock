@@ -20,7 +20,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/klauspost/compress v1.18.6
 	github.com/modelcontextprotocol/go-sdk v1.6.0
-	github.com/oapi-codegen/runtime v1.4.0
+	github.com/oapi-codegen/runtime v1.4.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/radiantbald/features v1.0.4
 	github.com/radiantbald/gripmock-ui v1.2.0
