@@ -4,7 +4,7 @@ LABEL org.opencontainers.image.title="GripMock Builder"
 LABEL org.opencontainers.image.description="Builder image for GripMock runtime and Go plugins"
 LABEL org.opencontainers.image.source="https://github.com/radiantbald/gripmock"
 LABEL org.opencontainers.image.documentation="https://radiantbald.github.io/gripmock/"
-LABEL org.opencontainers.image.authors="Babichev Maxim <info@babichev.net>"
+LABEL org.opencontainers.image.authors="Oleg Popov <radiantbald@gmail.com>"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.vendor="radiantbald"
 
