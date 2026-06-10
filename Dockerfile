@@ -18,7 +18,7 @@ RUN --mount=type=cache,id=gripmock-go-mod,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=gripmock-go-build,target=/root/.cache/go-build,sharing=locked \
     go build -mod=readonly -o /usr/local/bin/gripmock -ldflags "-X 'github.com/radiantbald/gripmock/v3/internal/infra/build.Version=${version:-dev}' -X 'github.com/radiantbald/gripmock/v3/internal/infra/build.Commit=${commit:-unknown}' -X 'github.com/radiantbald/gripmock/v3/internal/infra/build.Date=${date:-}' -s -w" .
 
-FROM alpine:3.23
+FROM alpine:3.24
 
 LABEL org.opencontainers.image.title="GripMock" 
 LABEL org.opencontainers.image.description="Mock server for gRPC services with dynamic stubbing capabilities"
