@@ -33,7 +33,7 @@ func UnaryTimeoutInterceptor(timeout time.Duration) grpc.UnaryClientInterceptor 
 	}
 }
 
-// StreamTimeoutInterceptor sets timeout for stream initialization when timeout > 0.
+// StreamTimeoutInterceptor sets timeout for non-server-streaming calls when timeout > 0.
 // Existing deadlines are preserved.
 func StreamTimeoutInterceptor(timeout time.Duration) grpc.StreamClientInterceptor {
 	return func(
@@ -45,6 +45,10 @@ func StreamTimeoutInterceptor(timeout time.Duration) grpc.StreamClientIntercepto
 		opts ...grpc.CallOption,
 	) (grpc.ClientStream, error) {
 		if timeout <= 0 {
+			return streamer(ctx, desc, cc, method, opts...)
+		}
+
+		if desc != nil && desc.ServerStreams {
 			return streamer(ctx, desc, cc, method, opts...)
 		}
 

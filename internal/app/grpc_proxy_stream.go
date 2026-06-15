@@ -34,10 +34,10 @@ func (m *grpcMocker) proxyServerStreamWithRequest(
 	capture bool,
 ) error {
 	startTime := time.Now()
-	proxyCtx, cancel := route.WithTimeout(proxyroutes.ForwardIncomingMetadata(stream.Context()))
+	desc := &grpc.StreamDesc{ServerStreams: true, ClientStreams: false}
+	proxyCtx, cancel := route.WithStreamTimeout(proxyroutes.ForwardIncomingMetadata(stream.Context()), desc)
 	defer cancel()
 
-	desc := &grpc.StreamDesc{ServerStreams: true, ClientStreams: false}
 	clientStream, err := route.Conn.NewStream(proxyCtx, desc, m.fullMethod)
 	if err != nil {
 		return err
@@ -149,10 +149,9 @@ func (m *grpcMocker) proxyClientStreamWithRequests(
 ) error {
 	startTime := time.Now()
 
-	proxyCtx, cancel := route.WithTimeout(proxyroutes.ForwardIncomingMetadata(stream.Context()))
-	defer cancel()
-
 	desc := &grpc.StreamDesc{ServerStreams: false, ClientStreams: true}
+	proxyCtx, cancel := route.WithStreamTimeout(proxyroutes.ForwardIncomingMetadata(stream.Context()), desc)
+	defer cancel()
 
 	clientStream, err := route.Conn.NewStream(proxyCtx, desc, m.fullMethod)
 	if err != nil {
@@ -249,10 +248,9 @@ func (m *grpcMocker) proxyBidiStreamWithRequests(
 ) error {
 	startTime := time.Now()
 
-	proxyCtx, cancel := route.WithTimeout(proxyroutes.ForwardIncomingMetadata(stream.Context()))
-	defer cancel()
-
 	desc := &grpc.StreamDesc{ServerStreams: true, ClientStreams: true}
+	proxyCtx, cancel := route.WithStreamTimeout(proxyroutes.ForwardIncomingMetadata(stream.Context()), desc)
+	defer cancel()
 
 	clientStream, err := route.Conn.NewStream(proxyCtx, desc, m.fullMethod)
 	if err != nil {
