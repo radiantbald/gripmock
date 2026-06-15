@@ -2031,8 +2031,11 @@ export const SnifferPage = () => {
         );
         const nextId = String(record.callId || record.id || "").trim();
         if (nextId) {
-          // Keep details panel synchronized with the most recent stream item.
-          setSelectedId(nextId);
+          // Preserve user selection; auto-focus only when nothing is selected.
+          setSelectedId((current) => {
+            const normalizedCurrent = String(current || "").trim();
+            return normalizedCurrent || nextId;
+          });
         }
       },
       onError: () => {
