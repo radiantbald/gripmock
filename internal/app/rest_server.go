@@ -2667,6 +2667,10 @@ func (h *RestServer) historyCallRecordToRest(c history.CallRecord) rest.CallReco
 		transport := c.Transport
 		r.Transport = &transport
 	}
+	if c.Source != "" {
+		source := c.Source
+		r.Source = &source
+	}
 	if c.Client != "" {
 		client := c.Client
 		r.Client = &client

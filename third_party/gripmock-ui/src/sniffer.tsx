@@ -989,6 +989,13 @@ const servedByChipColor = (servedBy: ServedBy) => {
 
   return "success";
 };
+const sourceChipColor = (source: SnifferSource) => {
+  if (source === "reflection") {
+    return "info";
+  }
+
+  return "default";
+};
 const normalizeReflectionSource = (value: string): string => {
   const normalized = value.trim();
   if (!normalized) {
@@ -2083,6 +2090,17 @@ export const SnifferPage = () => {
     (selectedRouteKey
       ? reflectionServedByRoutes[selectedRouteKey]
       : undefined) || defaultReflectionServedBy;
+  const isServedByToggleEnabled = selectedHistorySource === "reflection";
+  const shouldShowNextServedByInChip =
+    isServedByToggleEnabled && selectedReflectionServedBy !== selectedServedBy;
+  const servedByChipLabel = shouldShowNextServedByInChip
+    ? `Served by: ${servedByLabels[selectedServedBy]} / Next: ${
+        servedByLabels[selectedReflectionServedBy]
+      }`
+    : `Served by: ${servedByLabels[selectedServedBy]}`;
+  const servedByChipDisplayColor = shouldShowNextServedByInChip
+    ? "warning"
+    : servedByChipColor(selectedServedBy);
   const hasSelectedSourceChanged =
     selectedRouteKey.length > 0 &&
     selectedNextResponseSource !== selectedHistorySource;
@@ -3159,6 +3177,26 @@ export const SnifferPage = () => {
       persistReflectionServedByRoute(selectedRouteKey, previousServedBy);
       throw error;
     }
+  };
+  const handleServedByChipClick = () => {
+    if (!isServedByToggleEnabled) {
+      return;
+    }
+    if (!selectedRouteKey) {
+      notify("Select a call with service and method first.", {
+        type: "warning",
+      });
+      return;
+    }
+
+    const nextServedBy: ReflectionServedBy =
+      selectedReflectionServedBy === "proxy" ? "stub" : "proxy";
+
+    void handleReflectionServedByChange(nextServedBy).catch((error) => {
+      notify((error as Error).message || "Failed to change Served by mode", {
+        type: "warning",
+      });
+    });
   };
 
   const runReflectionWithMode = async (persistHost: boolean) => {
@@ -5006,9 +5044,24 @@ export const SnifferPage = () => {
                 />
                 <Chip
                   size="small"
-                  color={servedByChipColor(selectedServedBy)}
+                  color={sourceChipColor(selectedHistorySource)}
                   variant="outlined"
-                  label={`Served: ${servedByLabels[selectedServedBy]}`}
+                  label={`Source: ${snifferSourceLabels[selectedHistorySource]}`}
+                />
+                <Chip
+                  size="small"
+                  color={servedByChipDisplayColor}
+                  variant="outlined"
+                  label={servedByChipLabel}
+                  clickable={isServedByToggleEnabled}
+                  onClick={
+                    isServedByToggleEnabled ? handleServedByChipClick : undefined
+                  }
+                  sx={
+                    isServedByToggleEnabled
+                      ? { cursor: "pointer" }
+                      : undefined
+                  }
                 />
                 {isResponseViewMode && isSingleResponseView ? (
                   <Typography

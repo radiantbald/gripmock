@@ -280,6 +280,7 @@ func (m *grpcMocker) recordCall(
 	rec := history.CallRecord{
 		Service:            m.fullServiceName,
 		Method:             m.methodName,
+		Source:             m.historySource(),
 		Room:               roomFromContext(ctx),
 		Client:             clientFromContext(ctx),
 		Requests:           requests,
@@ -1827,6 +1828,7 @@ func (m *grpcMocker) recordBidiStream(
 	rec := history.CallRecord{
 		Service:            m.fullServiceName,
 		Method:             m.methodName,
+		Source:             m.historySource(),
 		Room:               roomFromContext(stream.Context()),
 		Client:             clientFromContext(stream.Context()),
 		Requests:           requests,
@@ -2338,6 +2340,7 @@ func (s *GRPCServer) recordUnknownCall(ctx context.Context, serviceName string, 
 	s.recorder.Record(history.CallRecord{
 		CallID:    uuid.NewString(),
 		Transport: "mock",
+		Source:    "proto",
 		Service:   serviceName,
 		Method:    methodName,
 		Room:      roomFromContext(ctx),

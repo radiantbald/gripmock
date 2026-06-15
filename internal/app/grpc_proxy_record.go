@@ -69,6 +69,7 @@ func (m *grpcMocker) recordProxyCall(
 	record := history.CallRecord{
 		CallID:             uuid.NewString(),
 		Transport:          "proxy",
+		Source:             "reflection",
 		Service:            m.fullServiceName,
 		Method:             m.methodName,
 		Room:               m.roomFromContext(ctx),

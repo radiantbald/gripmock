@@ -49,6 +49,14 @@ func (m *grpcMocker) hasCaptureRequestHeaders(ctx context.Context) bool {
 	return len(requestHeadersFromMetadata(md)) > 0
 }
 
+func (m *grpcMocker) historySource() string {
+	if m.proxies != nil && m.proxies.RouteByMethod(m.fullMethod) != nil {
+		return "reflection"
+	}
+
+	return "proto"
+}
+
 func responseHeadersFromClientStream(clientStream grpc.ClientStream) map[string]string {
 	if clientStream == nil {
 		return nil
