@@ -43,6 +43,7 @@ import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import KeyboardArrowUpRoundedIcon from "@mui/icons-material/KeyboardArrowUpRounded";
 import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import ContentCopyOutlinedIcon from "@mui/icons-material/ContentCopyOutlined";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
@@ -241,10 +242,27 @@ const jsonTextSx = {
   fontFamily:
     "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
   fontSize: 13,
-  lineHeight: 1.28,
+  lineHeight: "14px",
   color: "text.primary",
   tabSize: 2,
   cursor: "text",
+  userSelect: "text",
+  "&::selection": {
+    backgroundColor: alpha("#5DA8FF", 0.46),
+    color: "#F6FAFF",
+  },
+  "& *::selection": {
+    backgroundColor: alpha("#5DA8FF", 0.46),
+    color: "#F6FAFF",
+  },
+  "&::-moz-selection": {
+    backgroundColor: alpha("#5DA8FF", 0.46),
+    color: "#F6FAFF",
+  },
+  "& *::-moz-selection": {
+    backgroundColor: alpha("#5DA8FF", 0.46),
+    color: "#F6FAFF",
+  },
 } as const;
 const compactSearchBarSx = {
   display: "flex",
@@ -1545,6 +1563,14 @@ const renderHighlightedJsonText = (
           borderRadius: 0.2,
           bgcolor: isActive ? "#ff9800" : "warning.light",
           color: isActive ? "#1a1a1a" : "warning.contrastText",
+          "&::selection": {
+            backgroundColor: alpha("#5DA8FF", 0.46),
+            color: "#F6FAFF",
+          },
+          "&::-moz-selection": {
+            backgroundColor: alpha("#5DA8FF", 0.46),
+            color: "#F6FAFF",
+          },
         }}
       >
         {text.slice(range.start, range.end)}
@@ -1557,6 +1583,51 @@ const renderHighlightedJsonText = (
   }
 
   return nodes;
+};
+
+const copyTextToClipboard = async (text: string): Promise<boolean> => {
+  if (
+    typeof navigator !== "undefined" &&
+    navigator.clipboard &&
+    typeof navigator.clipboard.writeText === "function"
+  ) {
+    await navigator.clipboard.writeText(text);
+    return true;
+  }
+
+  if (typeof document === "undefined") {
+    return false;
+  }
+
+  const fallbackInput = document.createElement("textarea");
+  fallbackInput.value = text;
+  fallbackInput.setAttribute("readonly", "");
+  fallbackInput.style.position = "fixed";
+  fallbackInput.style.opacity = "0";
+  fallbackInput.style.pointerEvents = "none";
+  document.body.appendChild(fallbackInput);
+  fallbackInput.focus();
+  fallbackInput.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(fallbackInput);
+  return copied;
+};
+
+const selectElementText = (element: HTMLElement | null): boolean => {
+  if (!element || typeof window === "undefined") {
+    return false;
+  }
+
+  const selection = window.getSelection();
+  if (!selection) {
+    return false;
+  }
+
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
 };
 
 const hasMissingProtoError = (record?: HistoryRecord): boolean => {
@@ -1739,6 +1810,8 @@ export const SnifferPage = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const requestSearchInputRef = useRef<HTMLInputElement | null>(null);
   const responseSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const requestPanelRef = useRef<HTMLDivElement | null>(null);
+  const responsePanelRef = useRef<HTMLDivElement | null>(null);
   const requestSearchContainerRef = useRef<HTMLDivElement | null>(null);
   const responseSearchContainerRef = useRef<HTMLDivElement | null>(null);
   const callTableContainerRef = useRef<HTMLDivElement | null>(null);
@@ -2605,6 +2678,13 @@ export const SnifferPage = () => {
         singleResponseEntry?.timestamp || selected?.timestamp,
       )
     : undefined;
+  const responsePayloadTextToCopy = useMemo(() => {
+    if (isSingleResponseView) {
+      return singleResponseEntry?.payloadText || formatJsonPayload({});
+    }
+
+    return formatJsonPayload(orderedResponseEntries.map((entry) => entry.payload));
+  }, [isSingleResponseView, orderedResponseEntries, singleResponseEntry]);
   const isResponseViewMode = responsePanelMode === "response";
 
   useEffect(() => {
@@ -3693,6 +3773,36 @@ export const SnifferPage = () => {
     setResponseActiveMatch(-1);
   }, []);
 
+  const copyRequestPayload = useCallback(async () => {
+    try {
+      const copied = await copyTextToClipboard(requestPayloadText);
+      if (!copied) {
+        notify("Clipboard is not available in this browser.", {
+          type: "warning",
+        });
+        return;
+      }
+      notify("Request copied.", { type: "success" });
+    } catch {
+      notify("Failed to copy request payload.", { type: "warning" });
+    }
+  }, [notify, requestPayloadText]);
+
+  const copyResponsePayload = useCallback(async () => {
+    try {
+      const copied = await copyTextToClipboard(responsePayloadTextToCopy);
+      if (!copied) {
+        notify("Clipboard is not available in this browser.", {
+          type: "warning",
+        });
+        return;
+      }
+      notify("Response copied.", { type: "success" });
+    } catch {
+      notify("Failed to copy response payload.", { type: "warning" });
+    }
+  }, [notify, responsePayloadTextToCopy]);
+
   useEffect(() => {
     if (!showRequestSearch) {
       return;
@@ -3711,10 +3821,8 @@ export const SnifferPage = () => {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.key.toLowerCase() !== "f" ||
-        (!event.metaKey && !event.ctrlKey)
-      ) {
+      const isModifierPressed = event.metaKey || event.ctrlKey;
+      if (!isModifierPressed) {
         return;
       }
 
@@ -3728,6 +3836,28 @@ export const SnifferPage = () => {
         target?.tagName === "TEXTAREA" ||
         target?.tagName === "SELECT";
       if (isEditableTarget && !isSnifferSearchInputTarget) {
+        return;
+      }
+
+      const targetPanel =
+        (target && requestPanelRef.current?.contains(target) && "request") ||
+        (target && responsePanelRef.current?.contains(target) && "response") ||
+        activeSearchTarget;
+
+      if (event.key.toLowerCase() === "a") {
+        const selectedText =
+          targetPanel === "response"
+            ? shouldShowResponsePayloadBlock && isResponseViewMode
+              ? selectElementText(responseSearchContainerRef.current)
+              : false
+            : selectElementText(requestSearchContainerRef.current);
+        if (selectedText) {
+          event.preventDefault();
+        }
+        return;
+      }
+
+      if (event.key.toLowerCase() !== "f") {
         return;
       }
 
@@ -3780,6 +3910,7 @@ export const SnifferPage = () => {
     closeResponseSearch,
     hasRequestSearchablePayload,
     hasResponseSearchablePayload,
+    isResponseViewMode,
     openRequestSearch,
     openResponseSearch,
     showRequestSearch,
@@ -4552,6 +4683,7 @@ export const SnifferPage = () => {
           }}
         >
           <Paper
+            ref={requestPanelRef}
             onMouseDownCapture={() => setActiveSearchTarget("request")}
             onFocusCapture={() => setActiveSearchTarget("request")}
             sx={{
@@ -4614,6 +4746,16 @@ export const SnifferPage = () => {
                     <SearchRoundedIcon fontSize="small" />
                   </IconButton>
                 ) : null}
+                <IconButton
+                  size="small"
+                  onClick={() => {
+                    void copyRequestPayload();
+                  }}
+                  sx={searchHeaderButtonSx}
+                  aria-label="Copy request payload"
+                >
+                  <ContentCopyOutlinedIcon fontSize="small" />
+                </IconButton>
               </Box>
             </Box>
             <Divider />
@@ -4732,6 +4874,7 @@ export const SnifferPage = () => {
           />
 
           <Paper
+            ref={responsePanelRef}
             onMouseDownCapture={() => setActiveSearchTarget("response")}
             onFocusCapture={() => setActiveSearchTarget("response")}
             sx={{
@@ -4830,6 +4973,18 @@ export const SnifferPage = () => {
                     sx={searchHeaderButtonSx}
                   >
                     <SearchRoundedIcon fontSize="small" />
+                  </IconButton>
+                ) : null}
+                {shouldShowResponsePayloadBlock && isResponseViewMode ? (
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      void copyResponsePayload();
+                    }}
+                    sx={searchHeaderButtonSx}
+                    aria-label="Copy response payload"
+                  >
+                    <ContentCopyOutlinedIcon fontSize="small" />
                   </IconButton>
                 ) : null}
               </Box>
