@@ -15,7 +15,7 @@ import {
   TableHead,
   TableRow,
 } from "@mui/material";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { InputProps, useInput } from "react-admin";
 
 type KeyValueTableInputProps = {
@@ -67,7 +67,9 @@ const valueFromRows = (rows: KeyValueRow[]) => {
     payload[key] = row.value;
   }
 
-  return Object.keys(payload).length > 0 ? payload : undefined;
+  // Return an explicit empty object so PATCH payloads clear matcher/header maps
+  // instead of omitting the field and unintentionally preserving old values.
+  return payload;
 };
 
 const normalizedJson = (value: unknown) => JSON.stringify(value ?? {});
@@ -93,8 +95,11 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
     isRequired,
   } = useInput(props);
 
+  const canonicalValue = useMemo(() => canonicalObjectValue(value), [value]);
+  const serializedCanonicalValue = useMemo(() => normalizedJson(canonicalValue), [canonicalValue]);
   const initialRows = useMemo(() => rowsFromValue(value), [value]);
   const [rows, setRows] = useState<KeyValueRow[]>(initialRows);
+  const lastSeenFormValueRef = useRef(serializedCanonicalValue);
   const [expanded, setExpanded] = useState(false);
   const duplicateKeySet = useMemo(() => {
     const counts = new Map<string, number>();
@@ -109,7 +114,7 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
     }
 
     const duplicates = new Set<string>();
-    for (const [key, count] of counts) {
+    for (const [key, count] of Array.from(counts.entries())) {
       if (count > 1) {
         duplicates.add(key);
       }
@@ -119,16 +124,15 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
   }, [rows]);
 
   useEffect(() => {
-    const normalizedIncomingValue = normalizedJson(canonicalObjectValue(value));
-
-    // Do not reset local editing rows when form value is semantically unchanged.
-    // This keeps newly added empty rows visible until user fills them.
-    if (normalizedJson(valueFromRows(rows)) === normalizedIncomingValue) {
+    // Sync rows only after the form value itself changes. Local row edits can
+    // render with the previous form value before react-hook-form catches up.
+    if (lastSeenFormValueRef.current === serializedCanonicalValue) {
       return;
     }
 
     setRows(initialRows);
-  }, [initialRows, rows, value]);
+    lastSeenFormValueRef.current = serializedCanonicalValue;
+  }, [initialRows, serializedCanonicalValue]);
 
   const commitRows = (nextRows: KeyValueRow[]) => {
     setRows(nextRows);
