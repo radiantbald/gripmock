@@ -989,6 +989,12 @@ components:
           items:
             type: object
             additionalProperties: true
+        responseHeaders:
+          type: object
+          description: Normalized gRPC response metadata (header+trailer)
+          additionalProperties:
+            type: string
+          x-go-type-skip-optional-pointer: true
         responseTimestamps:
           type: array
           description: Per-response server send timestamp (same order as responses)

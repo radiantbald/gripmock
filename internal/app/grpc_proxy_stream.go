@@ -84,7 +84,15 @@ func (m *grpcMocker) proxyServerStreamWithRequest(
 				)
 			}
 
-			m.recordProxyCall(stream.Context(), startTime, []map[string]any{requestData}, responses, responseTimestamps, err)
+			m.recordProxyCall(
+				stream.Context(),
+				startTime,
+				[]map[string]any{requestData},
+				responses,
+				responseHeadersFromClientStream(clientStream),
+				responseTimestamps,
+				err,
+			)
 
 			return err
 		}
@@ -114,7 +122,15 @@ func (m *grpcMocker) proxyServerStreamWithRequest(
 		)
 	}
 
-	m.recordProxyCall(stream.Context(), startTime, []map[string]any{requestData}, responses, responseTimestamps, nil)
+	m.recordProxyCall(
+		stream.Context(),
+		startTime,
+		[]map[string]any{requestData},
+		responses,
+		responseHeadersFromClientStream(clientStream),
+		responseTimestamps,
+		nil,
+	)
 
 	return nil
 }
@@ -166,13 +182,13 @@ func (m *grpcMocker) proxyClientStreamWithRequests(
 		requests = append(requests, convertToMap(req))
 
 		if err = clientStream.SendMsg(req); err != nil {
-			m.recordProxyCall(stream.Context(), startTime, requests, nil, nil, err)
+			m.recordProxyCall(stream.Context(), startTime, requests, nil, nil, nil, err)
 			return err
 		}
 	}
 
 	if err = clientStream.CloseSend(); err != nil {
-		m.recordProxyCall(stream.Context(), startTime, requests, nil, nil, err)
+		m.recordProxyCall(stream.Context(), startTime, requests, nil, nil, nil, err)
 		return err
 	}
 
@@ -197,7 +213,7 @@ func (m *grpcMocker) proxyClientStreamWithRequests(
 			)
 		}
 
-		m.recordProxyCall(stream.Context(), startTime, requests, nil, nil, err)
+		m.recordProxyCall(stream.Context(), startTime, requests, nil, nil, nil, err)
 
 		return err
 	}
@@ -207,7 +223,7 @@ func (m *grpcMocker) proxyClientStreamWithRequests(
 	}
 
 	if err = stream.SendMsg(resp); err != nil {
-		m.recordProxyCall(stream.Context(), startTime, requests, nil, nil, err)
+		m.recordProxyCall(stream.Context(), startTime, requests, nil, nil, nil, err)
 		return err
 	}
 
@@ -229,6 +245,7 @@ func (m *grpcMocker) proxyClientStreamWithRequests(
 		startTime,
 		requests,
 		[]map[string]any{messageToMap(resp)},
+		responseHeadersFromClientStream(clientStream),
 		[]time.Time{time.Now()},
 		nil,
 	)
@@ -280,7 +297,15 @@ func (m *grpcMocker) proxyBidiStreamWithRequests(
 		m.captureBidiResult(clientStream, captureCtx, requests, responses, firstErr, secondErr, route.Source.RecordDelay, time.Since(startTime))
 	}
 
-	m.recordProxyCall(stream.Context(), startTime, requests, responses, responseTimestamps, captureErr)
+	m.recordProxyCall(
+		stream.Context(),
+		startTime,
+		requests,
+		responses,
+		responseHeadersFromClientStream(clientStream),
+		responseTimestamps,
+		captureErr,
+	)
 
 	if firstErr != nil {
 		return firstErr

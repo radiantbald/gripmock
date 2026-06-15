@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"time"
 
-	gptypes "github.com/radiantbald/gripmock/v3/internal/infra/types"
 	"github.com/gorilla/mux"
 	"github.com/oapi-codegen/runtime"
+	gptypes "github.com/radiantbald/gripmock/v3/internal/infra/types"
 	codes "google.golang.org/grpc/codes"
 )
 
@@ -118,6 +118,9 @@ type CallRecord struct {
 	// Response Deprecated: use responses for streaming calls
 	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Response *map[string]any `json:"response,omitempty"`
+
+	// ResponseHeaders Normalized gRPC response metadata (header+trailer)
+	ResponseHeaders map[string]string `json:"responseHeaders,omitempty"`
 
 	// ResponseTimestamps Per-response server send timestamp (same order as responses)
 	ResponseTimestamps *[]time.Time `json:"responseTimestamps,omitempty"`
