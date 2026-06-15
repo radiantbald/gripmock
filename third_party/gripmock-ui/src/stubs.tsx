@@ -16,6 +16,7 @@ import {
   AutocompleteInput,
   useGetList,
   useDataProvider,
+  useRefresh,
   useNotify,
   useRecordContext,
   useCreatePath,
@@ -439,6 +440,7 @@ const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }
     formState: { isDirty },
   } = useFormContext();
   const dataProvider = useDataProvider();
+  const refresh = useRefresh();
   const notify = useNotify();
   const location = useLocation();
   const navigate = useNavigate();
@@ -484,6 +486,7 @@ const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }
       if (shouldSetReplacedSignal) {
         setStubReplacedSignal(String(values.service || ""), String(values.method || ""));
       }
+      refresh();
       navigate(returnPath);
     } catch (error) {
       notify((error as Error).message || "Failed to save stub", { type: "error" });
@@ -555,6 +558,7 @@ const EditStubToolbarImpl = ({ canToggleEnabled }: { canToggleEnabled: boolean }
             notify("Stub deleted", { type: "success" });
             const values = getValues() as Record<string, unknown>;
             rememberStubsSelection(values.service, values.method);
+            refresh();
             navigate(returnPath);
           } catch (error) {
             notify((error as Error).message || "Failed to delete stub", { type: "error" });

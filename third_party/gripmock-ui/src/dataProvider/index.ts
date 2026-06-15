@@ -317,16 +317,19 @@ const dataProvider: DataProvider = {
 
   update: async (resource, params) => {
     const canonical = canonicalResource(resource);
+    let responseData: Record<string, unknown> | undefined;
     if (canonical === "stubs") {
       const activeRoom = getCurrentRoom().trim();
       const roomQuery = activeRoom ? `?room=${encodeURIComponent(activeRoom)}` : "";
       const payload = (params.data || {}) as Record<string, unknown>;
       const { id: _ignoredID, ...patchPayload } = payload;
 
-      await apiClient.request(`/${canonical}/${encodeURIComponent(String(params.id))}${roomQuery}`, {
-        method: "PATCH",
-        body: JSON.stringify(patchPayload),
-      });
+      responseData = asRow(
+        await apiClient.request<Row>(`/${canonical}/${encodeURIComponent(String(params.id))}${roomQuery}`, {
+          method: "PATCH",
+          body: JSON.stringify(patchPayload),
+        }),
+      );
     } else {
       const requestBody = Array.isArray(params.data) ? params.data : [params.data];
 
@@ -339,7 +342,8 @@ const dataProvider: DataProvider = {
     return {
       data: {
         id: params.id,
-        ...params.data,
+        ...(params.data as Record<string, unknown>),
+        ...(responseData || {}),
       } as any,
     };
   },
