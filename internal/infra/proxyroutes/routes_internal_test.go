@@ -3,8 +3,10 @@ package proxyroutes
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/descriptorpb"
 
 	protosetdom "github.com/radiantbald/gripmock/v3/internal/domain/protoset"
@@ -192,6 +194,30 @@ func TestSetMethodModeForRoomAppliesToFutureRuntimeRoute(t *testing.T) {
 
 	require.Equal(t, ModeProxy, r.RouteByMethodForRoom("room-a", "/greeter/Ping").Mode)
 	require.Equal(t, ModeReplay, r.RouteByMethodForRoom("room-b", "/greeter/Ping").Mode)
+}
+
+func TestRouteWithStreamTimeoutSkipsServerStreams(t *testing.T) {
+	t.Parallel()
+
+	route := &Route{Source: &protosetdom.Source{ReflectTimeout: time.Second}}
+
+	ctx, cancel := route.WithStreamTimeout(t.Context(), &grpc.StreamDesc{ServerStreams: true})
+	defer cancel()
+
+	_, hasDeadline := ctx.Deadline()
+	require.False(t, hasDeadline)
+}
+
+func TestRouteWithStreamTimeoutAppliesToClientStreams(t *testing.T) {
+	t.Parallel()
+
+	route := &Route{Source: &protosetdom.Source{ReflectTimeout: time.Second}}
+
+	ctx, cancel := route.WithStreamTimeout(t.Context(), &grpc.StreamDesc{ClientStreams: true})
+	defer cancel()
+
+	_, hasDeadline := ctx.Deadline()
+	require.True(t, hasDeadline)
 }
 
 func buildDescriptorSet(services map[string][]string) *descriptorpb.FileDescriptorSet {

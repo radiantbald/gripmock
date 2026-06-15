@@ -356,6 +356,14 @@ func (r *Route) WithTimeout(ctx context.Context) (context.Context, context.Cance
 	return context.WithTimeout(ctx, r.Source.ReflectTimeout)
 }
 
+func (r *Route) WithStreamTimeout(ctx context.Context, desc *grpc.StreamDesc) (context.Context, context.CancelFunc) {
+	if desc != nil && desc.ServerStreams {
+		return ctx, func() {}
+	}
+
+	return r.WithTimeout(ctx)
+}
+
 func ForwardIncomingMetadata(ctx context.Context) context.Context {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok || len(md) == 0 {

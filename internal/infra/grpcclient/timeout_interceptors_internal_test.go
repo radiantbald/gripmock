@@ -133,6 +133,38 @@ func TestStreamTimeoutInterceptorDoesNotCancelImmediately(t *testing.T) {
 	}
 }
 
+func TestStreamTimeoutInterceptorSkipsServerStreams(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	fs := &fakeClientStream{}
+	streamCtxCh := make(chan context.Context, 1)
+
+	cs, err := StreamTimeoutInterceptor(time.Second)(
+		ctx,
+		&grpc.StreamDesc{ServerStreams: true},
+		nil,
+		"/svc/M",
+		func(
+			invCtx context.Context,
+			_ *grpc.StreamDesc,
+			_ *grpc.ClientConn,
+			_ string,
+			_ ...grpc.CallOption,
+		) (grpc.ClientStream, error) {
+			streamCtxCh <- invCtx
+
+			return fs, nil
+		},
+	)
+	require.NoError(t, err)
+	require.Same(t, fs, cs)
+
+	streamCtx := <-streamCtxCh
+	_, hasDeadline := streamCtx.Deadline()
+	require.False(t, hasDeadline)
+}
+
 func TestStreamTimeoutInterceptorCancelsOnRecvError(t *testing.T) {
 	t.Parallel()
 
