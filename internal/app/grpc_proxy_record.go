@@ -54,6 +54,7 @@ func (m *grpcMocker) recordProxyCall(
 	timestamp time.Time,
 	requests []map[string]any,
 	responses []map[string]any,
+	responseHeaders map[string]string,
 	responseTimestamps []time.Time,
 	callErr error,
 ) {
@@ -70,10 +71,11 @@ func (m *grpcMocker) recordProxyCall(
 		Transport:          "proxy",
 		Service:            m.fullServiceName,
 		Method:             m.methodName,
-		Room:            m.roomFromContext(ctx),
+		Room:               m.roomFromContext(ctx),
 		Client:             clientFromContext(ctx),
 		Requests:           requests,
 		Responses:          responses,
+		ResponseHeaders:    responseHeaders,
 		ResponseTimestamps: responseTimestamps,
 		Timestamp:          timestamp,
 	}

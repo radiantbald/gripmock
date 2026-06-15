@@ -137,6 +137,13 @@ type SnifferSourceChange = {
 type SnifferRecord = HistoryRecord & {
   originalSource?: SnifferSource;
 };
+type StubCreatePrefillOutput = {
+  headers: Record<string, string>;
+  error: string;
+  code: number;
+  data?: unknown;
+  stream?: unknown[];
+};
 
 const SNIFFER_ROUTE_SOURCES_KEY = "gripmock.sniffer.routeSources";
 const SNIFFER_ROUTE_SOURCE_CHANGES_KEY = "gripmock.sniffer.routeSourceChanges";
@@ -1450,6 +1457,38 @@ const sameServiceAlias = (leftRaw: unknown, rightRaw: unknown): boolean => {
 
   return !leftMeta.hasDot || !rightMeta.hasDot;
 };
+const buildStubCreatePrefillOutput = (
+  record: HistoryRecord,
+): StubCreatePrefillOutput => {
+  const code =
+    typeof record.code === "number" && Number.isFinite(record.code)
+      ? record.code
+      : 0;
+  const error = typeof record.error === "string" ? record.error : "";
+  const headers =
+    record.responseHeaders && typeof record.responseHeaders === "object"
+      ? { ...record.responseHeaders }
+      : {};
+  const responses = Array.isArray(record.responses)
+    ? record.responses.map((item) => unwrapRootPayload(item))
+    : [];
+  if (responses.length > 1) {
+    return {
+      code,
+      error,
+      headers,
+      stream: responses,
+    };
+  }
+
+  const dataSource = responses[0] ?? record.response ?? {};
+  return {
+    code,
+    error,
+    headers,
+    data: unwrapRootPayload(dataSource),
+  };
+};
 
 type SearchOptions = {
   caseSensitive: boolean;
@@ -2258,6 +2297,38 @@ export const SnifferPage = () => {
   }, [createPath, routeStubId]);
   const canCreateStubFromSelectedCall = Boolean(
     selectedService && selectedMethod,
+  );
+  const latestProxyRecordForSelectedRoute = useMemo(
+    () =>
+      records.find(
+        (record) =>
+          getServedBy(record) === "proxy" &&
+          sameServiceAlias(record.service, selectedService) &&
+          normalizeValue(record.method) === normalizeValue(selectedMethod) &&
+          normalizeValue(record.room) === selectedRoom,
+      ),
+    [records, selectedMethod, selectedRoom, selectedService],
+  );
+  const createStubPrefillOutput = useMemo(
+    () =>
+      latestProxyRecordForSelectedRoute
+        ? buildStubCreatePrefillOutput(latestProxyRecordForSelectedRoute)
+        : undefined,
+    [latestProxyRecordForSelectedRoute],
+  );
+  const createStubLinkState = useMemo(
+    () => ({
+      returnTo: snifferPath,
+      prefillService: selectedService,
+      prefillMethod: selectedMethod,
+      prefillOutput: createStubPrefillOutput,
+    }),
+    [
+      createStubPrefillOutput,
+      selectedMethod,
+      selectedService,
+      snifferPath,
+    ],
   );
   const latestCreatedSignalForSelectedCall = stubCreatedHistory.find(
     (item) =>
@@ -3497,11 +3568,7 @@ export const SnifferPage = () => {
               component={RouterLink}
               to={stubCreatePath}
               disabled={!canCreateStubFromSelectedCall}
-              state={{
-                returnTo: snifferPath,
-                prefillService: selectedService,
-                prefillMethod: selectedMethod,
-              }}
+              state={createStubLinkState}
               sx={nextResponseActionButtonSx}
             >
               Create stub
@@ -5410,11 +5477,7 @@ export const SnifferPage = () => {
                               component={RouterLink}
                               to={stubCreatePath}
                               disabled={!canCreateStubFromSelectedCall}
-                              state={{
-                                returnTo: snifferPath,
-                                prefillService: selectedService,
-                                prefillMethod: selectedMethod,
-                              }}
+                              state={createStubLinkState}
                               sx={nextResponseActionButtonSx}
                             >
                               Create stub

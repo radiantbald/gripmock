@@ -177,6 +177,13 @@ const normalizeStubDelay = <T extends Record<string, unknown>>(data: T): T => {
 };
 
 const normalizeTextValue = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
+type StubCreatePrefillOutput = {
+  headers?: Record<string, string>;
+  error?: string;
+  code?: number;
+  data?: unknown;
+  stream?: unknown[];
+};
 const resolveReturnPathFromLocationState = (state: unknown, fallbackPath: string): string =>
   typeof state === "object" &&
   state !== null &&
@@ -184,6 +191,44 @@ const resolveReturnPathFromLocationState = (state: unknown, fallbackPath: string
   typeof (state as { returnTo?: unknown }).returnTo === "string"
     ? (state as { returnTo: string }).returnTo
     : fallbackPath;
+const resolvePrefillOutputFromLocationState = (
+  state: unknown,
+): StubCreatePrefillOutput | undefined => {
+  if (typeof state !== "object" || state === null) {
+    return undefined;
+  }
+
+  const rawPrefillOutput = (state as { prefillOutput?: unknown }).prefillOutput;
+  if (!isRecordValue(rawPrefillOutput)) {
+    return undefined;
+  }
+
+  const output: StubCreatePrefillOutput = {};
+  if (isRecordValue(rawPrefillOutput.headers)) {
+    output.headers = Object.fromEntries(
+      Object.entries(rawPrefillOutput.headers).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      ),
+    );
+  }
+  if (typeof rawPrefillOutput.error === "string") {
+    output.error = rawPrefillOutput.error;
+  }
+  if (
+    typeof rawPrefillOutput.code === "number" &&
+    Number.isFinite(rawPrefillOutput.code)
+  ) {
+    output.code = Math.max(0, Math.trunc(rawPrefillOutput.code));
+  }
+  if ("data" in rawPrefillOutput) {
+    output.data = rawPrefillOutput.data;
+  }
+  if (Array.isArray(rawPrefillOutput.stream)) {
+    output.stream = rawPrefillOutput.stream;
+  }
+
+  return Object.keys(output).length > 0 ? output : undefined;
+};
 
 const STUBS_SELECTION_STORAGE_KEY = "gripmock.ui.stubs.selectionByRoom";
 
@@ -670,6 +715,7 @@ export const StubCreate = () => {
     typeof location.state === "object" && location.state !== null
       ? normalizeTextValue((location.state as { prefillMethod?: unknown }).prefillMethod)
       : "";
+  const prefillOutput = resolvePrefillOutputFromLocationState(location.state);
 
   return (
     <Create
@@ -748,7 +794,7 @@ export const StubCreate = () => {
         defaultValues={{
           service: prefillService,
           method: prefillMethod,
-          output: DEFAULT_OUTPUT_TEMPLATE,
+          output: { ...DEFAULT_OUTPUT_TEMPLATE, ...(prefillOutput || {}) },
           enabled: true,
         }}
         sx={stubFormSx}

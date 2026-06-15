@@ -25,6 +25,8 @@ type CallRecord struct {
 	Requests  []map[string]any `json:"requests,omitempty"`  // For streaming calls with multiple messages.
 	Response  map[string]any   `json:"response,omitempty"`  // Deprecated: use Responses.
 	Responses []map[string]any `json:"responses,omitempty"` // For streaming calls with multiple messages.
+	// ResponseHeaders contains normalized gRPC response metadata (header+trailer).
+	ResponseHeaders map[string]string `json:"responseHeaders,omitempty"`
 	// ResponseTimestamps contains per-response send time in server clock order.
 	ResponseTimestamps []time.Time `json:"responseTimestamps,omitempty"`
 	Code               uint32      `json:"code,omitempty"` // gRPC status code (e.g., codes.OK, codes.NotFound).

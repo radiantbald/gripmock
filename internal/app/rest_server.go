@@ -2689,6 +2689,9 @@ func (h *RestServer) historyCallRecordToRest(c history.CallRecord) rest.CallReco
 	} else if c.Response != nil {
 		r.Response = &c.Response
 	}
+	if len(c.ResponseHeaders) > 0 {
+		r.ResponseHeaders = maps.Clone(c.ResponseHeaders)
+	}
 	if len(c.ResponseTimestamps) > 0 {
 		responseTimestamps := append([]time.Time(nil), c.ResponseTimestamps...)
 		r.ResponseTimestamps = &responseTimestamps
