@@ -949,6 +949,12 @@ components:
         transport:
           type: string
           description: Call source ("mock" or "proxy").
+        source:
+          type: string
+          description: Descriptor source used to handle call ("proto" or "reflection").
+          enum:
+            - proto
+            - reflection
         client:
           type: string
           description: Stable peer identifier derived from gRPC peer address (host/IP without ephemeral port).

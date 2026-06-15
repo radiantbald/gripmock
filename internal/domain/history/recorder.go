@@ -16,6 +16,7 @@ import (
 type CallRecord struct {
 	CallID    string           `json:"callId,omitempty"`    // Stable call identifier for UI/sniffer.
 	Transport string           `json:"transport,omitempty"` // Call source: mock/proxy.
+	Source    string           `json:"source,omitempty"`    // Descriptor source: proto/reflection.
 	Client    string           `json:"client,omitempty"`    // Client identifier (e.g. gRPC user-agent).
 	StubID    uint64           `json:"stubId,omitempty"`
 	Service   string           `json:"service,omitempty"`

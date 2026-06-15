@@ -136,6 +136,9 @@ type CallRecord struct {
 
 	// Transport Call source ("mock" or "proxy").
 	Transport *string `json:"transport,omitempty"`
+
+	// Source Descriptor source used to handle call ("proto" or "reflection").
+	Source *string `json:"source,omitempty"`
 }
 
 // Dashboard defines model for Dashboard.
