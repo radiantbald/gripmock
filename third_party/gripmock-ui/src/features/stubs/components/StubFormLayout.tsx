@@ -56,6 +56,7 @@ const grpcStatusCodeChoices = [
 
 const sectionCardSx = {
   width: "100%",
+  minWidth: 0,
   border: "1px solid",
   borderColor: "divider",
   borderRadius: CARD_RADIUS_PX,
@@ -302,35 +303,38 @@ const normalizeHeadersForFields = (value: unknown): Record<string, unknown> | un
 };
 
 export const stubFormSx = {
+  width: "100%",
+  maxWidth: "100%",
   height: "100%",
   minHeight: 0,
   display: "flex",
   flexDirection: "column",
+  overflow: "hidden",
   gap: 0,
   "&.MuiCardContent-root": {
-    height: "100%",
-    minHeight: 0,
-    display: "flex",
-    flexDirection: "column",
-    overflow: "hidden",
+    flex: "0 0 auto",
+    minHeight: "auto",
+    height: "auto !important",
+    maxHeight: "none !important",
+    display: "block",
+    overflow: "visible",
     px: 1.25,
     pt: 1.25,
     pb: 0,
   },
-  "& form": {
-    height: "100%",
-    minHeight: 0,
+  "& .RaSimpleForm-form": {
     display: "flex",
     flexDirection: "column",
-    overflow: "hidden",
-    gap: 1.25,
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    overflowX: "hidden",
+    boxSizing: "border-box",
+    paddingBottom: 0,
   },
   "& .RaToolbar-root": {
-    mt: "auto",
-    px: 0.25,
-    py: 0.25,
-    minHeight: 52,
     flexShrink: 0,
+    mt: 1,
   },
 } as const;
 
@@ -525,15 +529,17 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
 
       <Box
         sx={{
-          flex: 1,
-          minHeight: 0,
+          flex: "0 0 auto",
+          minHeight: "auto",
+          minWidth: 0,
           width: "100%",
+          maxWidth: "100%",
           display: "flex",
           flexDirection: "column",
           gap: 1.25,
-          overflowY: "auto",
+          overflow: "visible",
           pr: 0,
-          pb: 0,
+          pb: 1.25,
         }}
       >
         <Box sx={sectionCardSx}>
@@ -575,7 +581,7 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
               gap: 2,
               alignItems: "start",
               minHeight: 0,
-              "& > *": { minHeight: 0 },
+              "& > *": { minHeight: 0, minWidth: 0 },
             }}
           >
             <KeyValueTableInput
@@ -631,6 +637,7 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
               gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(0, 1fr) 250px" },
               gap: 2,
               minHeight: 0,
+              "& > *": { minHeight: 0, minWidth: 0 },
             }}
           >
             <Box
