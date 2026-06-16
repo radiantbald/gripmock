@@ -3099,7 +3099,7 @@ export const SnifferPage = () => {
       return;
     }
 
-    const resolvedServedBy =
+    let resolvedServedBy =
       source === "reflection"
         ? (servedBy || defaultReflectionServedBy)
         : undefined;
@@ -3108,7 +3108,16 @@ export const SnifferPage = () => {
       resolvedServedBy === "proxy" &&
       !options?.skipReflectionBootstrap
     ) {
-      await ensureReflectionProxyReady();
+      if (!normalizeReflectionSource(reflectionHost)) {
+        resolvedServedBy = "stub";
+        persistReflectionServedByRoute(selectedRouteKey, "stub");
+        notify(
+          "Reflection switched to stub mode. Set reflection host to enable proxy mode.",
+          { type: "info" },
+        );
+      } else {
+        await ensureReflectionProxyReady();
+      }
     }
 
     if (selectedService && selectedMethod) {
