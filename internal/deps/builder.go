@@ -24,6 +24,7 @@ import (
 	pgprotometadata "github.com/radiantbald/gripmock/v3/internal/infra/postgres/protometadata"
 	pgreflectionhosts "github.com/radiantbald/gripmock/v3/internal/infra/postgres/reflectionhosts"
 	pgrooms "github.com/radiantbald/gripmock/v3/internal/infra/postgres/rooms"
+	pgsender "github.com/radiantbald/gripmock/v3/internal/infra/postgres/sender"
 	pgusers "github.com/radiantbald/gripmock/v3/internal/infra/postgres/users"
 	"github.com/radiantbald/gripmock/v3/internal/infra/proxyroutes"
 	reflectclient "github.com/radiantbald/gripmock/v3/internal/infra/reflectclient"
@@ -101,6 +102,10 @@ type Builder struct {
 	reflectionHostsRepository     *pgreflectionhosts.Repository
 	reflectionHostsRepositoryOnce sync.Once
 	reflectionHostsRepositoryErr  error
+
+	senderRepository     *pgsender.Repository
+	senderRepositoryOnce sync.Once
+	senderRepositoryErr  error
 
 	persistenceInitOnce sync.Once
 	persistenceInitErr  error

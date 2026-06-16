@@ -157,6 +157,24 @@ const dataProvider: DataProvider = {
       return dataProcessing.applyPagination(processedData, page, perPage) as any;
     }
 
+    if (canonical === "sender/requests") {
+      const collectionId = (params.filter as { collectionId?: number } | undefined)?.collectionId;
+      const query =
+        typeof collectionId === "number" && collectionId > 0
+          ? `?collectionId=${encodeURIComponent(String(collectionId))}`
+          : "";
+      const response = await apiClient.request<unknown>(`/${canonical}${query}`);
+      const json = ensureArray<Row>(response);
+      const processedData = dataProcessing.processData(
+        json,
+        params.filter,
+        params.sort,
+        canonical,
+      );
+      const { page, perPage } = params.pagination || { page: 1, perPage: 25 };
+      return dataProcessing.applyPagination(processedData, page, perPage) as any;
+    }
+
     const response = await apiClient.request<unknown>(`/${canonical}`);
     const json = ensureArray<Row>(response);
     const normalized = canonical === "history" ? normalizeHistoryRows(json) : json;
@@ -287,6 +305,20 @@ const dataProvider: DataProvider = {
       } as RAResult<any>;
     }
 
+    if (
+      canonical === "sender/invoke" ||
+      canonical === "sender/collections" ||
+      canonical === "sender/requests"
+    ) {
+      const data = asRow(
+        await apiClient.request<Row>(`/${canonical}`, {
+          method: "POST",
+          body: JSON.stringify(params.data),
+        }),
+      );
+      return { data } as RAResult<any>;
+    }
+
     const requestBody = Array.isArray(params.data) ? params.data : [params.data];
     const activeRoom = getCurrentRoom().trim();
     const endpoint =
@@ -317,6 +349,16 @@ const dataProvider: DataProvider = {
 
   update: async (resource, params) => {
     const canonical = canonicalResource(resource);
+    if (canonical === "sender/collections" || canonical === "sender/requests") {
+      const data = asRow(
+        await apiClient.request<Row>(`/${canonical}/${encodeURIComponent(String(params.id))}`, {
+          method: "PATCH",
+          body: JSON.stringify(params.data),
+        }),
+      );
+      return { data } as RAResult<any>;
+    }
+
     let responseData: Record<string, unknown> | undefined;
     if (canonical === "stubs") {
       const activeRoom = getCurrentRoom().trim();
@@ -363,6 +405,15 @@ const dataProvider: DataProvider = {
   delete: async (resource, params) => {
     const canonical = canonicalResource(resource);
 
+    if (canonical === "sender/collections" || canonical === "sender/requests") {
+      const response = asRow(
+        await apiClient.request<Row>(`/${canonical}/${encodeURIComponent(String(params.id))}`, {
+          method: "DELETE",
+        }),
+      );
+      return { data: response.id ?? params.id } as any;
+    }
+
     if (canonical === "stubs") {
       const activeRoom = getCurrentRoom().trim();
       const roomQuery = activeRoom ? `?room=${encodeURIComponent(activeRoom)}` : "";
@@ -391,6 +442,17 @@ const dataProvider: DataProvider = {
 
   deleteMany: async (resource, params) => {
     const canonical = canonicalResource(resource);
+
+    if (canonical === "sender/collections" || canonical === "sender/requests") {
+      await Promise.all(
+        params.ids.map((id) =>
+          apiClient.request<void>(`/${canonical}/${encodeURIComponent(String(id))}`, {
+            method: "DELETE",
+          }),
+        ),
+      );
+      return { data: params.ids };
+    }
 
     if (canonical === "services") {
       await Promise.all(

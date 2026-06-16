@@ -109,6 +109,9 @@ func (b *Builder) RestServe(
 	if reflectionHostsRepository, reflectionHostsErr := b.ReflectionHostsRepository(ctx); reflectionHostsErr == nil {
 		apiServer.SetReflectionHostsRepository(reflectionHostsRepository)
 	}
+	if senderRepository, senderErr := b.SenderRepository(ctx); senderErr == nil {
+		apiServer.SetSenderRepository(senderRepository)
+	}
 	apiServer.SetRemoteClient(b.RemoteClient())
 	apiServer.SetProxyRoutes(b.ProxyRoutes())
 
