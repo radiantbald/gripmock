@@ -13,6 +13,7 @@ import HubIcon from "@mui/icons-material/Hub";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import DevicesIcon from "@mui/icons-material/Devices";
+import SendRoundedIcon from "@mui/icons-material/SendRounded";
 
 import dataProvider from "./gripmock";
 import { CustomLayout } from "./components/Layout/CustomLayout";
@@ -121,6 +122,12 @@ const ClientsList = wrapLazy(
     return { default: module.ClientsList };
   }),
 );
+const SenderPage = wrapLazy(
+  lazy(async () => {
+    const module = await import("./sender");
+    return { default: module.SenderPage };
+  }),
+);
 
 export const App = () => {
   const [authorizedPhone, setAuthorizedPhoneState] = useState(() => getAuthorizedPhone());
@@ -175,6 +182,12 @@ export const App = () => {
         edit={StubEdit}
         create={StubCreate}
         options={{ label: "Stubs" }}
+      />
+      <Resource
+        icon={SendRoundedIcon}
+        name="sender"
+        list={SenderPage}
+        options={{ label: "Sender" }}
       />
       <Resource
         icon={DescriptionOutlinedIcon}

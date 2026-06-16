@@ -30,18 +30,26 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/rs/zerolog"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/descriptorpb"
+	"google.golang.org/protobuf/types/dynamicpb"
 
 	mcpusecase "github.com/radiantbald/gripmock/v3/internal/app/usecase/mcp"
 	"github.com/radiantbald/gripmock/v3/internal/domain/descriptors"
 	"github.com/radiantbald/gripmock/v3/internal/domain/history"
 	protosetdom "github.com/radiantbald/gripmock/v3/internal/domain/protoset"
 	"github.com/radiantbald/gripmock/v3/internal/domain/rest"
+	senderdom "github.com/radiantbald/gripmock/v3/internal/domain/sender"
 	"github.com/radiantbald/gripmock/v3/internal/infra/build"
+	grpcclient "github.com/radiantbald/gripmock/v3/internal/infra/grpcclient"
 	"github.com/radiantbald/gripmock/v3/internal/infra/httputil"
 	"github.com/radiantbald/gripmock/v3/internal/infra/jsondecoder"
 	"github.com/radiantbald/gripmock/v3/internal/infra/muxmiddleware"
@@ -50,6 +58,7 @@ import (
 	pgprotometadata "github.com/radiantbald/gripmock/v3/internal/infra/postgres/protometadata"
 	pgreflectionhosts "github.com/radiantbald/gripmock/v3/internal/infra/postgres/reflectionhosts"
 	pgrooms "github.com/radiantbald/gripmock/v3/internal/infra/postgres/rooms"
+	pgsender "github.com/radiantbald/gripmock/v3/internal/infra/postgres/sender"
 	pgusers "github.com/radiantbald/gripmock/v3/internal/infra/postgres/users"
 	protosetinfra "github.com/radiantbald/gripmock/v3/internal/infra/protoset"
 	"github.com/radiantbald/gripmock/v3/internal/infra/proxyroutes"
@@ -103,6 +112,7 @@ type RestServer struct {
 	protoMetadata   ProtoMetadataWriter
 	remoteClient    protosetdom.RemoteClient
 	reflectionHosts *pgreflectionhosts.Repository
+	senderRepo      *pgsender.Repository
 	proxies         *proxyroutes.Registry
 }
 
@@ -196,6 +206,10 @@ func (h *RestServer) SetProxyRoutes(routes *proxyroutes.Registry) {
 
 func (h *RestServer) SetReflectionHostsRepository(repository *pgreflectionhosts.Repository) {
 	h.reflectionHosts = repository
+}
+
+func (h *RestServer) SetSenderRepository(repository *pgsender.Repository) {
+	h.senderRepo = repository
 }
 
 func (h *RestServer) ProtoMetadataStatus(w http.ResponseWriter, r *http.Request) {
@@ -814,6 +828,348 @@ func (h *RestServer) ReflectionHostsUpsert(w http.ResponseWriter, r *http.Reques
 	})
 }
 
+func (h *RestServer) SenderCollectionsList(w http.ResponseWriter, r *http.Request) {
+	if h.senderRepo == nil {
+		h.writeResponse(r.Context(), w, []rest.SenderCollection{})
+		return
+	}
+
+	items, err := h.senderRepo.ListCollections(r.Context())
+	if err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+
+	result := make([]rest.SenderCollection, 0, len(items))
+	for _, item := range items {
+		result = append(result, toRestSenderCollection(item))
+	}
+	h.writeResponse(r.Context(), w, result)
+}
+
+func (h *RestServer) SenderCollectionCreate(w http.ResponseWriter, r *http.Request) {
+	if h.senderRepo == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		h.writeResponseError(r.Context(), w, errors.New("sender repository is not configured"))
+		return
+	}
+
+	var req rest.SenderCollectionCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.validationError(r.Context(), w, errors.Wrap(err, "invalid sender collection request"))
+		return
+	}
+
+	item, err := h.senderRepo.CreateCollection(r.Context(), req.Name, stringFromPtr(req.Description))
+	if err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+
+	h.writeResponse(r.Context(), w, toRestSenderCollection(item))
+}
+
+func (h *RestServer) SenderCollectionUpdate(w http.ResponseWriter, r *http.Request, collectionID int64) {
+	if h.senderRepo == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		h.writeResponseError(r.Context(), w, errors.New("sender repository is not configured"))
+		return
+	}
+
+	var req rest.SenderCollectionUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.validationError(r.Context(), w, errors.Wrap(err, "invalid sender collection update request"))
+		return
+	}
+	if req.Name == nil && req.Description == nil {
+		h.validationError(r.Context(), w, errors.New("at least one field must be provided"))
+		return
+	}
+
+	item, err := h.senderRepo.UpdateCollection(r.Context(), collectionID, req.Name, req.Description)
+	if err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+	if item == nil {
+		w.WriteHeader(http.StatusNotFound)
+		h.writeResponseError(r.Context(), w, fmt.Errorf("sender collection not found: %d", collectionID))
+		return
+	}
+
+	h.writeResponse(r.Context(), w, toRestSenderCollection(*item))
+}
+
+func (h *RestServer) SenderCollectionDelete(w http.ResponseWriter, r *http.Request, collectionID int64) {
+	if h.senderRepo == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		h.writeResponseError(r.Context(), w, errors.New("sender repository is not configured"))
+		return
+	}
+
+	deleted, err := h.senderRepo.DeleteCollection(r.Context(), collectionID)
+	if err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+	if !deleted {
+		w.WriteHeader(http.StatusNotFound)
+		h.writeResponseError(r.Context(), w, fmt.Errorf("sender collection not found: %d", collectionID))
+		return
+	}
+
+	h.writeResponse(r.Context(), w, rest.SenderDeleteResponse{
+		Deleted: true,
+		Id:      &collectionID,
+	})
+}
+
+func (h *RestServer) SenderRequestsList(w http.ResponseWriter, r *http.Request, params rest.SenderRequestsListParams) {
+	if h.senderRepo == nil {
+		h.writeResponse(r.Context(), w, []rest.SenderRequest{})
+		return
+	}
+
+	items, err := h.senderRepo.ListRequests(r.Context(), params.CollectionId)
+	if err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+
+	result := make([]rest.SenderRequest, 0, len(items))
+	for _, item := range items {
+		result = append(result, toRestSenderRequest(item))
+	}
+	h.writeResponse(r.Context(), w, result)
+}
+
+func (h *RestServer) SenderRequestCreate(w http.ResponseWriter, r *http.Request) {
+	if h.senderRepo == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		h.writeResponseError(r.Context(), w, errors.New("sender repository is not configured"))
+		return
+	}
+
+	var req rest.SenderRequestCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.validationError(r.Context(), w, errors.Wrap(err, "invalid sender request payload"))
+		return
+	}
+	schemaSource := string(req.SchemaSource)
+	if err := validateSenderSchemaSource(schemaSource); err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+
+	item, err := h.senderRepo.CreateRequest(r.Context(), pgsender.CreateRequestParams{
+		CollectionID: req.CollectionId,
+		Name:         req.Name,
+		TargetHost:   req.TargetHost,
+		Service:      req.Service,
+		Method:       req.Method,
+		SchemaSource: schemaSource,
+		Metadata:     req.Metadata,
+		Payload:      req.Payload,
+	})
+	if err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+
+	h.writeResponse(r.Context(), w, toRestSenderRequest(item))
+}
+
+func (h *RestServer) SenderRequestUpdate(w http.ResponseWriter, r *http.Request, requestID int64) {
+	if h.senderRepo == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		h.writeResponseError(r.Context(), w, errors.New("sender repository is not configured"))
+		return
+	}
+
+	var req rest.SenderRequestUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.validationError(r.Context(), w, errors.Wrap(err, "invalid sender request update payload"))
+		return
+	}
+
+	var schemaSource *string
+	if req.SchemaSource != nil {
+		value := string(*req.SchemaSource)
+		if err := validateSenderSchemaSource(value); err != nil {
+			h.validationError(r.Context(), w, err)
+			return
+		}
+		schemaSource = &value
+	}
+
+	var metadata *map[string]string
+	if req.Metadata != nil {
+		metadata = &req.Metadata
+	}
+
+	item, err := h.senderRepo.UpdateRequest(r.Context(), requestID, pgsender.UpdateRequestParams{
+		CollectionID: req.CollectionId,
+		Name:         req.Name,
+		TargetHost:   req.TargetHost,
+		Service:      req.Service,
+		Method:       req.Method,
+		SchemaSource: schemaSource,
+		Metadata:     metadata,
+		Payload:      req.Payload,
+	})
+	if err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+	if item == nil {
+		w.WriteHeader(http.StatusNotFound)
+		h.writeResponseError(r.Context(), w, fmt.Errorf("sender request not found: %d", requestID))
+		return
+	}
+
+	h.writeResponse(r.Context(), w, toRestSenderRequest(*item))
+}
+
+func (h *RestServer) SenderRequestDelete(w http.ResponseWriter, r *http.Request, requestID int64) {
+	if h.senderRepo == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		h.writeResponseError(r.Context(), w, errors.New("sender repository is not configured"))
+		return
+	}
+
+	deleted, err := h.senderRepo.DeleteRequest(r.Context(), requestID)
+	if err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+	if !deleted {
+		w.WriteHeader(http.StatusNotFound)
+		h.writeResponseError(r.Context(), w, fmt.Errorf("sender request not found: %d", requestID))
+		return
+	}
+
+	h.writeResponse(r.Context(), w, rest.SenderDeleteResponse{
+		Deleted: true,
+		Id:      &requestID,
+	})
+}
+
+func (h *RestServer) SenderInvokeUnary(w http.ResponseWriter, r *http.Request) {
+	var req rest.SenderInvokeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.validationError(r.Context(), w, errors.Wrap(err, "invalid sender invoke payload"))
+		return
+	}
+
+	service := strings.TrimSpace(req.Service)
+	method := strings.TrimSpace(req.Method)
+	targetHost := strings.TrimSpace(req.TargetHost)
+	schemaSource := string(req.SchemaSource)
+	if service == "" || method == "" || targetHost == "" {
+		h.validationError(r.Context(), w, errors.New("service, method and targetHost are required"))
+		return
+	}
+	if err := validateSenderSchemaSource(schemaSource); err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+
+	methodDesc, fullMethod, err := h.resolveSenderMethodDescriptor(service, method, schemaSource)
+	if err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+	if methodDesc.IsStreamingClient() || methodDesc.IsStreamingServer() {
+		h.validationError(r.Context(), w, errors.New("only unary methods are supported in sender MVP"))
+		return
+	}
+
+	address, dialOptions, timeout, err := parseSenderTargetHost(targetHost)
+	if err != nil {
+		h.validationError(r.Context(), w, err)
+		return
+	}
+
+	payloadBytes, err := json.Marshal(req.Payload)
+	if err != nil {
+		h.validationError(r.Context(), w, errors.Wrap(err, "failed to encode request payload"))
+		return
+	}
+
+	in := dynamicpb.NewMessage(methodDesc.Input())
+	if err := protojson.Unmarshal(payloadBytes, in); err != nil {
+		h.validationError(r.Context(), w, errors.Wrap(err, "failed to parse payload as protobuf message"))
+		return
+	}
+
+	out := dynamicpb.NewMessage(methodDesc.Output())
+
+	callCtx := r.Context()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		callCtx, cancel = context.WithTimeout(callCtx, timeout)
+		defer cancel()
+	}
+	if len(req.Metadata) > 0 {
+		callCtx = metadata.NewOutgoingContext(callCtx, metadata.New(req.Metadata))
+	}
+
+	var (
+		header    metadata.MD
+		trailer   metadata.MD
+		invokeErr error
+		duration  time.Duration
+	)
+	candidates := senderDialCandidates(address)
+	for idx, candidate := range candidates {
+		conn, dialErr := grpc.NewClient("passthrough:///"+candidate, dialOptions...)
+		if dialErr != nil {
+			invokeErr = errors.Wrap(dialErr, "failed to connect to target host")
+			continue
+		}
+
+		startedAt := time.Now()
+		invokeErr = conn.Invoke(callCtx, fullMethod, in, out, grpc.Header(&header), grpc.Trailer(&trailer))
+		duration = time.Since(startedAt)
+		_ = conn.Close()
+		if invokeErr == nil {
+			break
+		}
+		if !isRetryableSenderInvokeError(invokeErr) || idx == len(candidates)-1 {
+			break
+		}
+	}
+
+	responsePayload := messageToMap(out)
+	if responsePayload == nil {
+		responsePayload = map[string]any{}
+	}
+
+	response := rest.SenderInvokeResponse{
+		ResponsePayload:  responsePayload,
+		ResponseMetadata: metadataToStringMap(header),
+		Trailers:         metadataToStringMap(trailer),
+		GrpcCode:         int(codes.OK),
+		DurationMs:       int(duration / time.Millisecond),
+	}
+	if invokeErr != nil {
+		st, ok := status.FromError(invokeErr)
+		if !ok {
+			code := int(codes.Unknown)
+			msg := invokeErr.Error()
+			response.GrpcCode = code
+			response.GrpcMessage = &msg
+		} else {
+			code := int(st.Code())
+			msg := st.Message()
+			response.GrpcCode = code
+			response.GrpcMessage = &msg
+		}
+	}
+
+	h.writeResponse(r.Context(), w, response)
+}
+
 func (h *RestServer) SnifferRouteSource(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Service  string  `json:"service"`
@@ -914,6 +1270,204 @@ func normalizeReflectionHostRequest(host string, source string) (string, string,
 	}
 
 	return parsed.ReflectAddress, source, nil
+}
+
+func toRestSenderCollection(item senderdom.Collection) rest.SenderCollection {
+	return rest.SenderCollection{
+		Id:          item.ID,
+		Name:        item.Name,
+		Description: nilIfEmpty(item.Description),
+		CreatedAt:   &item.CreatedAt,
+		UpdatedAt:   &item.UpdatedAt,
+	}
+}
+
+func toRestSenderRequest(item senderdom.Request) rest.SenderRequest {
+	schemaSource := rest.SenderRequestSchemaSource(item.SchemaSource)
+	return rest.SenderRequest{
+		Id:           item.ID,
+		CollectionId: item.CollectionID,
+		Name:         item.Name,
+		TargetHost:   item.TargetHost,
+		Service:      item.Service,
+		Method:       item.Method,
+		SchemaSource: schemaSource,
+		Metadata:     item.Metadata,
+		Payload:      item.Payload,
+		CreatedAt:    &item.CreatedAt,
+		UpdatedAt:    &item.UpdatedAt,
+	}
+}
+
+func validateSenderSchemaSource(schemaSource string) error {
+	switch strings.TrimSpace(schemaSource) {
+	case senderdom.SchemaSourceProto, senderdom.SchemaSourceReflection:
+		return nil
+	default:
+		return errors.New("schema source must be proto or reflection")
+	}
+}
+
+func metadataToStringMap(values metadata.MD) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	result := make(map[string]string, len(values))
+	for key, list := range values {
+		if len(list) == 0 {
+			continue
+		}
+		result[key] = strings.Join(list, ",")
+	}
+	if len(result) == 0 {
+		return nil
+	}
+
+	return result
+}
+
+func parseSenderTargetHost(raw string) (string, []grpc.DialOption, time.Duration, error) {
+	normalized := strings.TrimSpace(raw)
+	if normalized == "" {
+		return "", nil, 0, errors.New("target host is required")
+	}
+	if strings.HasPrefix(normalized, ":") {
+		normalized = "127.0.0.1" + normalized
+	}
+	if !strings.Contains(normalized, "://") {
+		normalized = "grpc://" + normalized
+	}
+	normalized = strings.Replace(normalized, "://localhost:", "://127.0.0.1:", 1)
+	normalized = strings.Replace(normalized, "://:", "://127.0.0.1:", 1)
+
+	source, err := protosetdom.ParseSource(normalized)
+	if err != nil {
+		return "", nil, 0, errors.Wrap(err, "invalid target host")
+	}
+	if source.Type != protosetdom.SourceReflect {
+		return "", nil, 0, errors.New("target host must use grpc:// or grpcs://")
+	}
+
+	timeout := source.ReflectTimeout
+	options := grpcclient.DialOptions(
+		source.ReflectTimeout,
+		source.ReflectTLS,
+		source.ReflectServerName,
+		source.ReflectBearer,
+		source.ReflectInsecure,
+	)
+
+	return source.ReflectAddress, options, timeout, nil
+}
+
+func senderDialCandidates(address string) []string {
+	candidates := []string{address}
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return candidates
+	}
+
+	normalizedHost := strings.Trim(strings.TrimSpace(host), "[]")
+	if normalizedHost == "127.0.0.1" || normalizedHost == "::1" || strings.EqualFold(normalizedHost, "localhost") {
+		fallback := net.JoinHostPort("host.docker.internal", port)
+		if fallback != address {
+			candidates = append(candidates, fallback)
+		}
+	}
+
+	return candidates
+}
+
+func isRetryableSenderInvokeError(err error) bool {
+	if status.Code(err) != codes.Unavailable {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+
+	return strings.Contains(message, "connection refused") || strings.Contains(message, "no such host")
+}
+
+func (h *RestServer) resolveSenderMethodDescriptor(
+	serviceID string,
+	methodID string,
+	schemaSource string,
+) (protoreflect.MethodDescriptor, string, error) { //nolint:ireturn
+	serviceID = strings.TrimSpace(serviceID)
+	methodID = strings.TrimSpace(methodID)
+
+	resolveFromService := func(service protoreflect.ServiceDescriptor) (protoreflect.MethodDescriptor, string, bool) {
+		methods := service.Methods()
+		for i := range methods.Len() {
+			method := methods.Get(i)
+			fullMethodID := string(service.FullName()) + "/" + string(method.Name())
+			if string(method.Name()) == methodID || fullMethodID == methodID {
+				fullMethod := "/" + string(service.FullName()) + "/" + string(method.Name())
+				return method, fullMethod, true
+			}
+		}
+
+		return nil, "", false
+	}
+
+	switch schemaSource {
+	case senderdom.SchemaSourceProto:
+		service, ok := h.findServiceFromRegistry(serviceID, true)
+		if !ok {
+			return nil, "", fmt.Errorf("%w: %s", errServiceNotFound, serviceID)
+		}
+		method, fullMethod, ok := resolveFromService(service)
+		if !ok {
+			return nil, "", fmt.Errorf("%w: %s/%s", errMethodNotFound, serviceID, methodID)
+		}
+		return method, fullMethod, nil
+	case senderdom.SchemaSourceReflection:
+		service, ok := h.findServiceFromRegistry(serviceID, false)
+		if !ok {
+			return nil, "", fmt.Errorf("%w: %s", errServiceNotFound, serviceID)
+		}
+		method, fullMethod, ok := resolveFromService(service)
+		if !ok {
+			return nil, "", fmt.Errorf("%w: %s/%s", errMethodNotFound, serviceID, methodID)
+		}
+		return method, fullMethod, nil
+	default:
+		return nil, "", errors.New("schema source must be proto or reflection")
+	}
+}
+
+func (h *RestServer) findServiceFromRegistry(serviceID string, globalOnly bool) (protoreflect.ServiceDescriptor, bool) { //nolint:ireturn
+	var found protoreflect.ServiceDescriptor
+	collect := func(file protoreflect.FileDescriptor) bool {
+		services := file.Services()
+		for i := range services.Len() {
+			service := services.Get(i)
+			if string(service.FullName()) == serviceID {
+				found = service
+				return false
+			}
+		}
+		return true
+	}
+
+	protoregistry.GlobalFiles.RangeFiles(func(file protoreflect.FileDescriptor) bool {
+		return collect(file)
+	})
+	if found != nil {
+		return found, true
+	}
+	if globalOnly {
+		return nil, false
+	}
+
+	h.restDescriptors.RangeFiles(func(file protoreflect.FileDescriptor) bool {
+		return collect(file)
+	})
+	if found == nil {
+		return nil, false
+	}
+
+	return found, true
 }
 
 func clientRoutingKey(peerID string, userAgent string) string {
@@ -2668,7 +3222,7 @@ func (h *RestServer) historyCallRecordToRest(c history.CallRecord) rest.CallReco
 		r.Transport = &transport
 	}
 	if c.Source != "" {
-		source := c.Source
+		source := rest.CallRecordSource(c.Source)
 		r.Source = &source
 	}
 	if c.Client != "" {

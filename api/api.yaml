@@ -30,6 +30,8 @@ tags:
     description: Verify call count expectations
   - name: descriptors
     description: Protocol Buffer descriptors (FileDescriptorSet)
+  - name: sender
+    description: gRPC sender collections and unary invoke
 paths:
   # healthcheck
   /health/liveness:
@@ -686,6 +688,238 @@ paths:
           description: Invalid reflection source or reflection fetch failure
         '500':
           description: Internal Server Error
+  /sender/invoke:
+    post:
+      tags:
+        - sender
+      summary: Invoke unary gRPC request
+      description: Executes one unary gRPC call against target host.
+      operationId: senderInvokeUnary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SenderInvokeRequest'
+      responses:
+        '200':
+          description: Unary invoke result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderInvokeResponse'
+        '400':
+          description: Invalid invoke request
+        '500':
+          description: Internal Server Error
+  /sender/collections:
+    get:
+      tags:
+        - sender
+      summary: List sender collections
+      description: Returns persisted collections for saved sender requests.
+      operationId: senderCollectionsList
+      responses:
+        '200':
+          description: Collection list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SenderCollection'
+        '500':
+          description: Internal Server Error
+    post:
+      tags:
+        - sender
+      summary: Create sender collection
+      description: Creates a new collection for saved sender requests.
+      operationId: senderCollectionCreate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SenderCollectionCreateRequest'
+      responses:
+        '200':
+          description: Created collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderCollection'
+        '400':
+          description: Invalid collection payload
+        '500':
+          description: Internal Server Error
+  /sender/collections/{collectionID}:
+    patch:
+      tags:
+        - sender
+      summary: Update sender collection
+      description: Updates editable sender collection fields.
+      operationId: senderCollectionUpdate
+      parameters:
+        - name: collectionID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SenderCollectionUpdateRequest'
+      responses:
+        '200':
+          description: Updated collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderCollection'
+        '400':
+          description: Invalid update payload
+        '404':
+          description: Collection not found
+        '500':
+          description: Internal Server Error
+    delete:
+      tags:
+        - sender
+      summary: Delete sender collection
+      description: Deletes collection and all nested saved requests.
+      operationId: senderCollectionDelete
+      parameters:
+        - name: collectionID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: Collection removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderDeleteResponse'
+        '404':
+          description: Collection not found
+        '500':
+          description: Internal Server Error
+  /sender/requests:
+    get:
+      tags:
+        - sender
+      summary: List sender saved requests
+      description: Returns saved sender requests. Supports filtering by collection id.
+      operationId: senderRequestsList
+      parameters:
+        - name: collectionId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: Saved requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SenderRequest'
+        '500':
+          description: Internal Server Error
+    post:
+      tags:
+        - sender
+      summary: Create sender request
+      description: Creates a new saved request in collection.
+      operationId: senderRequestCreate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SenderRequestCreateRequest'
+      responses:
+        '200':
+          description: Created saved request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderRequest'
+        '400':
+          description: Invalid request payload
+        '500':
+          description: Internal Server Error
+  /sender/requests/{requestID}:
+    patch:
+      tags:
+        - sender
+      summary: Update sender request
+      description: Updates editable saved request fields.
+      operationId: senderRequestUpdate
+      parameters:
+        - name: requestID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SenderRequestUpdateRequest'
+      responses:
+        '200':
+          description: Updated saved request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderRequest'
+        '400':
+          description: Invalid update payload
+        '404':
+          description: Saved request not found
+        '500':
+          description: Internal Server Error
+    delete:
+      tags:
+        - sender
+      summary: Delete sender request
+      description: Deletes one saved request.
+      operationId: senderRequestDelete
+      parameters:
+        - name: requestID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: Saved request removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderDeleteResponse'
+        '404':
+          description: Saved request not found
+        '500':
+          description: Internal Server Error
 
 components:
   schemas:
@@ -740,6 +974,210 @@ components:
           items:
             type: string
           description: Service IDs added via POST /descriptors
+    SenderCollection:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: integer
+          format: int64
+          minimum: 1
+        name:
+          type: string
+        description:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SenderCollectionCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+    SenderCollectionUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+    SenderRequest:
+      type: object
+      required:
+        - id
+        - collectionId
+        - name
+        - targetHost
+        - service
+        - method
+        - schemaSource
+        - payload
+      properties:
+        id:
+          type: integer
+          format: int64
+          minimum: 1
+        collectionId:
+          type: integer
+          format: int64
+          minimum: 1
+        name:
+          type: string
+        targetHost:
+          type: string
+        service:
+          type: string
+        method:
+          type: string
+        schemaSource:
+          type: string
+          enum: [proto, reflection]
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          x-go-type-skip-optional-pointer: true
+        payload:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SenderRequestCreateRequest:
+      type: object
+      required:
+        - collectionId
+        - name
+        - targetHost
+        - service
+        - method
+        - schemaSource
+        - payload
+      properties:
+        collectionId:
+          type: integer
+          format: int64
+          minimum: 1
+        name:
+          type: string
+        targetHost:
+          type: string
+        service:
+          type: string
+        method:
+          type: string
+        schemaSource:
+          type: string
+          enum: [proto, reflection]
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          x-go-type-skip-optional-pointer: true
+        payload:
+          type: object
+          additionalProperties: true
+    SenderRequestUpdateRequest:
+      type: object
+      properties:
+        collectionId:
+          type: integer
+          format: int64
+          minimum: 1
+        name:
+          type: string
+        targetHost:
+          type: string
+        service:
+          type: string
+        method:
+          type: string
+        schemaSource:
+          type: string
+          enum: [proto, reflection]
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          x-go-type-skip-optional-pointer: true
+        payload:
+          type: object
+          additionalProperties: true
+    SenderInvokeRequest:
+      type: object
+      required:
+        - targetHost
+        - service
+        - method
+        - schemaSource
+        - payload
+      properties:
+        targetHost:
+          type: string
+        service:
+          type: string
+        method:
+          type: string
+        schemaSource:
+          type: string
+          enum: [proto, reflection]
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          x-go-type-skip-optional-pointer: true
+        payload:
+          type: object
+          additionalProperties: true
+    SenderInvokeResponse:
+      type: object
+      required:
+        - responsePayload
+        - grpcCode
+        - durationMs
+      properties:
+        responsePayload:
+          type: object
+          additionalProperties: true
+        responseMetadata:
+          type: object
+          additionalProperties:
+            type: string
+          x-go-type-skip-optional-pointer: true
+        trailers:
+          type: object
+          additionalProperties:
+            type: string
+          x-go-type-skip-optional-pointer: true
+        grpcCode:
+          type: integer
+        grpcMessage:
+          type: string
+        durationMs:
+          type: integer
+    SenderDeleteResponse:
+      type: object
+      required:
+        - deleted
+      properties:
+        deleted:
+          type: boolean
+        id:
+          type: integer
+          format: int64
+          minimum: 1
     # services
     Service:
       type: object

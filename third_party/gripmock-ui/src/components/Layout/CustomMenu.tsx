@@ -3,6 +3,7 @@ import StorageIcon from "@mui/icons-material/Storage";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import DevicesIcon from "@mui/icons-material/Devices";
+import SendRoundedIcon from "@mui/icons-material/SendRounded";
 
 export const CustomMenu = () => {
   const [sidebarOpen] = useSidebarState();
@@ -36,6 +37,7 @@ export const CustomMenu = () => {
     >
       <Menu.Item to="/sniffer" primaryText="Sniffer" leftIcon={<TravelExploreIcon />} />
       <Menu.Item to="/stubs" primaryText="Stubs" leftIcon={<StorageIcon />} />
+      <Menu.Item to="/sender" primaryText="Sender" leftIcon={<SendRoundedIcon />} />
       <Menu.Item to="/protofiles" primaryText="Protofiles" leftIcon={<DescriptionOutlinedIcon />} />
       <Menu.Item to="/clients" primaryText="Clients" leftIcon={<DevicesIcon />} />
     </Menu>

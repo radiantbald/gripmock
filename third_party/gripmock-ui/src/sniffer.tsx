@@ -2078,6 +2078,7 @@ export const SnifferPage = () => {
   const selectedService = String(selected?.service || "").trim();
   const selectedMethod = String(selected?.method || "").trim();
   const selectedCode = selected?.code;
+  const selectedErrorText = String(selected?.error || "").trim();
   const selectedServedBy = selected ? getServedBy(selected) : "stub";
   const selectedRouteKey = buildSnifferRouteKey(
     selectedRoom,
@@ -5648,6 +5649,11 @@ export const SnifferPage = () => {
                   ref={responseSearchContainerRef}
                   sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.25 }}
                 >
+                  {selectedErrorText ? (
+                    <Alert severity="error" variant="outlined" sx={{ mb: 1 }}>
+                      {selectedErrorText}
+                    </Alert>
+                  ) : null}
                   {isSingleResponseView ? (
                     <Box component="pre" sx={jsonTextSx}>
                       {singleResponseEntry

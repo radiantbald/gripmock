@@ -14,6 +14,7 @@ import (
 	pgprotometadata "github.com/radiantbald/gripmock/v3/internal/infra/postgres/protometadata"
 	pgreflectionhosts "github.com/radiantbald/gripmock/v3/internal/infra/postgres/reflectionhosts"
 	pgrooms "github.com/radiantbald/gripmock/v3/internal/infra/postgres/rooms"
+	pgsender "github.com/radiantbald/gripmock/v3/internal/infra/postgres/sender"
 	pgstubs "github.com/radiantbald/gripmock/v3/internal/infra/postgres/stubs"
 	pgusers "github.com/radiantbald/gripmock/v3/internal/infra/postgres/users"
 	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
@@ -124,6 +125,21 @@ func (b *Builder) ReflectionHostsRepository(ctx context.Context) (*pgreflectionh
 	})
 
 	return b.reflectionHostsRepository, b.reflectionHostsRepositoryErr
+}
+
+func (b *Builder) SenderRepository(ctx context.Context) (*pgsender.Repository, error) {
+	b.senderRepositoryOnce.Do(func() {
+		pool, err := b.initPostgresPool(ctx)
+		if err != nil {
+			b.senderRepositoryErr = err
+
+			return
+		}
+
+		b.senderRepository = pgsender.NewRepository(pool)
+	})
+
+	return b.senderRepository, b.senderRepositoryErr
 }
 
 func (b *Builder) initPostgresPool(ctx context.Context) (*pgxpool.Pool, error) {

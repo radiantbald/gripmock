@@ -18,6 +18,7 @@ const resolveSectionTitle = (pathname: string): string => {
   if (pathname.startsWith("/history")) return "History";
   if (pathname.startsWith("/sniffer")) return "Sniffer";
   if (pathname.startsWith("/clients")) return "Clients";
+  if (pathname.startsWith("/sender")) return "Sender";
   if (pathname.startsWith("/room")) return "";
   if (pathname.startsWith("/verify")) return "Verify";
   if (pathname.startsWith("/inspect")) return "Inspector";
