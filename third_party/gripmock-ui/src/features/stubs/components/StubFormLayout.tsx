@@ -675,7 +675,13 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
                     optionText="name"
                     optionValue="id"
                     emptyText={false}
-                    parse={(value) => Number(value)}
+                    parse={(value) => {
+                      const nextCode = Number(value);
+                      if (nextCode === 0) {
+                        setValue("output.error", "", { shouldDirty: true });
+                      }
+                      return nextCode;
+                    }}
                     format={(value) => String(value ?? 0)}
                     helperText={false}
                     fullWidth

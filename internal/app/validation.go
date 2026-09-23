@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/go-playground/validator/v10"
+	"google.golang.org/grpc/codes"
 
 	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
 )
@@ -62,10 +63,19 @@ func validateOutputConfiguration(fl validator.FieldLevel) bool {
 		return false
 	}
 
-	hasDataOutput := v.Output.Error != "" || v.Output.Data != nil || v.Output.Code != nil || len(v.Output.Details) > 0
-	hasStreamOutput := len(v.Output.Stream) > 0
+	hasData := v.Output.Data != nil
+	hasStream := len(v.Output.Stream) > 0
+	hasError := v.Output.Error != "" || hasNonZeroOutputCode(v.Output.Code) || len(v.Output.Details) > 0
 
-	return hasDataOutput != hasStreamOutput
+	if hasData && hasStream {
+		return false
+	}
+
+	return hasData || hasStream || hasError
+}
+
+func hasNonZeroOutputCode(code *codes.Code) bool {
+	return code != nil && *code != codes.OK
 }
 
 func validateEffectsConfiguration(fl validator.FieldLevel) bool {
