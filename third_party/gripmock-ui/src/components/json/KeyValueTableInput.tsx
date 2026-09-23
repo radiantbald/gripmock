@@ -1,13 +1,11 @@
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import OpenInFullRoundedIcon from "@mui/icons-material/OpenInFullRounded";
-import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import {
   Box,
   Button,
   FormHelperText,
   IconButton,
   InputBase,
-  Modal,
   Stack,
   Table,
   TableBody,
@@ -17,6 +15,8 @@ import {
 } from "@mui/material";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { InputProps, useInput } from "react-admin";
+
+import { FloatingEditorModal } from "./FloatingEditorModal";
 
 type KeyValueTableInputProps = {
   source: string;
@@ -73,7 +73,8 @@ const valueFromRows = (rows: KeyValueRow[]) => {
 };
 
 const normalizedJson = (value: unknown) => JSON.stringify(value ?? {});
-const canonicalObjectValue = (value: unknown) => valueFromRows(rowsFromValue(value));
+const canonicalObjectValue = (value: unknown) =>
+  valueFromRows(rowsFromValue(value));
 
 const normalizeKey = (key: string) => key.trim().toLowerCase();
 
@@ -96,7 +97,10 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
   } = useInput(props);
 
   const canonicalValue = useMemo(() => canonicalObjectValue(value), [value]);
-  const serializedCanonicalValue = useMemo(() => normalizedJson(canonicalValue), [canonicalValue]);
+  const serializedCanonicalValue = useMemo(
+    () => normalizedJson(canonicalValue),
+    [canonicalValue],
+  );
   const initialRows = useMemo(() => rowsFromValue(value), [value]);
   const [rows, setRows] = useState<KeyValueRow[]>(initialRows);
   const lastSeenFormValueRef = useRef(serializedCanonicalValue);
@@ -139,7 +143,11 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
     onChange(valueFromRows(nextRows));
   };
 
-  const updateRow = (id: number, field: "key" | "value", fieldValue: string) => {
+  const updateRow = (
+    id: number,
+    field: "key" | "value",
+    fieldValue: string,
+  ) => {
     const nextRows = rows.map((row) =>
       row.id === id ? { ...row, [field]: fieldValue } : row,
     );
@@ -148,21 +156,32 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
   };
 
   const addRow = () => {
-    const nextId = rows.length > 0 ? Math.max(...rows.map((row) => row.id)) + 1 : 1;
+    const nextId =
+      rows.length > 0 ? Math.max(...rows.map((row) => row.id)) + 1 : 1;
     commitRows([...rows, { id: nextId, key: "", value: "" }]);
   };
 
   const removeRow = (id: number) => {
     const filteredRows = rows.filter((row) => row.id !== id);
-    commitRows(filteredRows.length > 0 ? filteredRows : [{ id: 1, key: "", value: "" }]);
+    commitRows(
+      filteredRows.length > 0 ? filteredRows : [{ id: 1, key: "", value: "" }],
+    );
   };
 
-  const isDuplicateRowKey = (key: string) => duplicateKeySet.has(normalizeKey(key));
+  const isDuplicateRowKey = (key: string) =>
+    duplicateKeySet.has(normalizeKey(key));
 
   return (
     <div>
       {!hideLabel ? (
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            mb: 0.5,
+          }}
+        >
           <Box sx={{ fontSize: 14, color: "text.secondary" }}>
             {label || source}
             {isRequired ? " *" : ""}
@@ -227,12 +246,22 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
               <TableHead>
                 <TableRow>
                   <TableCell
-                    sx={{ width: "35%", fontSize: 11, textTransform: "uppercase", color: "text.secondary" }}
+                    sx={{
+                      width: "35%",
+                      fontSize: 11,
+                      textTransform: "uppercase",
+                      color: "text.secondary",
+                    }}
                   >
                     Key
                   </TableCell>
                   <TableCell
-                    sx={{ width: "50%", fontSize: 11, textTransform: "uppercase", color: "text.secondary" }}
+                    sx={{
+                      width: "50%",
+                      fontSize: 11,
+                      textTransform: "uppercase",
+                      color: "text.secondary",
+                    }}
                   >
                     Value
                   </TableCell>
@@ -267,7 +296,9 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
                         sx={{
                           fontSize: 13,
                           lineHeight: 1.2,
-                          color: isDuplicateRowKey(row.key) ? "error.main" : "inherit",
+                          color: isDuplicateRowKey(row.key)
+                            ? "error.main"
+                            : "inherit",
                           "& input": { py: 0.5 },
                         }}
                       />
@@ -316,7 +347,13 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
               variant="text"
               type="button"
               onClick={addRow}
-              sx={{ minWidth: 0, px: 0.5, fontSize: 18, lineHeight: 1, color: "text.secondary" }}
+              sx={{
+                minWidth: 0,
+                px: 0.5,
+                fontSize: 18,
+                lineHeight: 1,
+                color: "text.secondary",
+              }}
             >
               +
             </Button>
@@ -331,162 +368,152 @@ export const KeyValueTableInput = (props: KeyValueTableInputProps) => {
           Duplicate keys detected. Header keys must be unique.
         </FormHelperText>
       ) : null}
-      <Modal
+      <FloatingEditorModal
         open={expanded}
         onClose={() => {
           setExpanded(false);
         }}
+        onCloseClick={() => {
+          setExpanded(false);
+        }}
+        closeAriaLabel="Close table"
+        title={
+          <Box sx={{ fontSize: 14, color: "text.secondary" }}>
+            {label || source}
+          </Box>
+        }
       >
         <Box
           sx={{
-            position: "fixed",
-            top: 20,
-            right: 20,
-            width: { xs: "calc(100vw - 24px)", md: "max(33vw, 400px)" },
-            height: "calc(100dvh - 40px)",
-            bgcolor: "background.paper",
-            border: "1px solid",
-            borderColor: "divider",
-            borderRadius: 1.5,
-            p: 1.5,
+            flex: 1,
+            minHeight: 0,
             display: "flex",
             flexDirection: "column",
-            overflow: "hidden",
           }}
         >
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-            <Box sx={{ fontSize: 14, color: "text.secondary" }}>{label || source}</Box>
-            <IconButton
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: "auto",
+              overflowX: "hidden",
+              pr: 0.25,
+            }}
+          >
+            <Table
               size="small"
-              aria-label="Close table"
-              onClick={() => {
-                setExpanded(false);
-              }}
               sx={{
-                m: 0,
-                p: 0,
-                width: 14,
-                height: 14,
-                borderRadius: 0,
-                bgcolor: "transparent",
-                color: "text.secondary",
-                transition: "color 0.15s ease",
-                "&:hover": {
-                  color: "primary.main",
-                  bgcolor: "transparent",
+                tableLayout: "fixed",
+                borderCollapse: "collapse",
+                "& .MuiTableCell-root": {
+                  borderBottom: "1px solid rgba(255,255,255,0.08)",
+                  px: 1,
+                  py: 0.5,
                 },
               }}
             >
-              <CloseRoundedIcon sx={{ fontSize: 12, display: "block" }} />
-            </IconButton>
+              <TableHead>
+                <TableRow>
+                  <TableCell
+                    sx={{
+                      width: "35%",
+                      fontSize: 11,
+                      textTransform: "uppercase",
+                      color: "text.secondary",
+                    }}
+                  >
+                    Key
+                  </TableCell>
+                  <TableCell
+                    sx={{
+                      width: "50%",
+                      fontSize: 11,
+                      textTransform: "uppercase",
+                      color: "text.secondary",
+                    }}
+                  >
+                    Value
+                  </TableCell>
+                  <TableCell sx={{ width: "15%" }} />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={row.id} hover>
+                    <TableCell>
+                      <InputBase
+                        fullWidth
+                        placeholder={keyPlaceholder}
+                        value={row.key}
+                        onChange={(event) => {
+                          updateRow(row.id, "key", event.target.value);
+                        }}
+                        sx={{
+                          fontSize: 13,
+                          lineHeight: 1.2,
+                          color: isDuplicateRowKey(row.key)
+                            ? "error.main"
+                            : "inherit",
+                          "& input": { py: 0.5 },
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <InputBase
+                        fullWidth
+                        placeholder={valuePlaceholder}
+                        value={row.value}
+                        onChange={(event) => {
+                          updateRow(row.id, "value", event.target.value);
+                        }}
+                        sx={{
+                          fontSize: 13,
+                          lineHeight: 1.2,
+                          "& input": { py: 0.5 },
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ textAlign: "center" }}>
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          removeRow(row.id);
+                        }}
+                        aria-label="Remove row"
+                        sx={{
+                          color: "text.secondary",
+                          "&:hover": {
+                            color: "error.main",
+                            bgcolor: "transparent",
+                          },
+                        }}
+                      >
+                        <DeleteOutlineRoundedIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </Box>
-          <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-            <Box
+          <Box>
+            <Button
+              variant="text"
+              type="button"
+              onClick={addRow}
               sx={{
-                flex: 1,
-                minHeight: 0,
-                overflowY: "auto",
-                overflowX: "hidden",
-                pr: 0.25,
+                minWidth: 0,
+                px: 0.5,
+                fontSize: 18,
+                lineHeight: 1,
+                color: "text.secondary",
               }}
             >
-              <Table
-                size="small"
-                sx={{
-                  tableLayout: "fixed",
-                  borderCollapse: "collapse",
-                  "& .MuiTableCell-root": {
-                    borderBottom: "1px solid rgba(255,255,255,0.08)",
-                    px: 1,
-                    py: 0.5,
-                  },
-                }}
-              >
-                <TableHead>
-                  <TableRow>
-                    <TableCell
-                      sx={{ width: "35%", fontSize: 11, textTransform: "uppercase", color: "text.secondary" }}
-                    >
-                      Key
-                    </TableCell>
-                    <TableCell
-                      sx={{ width: "50%", fontSize: 11, textTransform: "uppercase", color: "text.secondary" }}
-                    >
-                      Value
-                    </TableCell>
-                    <TableCell sx={{ width: "15%" }} />
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {rows.map((row) => (
-                    <TableRow key={row.id} hover>
-                      <TableCell>
-                        <InputBase
-                          fullWidth
-                          placeholder={keyPlaceholder}
-                          value={row.key}
-                          onChange={(event) => {
-                            updateRow(row.id, "key", event.target.value);
-                          }}
-                          sx={{
-                            fontSize: 13,
-                            lineHeight: 1.2,
-                            color: isDuplicateRowKey(row.key) ? "error.main" : "inherit",
-                            "& input": { py: 0.5 },
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <InputBase
-                          fullWidth
-                          placeholder={valuePlaceholder}
-                          value={row.value}
-                          onChange={(event) => {
-                            updateRow(row.id, "value", event.target.value);
-                          }}
-                          sx={{
-                            fontSize: 13,
-                            lineHeight: 1.2,
-                            "& input": { py: 0.5 },
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell sx={{ textAlign: "center" }}>
-                        <IconButton
-                          size="small"
-                          onClick={() => {
-                            removeRow(row.id);
-                          }}
-                          aria-label="Remove row"
-                          sx={{
-                            color: "text.secondary",
-                            "&:hover": {
-                              color: "error.main",
-                              bgcolor: "transparent",
-                            },
-                          }}
-                        >
-                          <DeleteOutlineRoundedIcon fontSize="small" />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Box>
-            <Box>
-              <Button
-                variant="text"
-                type="button"
-                onClick={addRow}
-                sx={{ minWidth: 0, px: 0.5, fontSize: 18, lineHeight: 1, color: "text.secondary" }}
-              >
-                +
-              </Button>
-            </Box>
+              +
+            </Button>
           </Box>
         </Box>
-      </Modal>
+      </FloatingEditorModal>
     </div>
   );
 };

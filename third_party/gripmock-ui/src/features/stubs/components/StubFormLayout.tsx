@@ -1,14 +1,11 @@
 import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
-import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import {
   Alert,
   Box,
   Button,
   FormControl,
-  IconButton,
   MenuItem,
-  Modal,
   Select,
   TextField,
   Tooltip,
@@ -18,6 +15,7 @@ import { SelectInput, TextInput } from "react-admin";
 import { useEffect, useMemo, useState } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { reflectionHostInputSx } from "../../../components/inputs/reflectionHostInputSx";
+import { FloatingEditorModal } from "../../../components/json/FloatingEditorModal";
 import { JsonTextAreaInput } from "../../../components/json/JsonTextAreaInput";
 import { KeyValueTableInput } from "../../../components/json/KeyValueTableInput";
 import { StubMatcherInput } from "../../../components/json/StubMatcherInput";
@@ -140,15 +138,23 @@ const responseMetaInputSx = {
   "& input[type=number]": {
     MozAppearance: "textfield",
   },
-  "& input[type=number]::-webkit-outer-spin-button, & input[type=number]::-webkit-inner-spin-button": {
-    WebkitAppearance: "none",
-    margin: 0,
-  },
+  "& input[type=number]::-webkit-outer-spin-button, & input[type=number]::-webkit-inner-spin-button":
+    {
+      WebkitAppearance: "none",
+      margin: 0,
+    },
 } as const;
 
 const MATCHER_ANY_OF_MODE_KEY = "__anyOfEnabled";
 const MATCHER_SCALAR_KEYS = ["equals", "contains"] as const;
-const MATCHER_KEYS = new Set(["equals", "contains", "matches", "glob", "anyOf", "ignoreArrayOrder"]);
+const MATCHER_KEYS = new Set([
+  "equals",
+  "contains",
+  "matches",
+  "glob",
+  "anyOf",
+  "ignoreArrayOrder",
+]);
 
 const isRecordValue = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -203,7 +209,8 @@ const serializeMatcherForPreview = (value: unknown): unknown => {
   return stripped;
 };
 
-const isEmptyObject = (value: unknown): boolean => isRecordValue(value) && Object.keys(value).length === 0;
+const isEmptyObject = (value: unknown): boolean =>
+  isRecordValue(value) && Object.keys(value).length === 0;
 
 const formatPreviewJson = (value: unknown): string => {
   try {
@@ -214,7 +221,8 @@ const formatPreviewJson = (value: unknown): string => {
 };
 
 const isMatcherObject = (value: unknown): value is Record<string, unknown> =>
-  isRecordValue(value) && Object.keys(value).some((key) => MATCHER_KEYS.has(key));
+  isRecordValue(value) &&
+  Object.keys(value).some((key) => MATCHER_KEYS.has(key));
 
 const normalizeInputMatcher = (value: unknown): unknown => {
   if (Array.isArray(value)) {
@@ -251,7 +259,9 @@ const normalizeMatcherForFields = (value: unknown): Record<string, unknown> => {
       continue;
     }
     normalized[key] = {
-      ...(isRecordValue(normalized[key]) ? (normalized[key] as Record<string, unknown>) : {}),
+      ...(isRecordValue(normalized[key])
+        ? (normalized[key] as Record<string, unknown>)
+        : {}),
       ...section,
     };
   }
@@ -270,7 +280,9 @@ const normalizeMatcherForFields = (value: unknown): Record<string, unknown> => {
           continue;
         }
         normalized[key] = {
-          ...(isRecordValue(normalized[key]) ? (normalized[key] as Record<string, unknown>) : {}),
+          ...(isRecordValue(normalized[key])
+            ? (normalized[key] as Record<string, unknown>)
+            : {}),
           ...section,
         };
       }
@@ -278,7 +290,11 @@ const normalizeMatcherForFields = (value: unknown): Record<string, unknown> => {
   }
 
   for (const [key, rawValue] of Object.entries(value)) {
-    if (!MATCHER_KEYS.has(key) && rawValue !== undefined && key !== MATCHER_ANY_OF_MODE_KEY) {
+    if (
+      !MATCHER_KEYS.has(key) &&
+      rawValue !== undefined &&
+      key !== MATCHER_ANY_OF_MODE_KEY
+    ) {
       normalized[key] = rawValue;
     }
   }
@@ -292,7 +308,9 @@ const normalizeMatcherForFields = (value: unknown): Record<string, unknown> => {
   return normalized;
 };
 
-const normalizeHeadersForFields = (value: unknown): Record<string, unknown> | undefined => {
+const normalizeHeadersForFields = (
+  value: unknown,
+): Record<string, unknown> | undefined => {
   if (!isRecordValue(value) || isEmptyObject(value)) {
     return undefined;
   }
@@ -338,7 +356,10 @@ export const stubFormSx = {
   },
 } as const;
 
-export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) => {
+export const StubFormLayout = ({
+  mode,
+  showId = false,
+}: StubFormLayoutProps) => {
   const { setValue } = useFormContext();
   const stubIdValue = useWatch({ name: "id" });
   const matcherHeaders = useWatch({ name: "headers" });
@@ -348,13 +369,19 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
   const outputData = useWatch({ name: "output.data" });
   const outputStream = useWatch({ name: "output.stream" });
   const outputCode = useWatch({ name: "output.code" });
-  const [outputPayloadType, setOutputPayloadType] = useState<OutputPayloadType>("data");
+  const [outputPayloadType, setOutputPayloadType] =
+    useState<OutputPayloadType>("data");
   const [outputTypeInitialized, setOutputTypeInitialized] = useState(false);
-  const [rawPreviewTarget, setRawPreviewTarget] = useState<RawPreviewTarget>(null);
+  const [rawPreviewTarget, setRawPreviewTarget] =
+    useState<RawPreviewTarget>(null);
   const [rawEditorText, setRawEditorText] = useState("");
   const [rawEditorError, setRawEditorError] = useState<string | null>(null);
-  const parsedOutputCode = typeof outputCode === "string" ? Number(outputCode.trim() || "0") : Number(outputCode);
-  const hasNonZeroStatusCode = Number.isFinite(parsedOutputCode) && parsedOutputCode !== 0;
+  const parsedOutputCode =
+    typeof outputCode === "string"
+      ? Number(outputCode.trim() || "0")
+      : Number(outputCode);
+  const hasNonZeroStatusCode =
+    Number.isFinite(parsedOutputCode) && parsedOutputCode !== 0;
 
   const matcherPreviewPayload = useMemo(() => {
     const payload: Record<string, unknown> = {};
@@ -367,7 +394,10 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
     const normalizedInputs = serializeMatcherForPreview(matcherInputs);
     if (Array.isArray(normalizedInputs) && normalizedInputs.length > 0) {
       payload.inputs = normalizedInputs;
-    } else if (isRecordValue(normalizedInput) && !isEmptyObject(normalizedInput)) {
+    } else if (
+      isRecordValue(normalizedInput) &&
+      !isEmptyObject(normalizedInput)
+    ) {
       payload.input = normalizedInput;
     }
 
@@ -382,15 +412,26 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
     return {};
   }, [outputValue]);
 
-  const previewTitle = rawPreviewTarget === "matcher" ? "Request Match Raw JSON" : "Response Stub Raw JSON";
-  const previewText = formatPreviewJson(rawPreviewTarget === "matcher" ? matcherPreviewPayload : responsePreviewPayload);
+  const previewTitle =
+    rawPreviewTarget === "matcher"
+      ? "Request Match Raw JSON"
+      : "Response Stub Raw JSON";
+  const previewText = formatPreviewJson(
+    rawPreviewTarget === "matcher"
+      ? matcherPreviewPayload
+      : responsePreviewPayload,
+  );
 
   useEffect(() => {
     if (outputTypeInitialized) {
       return;
     }
 
-    if (outputStream !== undefined && outputStream !== null && (outputData === undefined || outputData === null)) {
+    if (
+      outputStream !== undefined &&
+      outputStream !== null &&
+      (outputData === undefined || outputData === null)
+    ) {
       setOutputPayloadType("stream");
     } else {
       setOutputPayloadType("data");
@@ -414,7 +455,11 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
       return;
     }
     setRawEditorError(null);
-    setRawEditorText(formatPreviewJson(target === "matcher" ? matcherPreviewPayload : responsePreviewPayload));
+    setRawEditorText(
+      formatPreviewJson(
+        target === "matcher" ? matcherPreviewPayload : responsePreviewPayload,
+      ),
+    );
     setRawPreviewTarget(target);
   };
 
@@ -428,13 +473,20 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
     setValue("headers", headers ?? unsetValue, { shouldDirty: true });
 
     let nextMatcher: unknown = value.input;
-    if (nextMatcher === undefined && Array.isArray(value.inputs) && value.inputs.length > 0) {
-      nextMatcher = value.inputs.find((item) => isRecordValue(item)) ?? value.inputs[0];
+    if (
+      nextMatcher === undefined &&
+      Array.isArray(value.inputs) &&
+      value.inputs.length > 0
+    ) {
+      nextMatcher =
+        value.inputs.find((item) => isRecordValue(item)) ?? value.inputs[0];
     }
 
     const normalizedInputMatcher = normalizeInputMatcher(nextMatcher);
     if (isRecordValue(normalizedInputMatcher)) {
-      setValue("input", normalizeMatcherForFields(normalizedInputMatcher), { shouldDirty: true });
+      setValue("input", normalizeMatcherForFields(normalizedInputMatcher), {
+        shouldDirty: true,
+      });
     } else {
       setValue("input", unsetValue, { shouldDirty: true });
     }
@@ -522,9 +574,25 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
             </Typography>
           </Box>
         ) : null}
-        <TextInput source="name" label="Stub Name" variant="outlined" fullWidth sx={stubPrimaryInputSx} />
-        <TextInput source="service" variant="outlined" fullWidth sx={stubPrimaryInputSx} />
-        <TextInput source="method" variant="outlined" fullWidth sx={stubPrimaryInputSx} />
+        <TextInput
+          source="name"
+          label="Stub Name"
+          variant="outlined"
+          fullWidth
+          sx={stubPrimaryInputSx}
+        />
+        <TextInput
+          source="service"
+          variant="outlined"
+          fullWidth
+          sx={stubPrimaryInputSx}
+        />
+        <TextInput
+          source="method"
+          variant="outlined"
+          fullWidth
+          sx={stubPrimaryInputSx}
+        />
       </Box>
 
       <Box
@@ -543,7 +611,16 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
         }}
       >
         <Box sx={sectionCardSx}>
-          <Box sx={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "flex-start", mb: 1, gap: 0.5 }}>
+          <Box
+            sx={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-start",
+              mb: 1,
+              gap: 0.5,
+            }}
+          >
             <Box sx={{ fontSize: 16, fontWeight: 600, color: "#FF6C37" }}>
               Request Match
             </Box>
@@ -577,7 +654,10 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
             sx={{
               width: "100%",
               display: "grid",
-              gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) 250px minmax(0, 1fr)" },
+              gridTemplateColumns: {
+                xs: "1fr",
+                md: "minmax(0, 1fr) 250px minmax(0, 1fr)",
+              },
               gap: 2,
               alignItems: "start",
               minHeight: 0,
@@ -590,17 +670,29 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
               helperText={undefined}
               maxTableHeight={140}
             />
-            <Box sx={{ width: "100%", minHeight: 0, gridColumn: { xs: "span 1", md: "2 / 4" } }}>
-              <StubMatcherInput
-                mode={mode}
-                minRows={8}
-              />
+            <Box
+              sx={{
+                width: "100%",
+                minHeight: 0,
+                gridColumn: { xs: "span 1", md: "2 / 4" },
+              }}
+            >
+              <StubMatcherInput mode={mode} minRows={8} />
             </Box>
           </Box>
         </Box>
 
         <Box sx={{ ...sectionCardSx, alignSelf: "start", overflow: "visible" }}>
-          <Box sx={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "flex-start", mb: 1, gap: 0.5 }}>
+          <Box
+            sx={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-start",
+              mb: 1,
+              gap: 0.5,
+            }}
+          >
             <Box sx={{ fontSize: 16, fontWeight: 600, color: "#FF6C37" }}>
               Response Stub
             </Box>
@@ -634,7 +726,10 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
             sx={{
               width: "100%",
               display: "grid",
-              gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(0, 1fr) 250px" },
+              gridTemplateColumns: {
+                xs: "1fr",
+                md: "minmax(0, 1fr) minmax(0, 1fr) 250px",
+              },
               gap: 2,
               minHeight: 0,
               "& > *": { minHeight: 0, minWidth: 0 },
@@ -664,7 +759,8 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
                   sx={{
                     flex: hasNonZeroStatusCode ? "0 0 40%" : "1 1 100%",
                     minWidth: 0,
-                    transition: "flex-basis 220ms ease, flex-grow 220ms ease, flex-shrink 220ms ease",
+                    transition:
+                      "flex-basis 220ms ease, flex-grow 220ms ease, flex-shrink 220ms ease",
                   }}
                 >
                   <SelectInput
@@ -725,11 +821,13 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
                 maxTableHeight={140}
               />
             </Box>
-            <Box sx={{ width: "100%", minHeight: 0, mt: { xs: 0, md: "-23px" } }}>
+            <Box
+              sx={{ width: "100%", minHeight: 0, mt: { xs: 0, md: "-23px" } }}
+            >
               {outputPayloadType === "data" ? (
                 <JsonTextAreaInput
                   source="output.data"
-                  label={(
+                  label={
                     <FormControl size="small" sx={responseTypeHeaderSelectSx}>
                       <Select
                         value={outputPayloadType}
@@ -737,21 +835,23 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
                         disableUnderline
                         IconComponent={KeyboardArrowDownRoundedIcon}
                         onChange={(event) => {
-                          handleOutputPayloadTypeChange(event.target.value as OutputPayloadType);
+                          handleOutputPayloadTypeChange(
+                            event.target.value as OutputPayloadType,
+                          );
                         }}
                       >
                         <MenuItem value="data">Data</MenuItem>
                         <MenuItem value="stream">Stream</MenuItem>
                       </Select>
                     </FormControl>
-                  )}
+                  }
                   minRows={12}
                   placeholder="{}"
                 />
               ) : (
                 <JsonTextAreaInput
                   source="output.stream"
-                  label={(
+                  label={
                     <FormControl size="small" sx={responseTypeHeaderSelectSx}>
                       <Select
                         value={outputPayloadType}
@@ -759,20 +859,24 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
                         disableUnderline
                         IconComponent={KeyboardArrowDownRoundedIcon}
                         onChange={(event) => {
-                          handleOutputPayloadTypeChange(event.target.value as OutputPayloadType);
+                          handleOutputPayloadTypeChange(
+                            event.target.value as OutputPayloadType,
+                          );
                         }}
                       >
                         <MenuItem value="data">Data</MenuItem>
                         <MenuItem value="stream">Stream</MenuItem>
                       </Select>
                     </FormControl>
-                  )}
+                  }
                   minRows={12}
                   placeholder="[]"
                 />
               )}
             </Box>
-            <Box sx={{ width: "100%", minHeight: 0, mt: { xs: 0, md: "-23px" } }}>
+            <Box
+              sx={{ width: "100%", minHeight: 0, mt: { xs: 0, md: "-23px" } }}
+            >
               <JsonTextAreaInput
                 source="output.details"
                 label="Details"
@@ -783,96 +887,63 @@ export const StubFormLayout = ({ mode, showId = false }: StubFormLayoutProps) =>
           </Box>
         </Box>
       </Box>
-      <Modal
+      <FloatingEditorModal
         open={rawPreviewTarget !== null}
         onClose={() => {
           setRawPreviewTarget(null);
           setRawEditorError(null);
         }}
+        onCloseClick={() => {
+          setRawPreviewTarget(null);
+          setRawEditorError(null);
+        }}
+        closeAriaLabel="Close raw editor"
+        title={
+          <Typography
+            variant="body2"
+            sx={{ color: "#FF6C37", fontWeight: 500 }}
+          >
+            {previewTitle}
+          </Typography>
+        }
       >
-        <Box
-          sx={{
-            position: "fixed",
-            top: 20,
-            right: 20,
-            width: { xs: "calc(100vw - 24px)", md: "max(33vw, 400px)" },
-            height: "calc(100dvh - 40px)",
-            bgcolor: "background.paper",
-            border: "1px solid",
-            borderColor: "divider",
-            borderRadius: 1.5,
-            p: 1.5,
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-          }}
-        >
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-            <Typography variant="body2" sx={{ color: "#FF6C37", fontWeight: 500 }}>
-              {previewTitle}
-            </Typography>
-            <IconButton
-              size="small"
-              aria-label="Close raw editor"
-              onClick={() => {
-                setRawPreviewTarget(null);
-                setRawEditorError(null);
+        <Box sx={{ flex: 1, minHeight: 0 }}>
+          <TextField
+            value={rawEditorText}
+            onChange={(event) => {
+              handleRawEditorTextChange(event.target.value);
             }}
-              sx={{
-                m: 0,
-                p: 0,
-                width: 14,
-                height: 14,
-                borderRadius: 0,
-                bgcolor: "transparent",
-                color: "text.secondary",
-                transition: "color 0.15s ease",
-                "&:hover": {
-                  color: "primary.main",
-                  bgcolor: "transparent",
-                },
-              }}
-            >
-              <CloseRoundedIcon sx={{ fontSize: 12, display: "block" }} />
-            </IconButton>
-          </Box>
-          <Box sx={{ flex: 1, minHeight: 0 }}>
-            <TextField
-              value={rawEditorText}
-              onChange={(event) => {
-                handleRawEditorTextChange(event.target.value);
-              }}
-              multiline
-              fullWidth
-              placeholder={previewText}
-              variant="outlined"
-              sx={{ height: "100%" }}
-              slotProps={{
-                input: {
-                  sx: {
-                    height: "100%",
-                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                    fontSize: 13,
-                    lineHeight: 1.5,
-                    p: "14px",
-                    alignItems: "flex-start",
-                    "& textarea": {
-                      height: "100% !important",
-                      overflowY: "auto !important",
-                      resize: "none",
-                    },
+            multiline
+            fullWidth
+            placeholder={previewText}
+            variant="outlined"
+            sx={{ height: "100%" }}
+            slotProps={{
+              input: {
+                sx: {
+                  height: "100%",
+                  fontFamily:
+                    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                  p: "14px",
+                  alignItems: "flex-start",
+                  "& textarea": {
+                    height: "100% !important",
+                    overflowY: "auto !important",
+                    resize: "none",
                   },
                 },
-              }}
-            />
-          </Box>
-          {rawEditorError ? (
-            <Alert severity="error" sx={{ mt: 1, py: 0 }}>
-              {rawEditorError}
-            </Alert>
-          ) : null}
+              },
+            }}
+          />
         </Box>
-      </Modal>
+        {rawEditorError ? (
+          <Alert severity="error" sx={{ mt: 1, py: 0 }}>
+            {rawEditorError}
+          </Alert>
+        ) : null}
+      </FloatingEditorModal>
     </>
   );
 };

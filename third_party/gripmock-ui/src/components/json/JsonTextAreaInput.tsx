@@ -9,18 +9,25 @@ import {
   Button,
   FormHelperText,
   IconButton,
-  Modal,
   Stack,
   TextField,
   Tooltip,
   Typography,
   alpha,
 } from "@mui/material";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 import { InputProps, useInput } from "react-admin";
 import { useFormContext, useWatch } from "react-hook-form";
 
+import { FloatingEditorModal } from "./FloatingEditorModal";
 import {
   buildSearchRegex,
   collectMatchRanges,
@@ -141,7 +148,8 @@ const compactSearchCounterSx = {
 } as const;
 
 const editorFontSx = {
-  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  fontFamily:
+    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
   fontSize: 13,
   lineHeight: 1.5,
 } as const;
@@ -219,7 +227,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
   return !!value && typeof value === "object" && !Array.isArray(value);
 };
 
-const projectVisibleValue = (value: unknown, visibleKeys: string[]): unknown => {
+const projectVisibleValue = (
+  value: unknown,
+  visibleKeys: string[],
+): unknown => {
   if (visibleKeys.length === 0 || !isRecord(value)) {
     return value;
   }
@@ -274,7 +285,10 @@ const scrollTextareaToOffset = (
   const paddingTop = Number.parseFloat(style.paddingTop) || 0;
   const lineIndex = textarea.value.slice(0, offset).split("\n").length - 1;
   const target =
-    paddingTop + lineIndex * lineHeight - textarea.clientHeight / 2 + lineHeight / 2;
+    paddingTop +
+    lineIndex * lineHeight -
+    textarea.clientHeight / 2 +
+    lineHeight / 2;
   textarea.scrollTop = Math.max(0, target);
 };
 
@@ -362,7 +376,9 @@ export const JsonTextAreaInput = (props: JsonTextAreaInputProps) => {
 
     const latest = getValues(source);
     const nextText = prettyJson(projectVisibleValue(latest, visibleKeys));
-    const currentTextFromValue = prettyJson(projectVisibleValue(value, visibleKeys));
+    const currentTextFromValue = prettyJson(
+      projectVisibleValue(value, visibleKeys),
+    );
 
     if (currentTextFromValue !== nextText) {
       onChange(latest);
@@ -411,7 +427,10 @@ export const JsonTextAreaInput = (props: JsonTextAreaInputProps) => {
       const markRect = mark.getBoundingClientRect();
       overlay.scrollTop = Math.max(
         0,
-        markRect.top - overlayRect.top - overlay.clientHeight / 2 + overlay.scrollTop,
+        markRect.top -
+          overlayRect.top -
+          overlay.clientHeight / 2 +
+          overlay.scrollTop,
       );
       overlay.scrollLeft = textarea.scrollLeft;
     } else if (overlay) {
@@ -559,7 +578,13 @@ export const JsonTextAreaInput = (props: JsonTextAreaInputProps) => {
   return (
     <div>
       <Stack spacing={1}>
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
           <Typography variant="body2" color="text.secondary">
             {label || source}
             {isRequired ? " *" : ""}
@@ -654,7 +679,7 @@ export const JsonTextAreaInput = (props: JsonTextAreaInputProps) => {
       >
         {parseError || error?.message || helperText}
       </FormHelperText>
-      <Modal
+      <FloatingEditorModal
         open={expanded}
         onClose={(_, reason) => {
           if (reason === "escapeKeyDown" && showSearch) {
@@ -663,226 +688,203 @@ export const JsonTextAreaInput = (props: JsonTextAreaInputProps) => {
           }
           closeExpanded();
         }}
+        onCloseClick={closeExpanded}
+        title={
+          <Typography variant="body2" color="text.secondary">
+            {label || source}
+          </Typography>
+        }
+        actions={
+          <IconButton
+            size="small"
+            aria-label={showSearch ? "Close search" : "Find in editor"}
+            onClick={toggleSearch}
+            sx={headerIconButtonSx}
+          >
+            <SearchRoundedIcon sx={{ fontSize: 16, display: "block" }} />
+          </IconButton>
+        }
       >
-        <Box
-          sx={{
-            position: "fixed",
-            top: 20,
-            right: 20,
-            width: { xs: "calc(100vw - 24px)", md: "max(33vw, 400px)" },
-            height: "calc(100dvh - 40px)",
-            bgcolor: "background.paper",
-            border: "1px solid",
-            borderColor: "divider",
-            borderRadius: 1.5,
-            p: 1.5,
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-          }}
-        >
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              {label || source}
+        {showSearch ? (
+          <Box sx={compactSearchBarSx}>
+            <TextField
+              inputRef={searchInputRef}
+              value={searchQuery}
+              onChange={(event) => {
+                setSearchQuery(event.target.value);
+              }}
+              size="small"
+              fullWidth
+              placeholder="Find"
+              sx={compactSearchInputSx}
+            />
+            <Button
+              size="small"
+              variant={searchOptions.caseSensitive ? "contained" : "text"}
+              onClick={() => {
+                toggleSearchOption("caseSensitive");
+              }}
+              sx={compactSearchToggleButtonSx}
+            >
+              Aa
+            </Button>
+            <Button
+              size="small"
+              variant={searchOptions.wholeWord ? "contained" : "text"}
+              onClick={() => {
+                toggleSearchOption("wholeWord");
+              }}
+              sx={compactSearchToggleButtonSx}
+            >
+              ab
+            </Button>
+            <Button
+              size="small"
+              variant={searchOptions.useRegex ? "contained" : "text"}
+              onClick={() => {
+                toggleSearchOption("useRegex");
+              }}
+              sx={compactSearchToggleButtonSx}
+            >
+              .*
+            </Button>
+            <Typography variant="body2" sx={compactSearchCounterSx}>
+              {matchCount > 0
+                ? `${resolvedActiveMatch + 1} of ${matchCount}`
+                : "0 of 0"}
             </Typography>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-              <IconButton
-                size="small"
-                aria-label={showSearch ? "Close search" : "Find in editor"}
-                onClick={toggleSearch}
-                sx={headerIconButtonSx}
-              >
-                <SearchRoundedIcon sx={{ fontSize: 16, display: "block" }} />
-              </IconButton>
-              <IconButton
-                size="small"
-                aria-label="Close editor"
-                onClick={closeExpanded}
-                sx={headerIconButtonSx}
-              >
-                <CloseRoundedIcon sx={{ fontSize: 12, display: "block" }} />
-              </IconButton>
-            </Box>
+            <IconButton
+              size="small"
+              onClick={() => {
+                stepMatch(-1);
+              }}
+              disabled={matchCount === 0}
+              sx={compactSearchIconButtonSx}
+              aria-label="Previous match"
+            >
+              <KeyboardArrowUpRoundedIcon fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              onClick={() => {
+                stepMatch(1);
+              }}
+              disabled={matchCount === 0}
+              sx={compactSearchIconButtonSx}
+              aria-label="Next match"
+            >
+              <KeyboardArrowDownRoundedIcon fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              onClick={closeSearch}
+              sx={compactSearchIconButtonSx}
+              aria-label="Close search"
+            >
+              <CloseRoundedIcon fontSize="small" />
+            </IconButton>
           </Box>
-          {showSearch ? (
-            <Box sx={compactSearchBarSx}>
-              <TextField
-                inputRef={searchInputRef}
-                value={searchQuery}
-                onChange={(event) => {
-                  setSearchQuery(event.target.value);
+        ) : null}
+        <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
+          {showSearch && matchCount > 0 ? (
+            <Box
+              ref={highlightOverlayRef}
+              aria-hidden
+              sx={{
+                position: "absolute",
+                inset: 0,
+                overflow: "hidden",
+                pointerEvents: "none",
+                zIndex: 1,
+                p: "14px",
+                pr: "36px",
+                boxSizing: "border-box",
+              }}
+            >
+              <Box
+                component="pre"
+                sx={{
+                  m: 0,
+                  ...editorFontSx,
+                  whiteSpace: "pre-wrap",
+                  overflowWrap: "anywhere",
+                  color: "transparent",
                 }}
-                size="small"
-                fullWidth
-                placeholder="Find"
-                sx={compactSearchInputSx}
-              />
-              <Button
-                size="small"
-                variant={searchOptions.caseSensitive ? "contained" : "text"}
-                onClick={() => {
-                  toggleSearchOption("caseSensitive");
-                }}
-                sx={compactSearchToggleButtonSx}
               >
-                Aa
-              </Button>
-              <Button
-                size="small"
-                variant={searchOptions.wholeWord ? "contained" : "text"}
-                onClick={() => {
-                  toggleSearchOption("wholeWord");
-                }}
-                sx={compactSearchToggleButtonSx}
-              >
-                ab
-              </Button>
-              <Button
-                size="small"
-                variant={searchOptions.useRegex ? "contained" : "text"}
-                onClick={() => {
-                  toggleSearchOption("useRegex");
-                }}
-                sx={compactSearchToggleButtonSx}
-              >
-                .*
-              </Button>
-              <Typography variant="body2" sx={compactSearchCounterSx}>
-                {matchCount > 0
-                  ? `${resolvedActiveMatch + 1} of ${matchCount}`
-                  : "0 of 0"}
-              </Typography>
-              <IconButton
-                size="small"
-                onClick={() => {
-                  stepMatch(-1);
-                }}
-                disabled={matchCount === 0}
-                sx={compactSearchIconButtonSx}
-                aria-label="Previous match"
-              >
-                <KeyboardArrowUpRoundedIcon fontSize="small" />
-              </IconButton>
-              <IconButton
-                size="small"
-                onClick={() => {
-                  stepMatch(1);
-                }}
-                disabled={matchCount === 0}
-                sx={compactSearchIconButtonSx}
-                aria-label="Next match"
-              >
-                <KeyboardArrowDownRoundedIcon fontSize="small" />
-              </IconButton>
-              <IconButton
-                size="small"
-                onClick={closeSearch}
-                sx={compactSearchIconButtonSx}
-                aria-label="Close search"
-              >
-                <CloseRoundedIcon fontSize="small" />
-              </IconButton>
+                {renderSearchHighlights(text, matchRanges, resolvedActiveMatch)}
+              </Box>
             </Box>
           ) : null}
-          <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
-            {showSearch && matchCount > 0 ? (
-              <Box
-                ref={highlightOverlayRef}
-                aria-hidden
-                sx={{
-                  position: "absolute",
-                  inset: 0,
-                  overflow: "hidden",
-                  pointerEvents: "none",
-                  zIndex: 1,
+          <TextField
+            inputRef={expandedTextareaRef}
+            multiline
+            fullWidth
+            value={text}
+            placeholder={placeholder}
+            onFocusCapture={() => {
+              setIsFocused(true);
+            }}
+            onBlurCapture={() => {
+              setIsFocused(false);
+            }}
+            onChange={(event) => {
+              handleTextChange(event.target.value);
+            }}
+            variant="outlined"
+            sx={{ height: "100%" }}
+            slotProps={{
+              htmlInput: {
+                onScroll: (event: { currentTarget: HTMLTextAreaElement }) => {
+                  const overlay = highlightOverlayRef.current;
+                  if (!overlay) {
+                    return;
+                  }
+                  overlay.scrollTop = event.currentTarget.scrollTop;
+                  overlay.scrollLeft = event.currentTarget.scrollLeft;
+                },
+              },
+              input: {
+                endAdornment: (
+                  <Tooltip title="Beautify JSON">
+                    <IconButton
+                      size="small"
+                      onClick={handleBeautify}
+                      sx={{
+                        alignSelf: "flex-start",
+                        m: 0,
+                        width: 16,
+                        height: 16,
+                        p: 0,
+                        color: "text.secondary",
+                        "&:hover": {
+                          bgcolor: "transparent",
+                          color: "primary.main",
+                        },
+                      }}
+                      aria-label="Beautify JSON"
+                    >
+                      <AutoFixHighRoundedIcon
+                        sx={{ fontSize: 14, display: "block" }}
+                      />
+                    </IconButton>
+                  </Tooltip>
+                ),
+                sx: {
+                  height: "100%",
+                  ...editorFontSx,
                   p: "14px",
-                  pr: "36px",
-                  boxSizing: "border-box",
-                }}
-              >
-                <Box
-                  component="pre"
-                  sx={{
-                    m: 0,
-                    ...editorFontSx,
-                    whiteSpace: "pre-wrap",
-                    overflowWrap: "anywhere",
-                    color: "transparent",
-                  }}
-                >
-                  {renderSearchHighlights(text, matchRanges, resolvedActiveMatch)}
-                </Box>
-              </Box>
-            ) : null}
-            <TextField
-              inputRef={expandedTextareaRef}
-              multiline
-              fullWidth
-              value={text}
-              placeholder={placeholder}
-              onFocusCapture={() => {
-                setIsFocused(true);
-              }}
-              onBlurCapture={() => {
-                setIsFocused(false);
-              }}
-              onChange={(event) => {
-                handleTextChange(event.target.value);
-              }}
-              variant="outlined"
-              sx={{ height: "100%" }}
-              slotProps={{
-                htmlInput: {
-                  onScroll: (event) => {
-                    const overlay = highlightOverlayRef.current;
-                    if (!overlay) {
-                      return;
-                    }
-                    overlay.scrollTop = event.currentTarget.scrollTop;
-                    overlay.scrollLeft = event.currentTarget.scrollLeft;
+                  alignItems: "flex-start",
+                  "& textarea": {
+                    height: "100% !important",
+                    overflowY: "auto !important",
+                    resize: "none",
                   },
                 },
-                input: {
-                  endAdornment: (
-                    <Tooltip title="Beautify JSON">
-                      <IconButton
-                        size="small"
-                        onClick={handleBeautify}
-                        sx={{
-                          alignSelf: "flex-start",
-                          m: 0,
-                          width: 16,
-                          height: 16,
-                          p: 0,
-                          color: "text.secondary",
-                          "&:hover": {
-                            bgcolor: "transparent",
-                            color: "primary.main",
-                          },
-                        }}
-                        aria-label="Beautify JSON"
-                      >
-                        <AutoFixHighRoundedIcon sx={{ fontSize: 14, display: "block" }} />
-                      </IconButton>
-                    </Tooltip>
-                  ),
-                  sx: {
-                    height: "100%",
-                    ...editorFontSx,
-                    p: "14px",
-                    alignItems: "flex-start",
-                    "& textarea": {
-                      height: "100% !important",
-                      overflowY: "auto !important",
-                      resize: "none",
-                    },
-                  },
-                },
-              }}
-            />
-          </Box>
+              },
+            }}
+          />
         </Box>
-      </Modal>
+      </FloatingEditorModal>
     </div>
   );
 };
