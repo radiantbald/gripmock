@@ -1,6 +1,7 @@
 package proxycapture_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -61,6 +62,29 @@ func TestMessageToMapIncludesDefaultScalar(t *testing.T) {
 	require.Equal(t, map[string]any{"value": 0.0}, got)
 }
 
+func TestMessageToMapKeepsDefaultTotalPoints(t *testing.T) {
+	t.Parallel()
+
+	desc := mustLearningProfileResponseDescriptor(t)
+	msg := dynamicpb.NewMessage(desc)
+	msg.Set(desc.Fields().ByName("user_id"), protoreflect.ValueOfString("user-1"))
+
+	profileFD := desc.Fields().ByName("profile")
+	profile := dynamicpb.NewMessage(profileFD.Message())
+	profile.Set(profileFD.Message().Fields().ByName("name"), protoreflect.ValueOfString("alice"))
+	msg.Set(profileFD, protoreflect.ValueOfMessage(profile))
+
+	got := proxycapture.MessageToMap(msg)
+	require.Equal(t, "user-1", got["user_id"])
+	require.Equal(t, json.Number("0"), got["total_points"])
+	require.NotContains(t, got, "sibling")
+
+	profileMap, ok := got["profile"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "alice", profileMap["name"])
+	require.Equal(t, json.Number("0"), profileMap["total_points"])
+}
+
 func mustSubmitAuthResponseDescriptor(t *testing.T) protoreflect.MessageDescriptor { //nolint:ireturn
 	t.Helper()
 
@@ -109,12 +133,58 @@ func mustSubmitAuthResponseDescriptor(t *testing.T) protoreflect.MessageDescript
 	return desc
 }
 
+func mustLearningProfileResponseDescriptor(t *testing.T) protoreflect.MessageDescriptor { //nolint:ireturn
+	t.Helper()
+
+	file := &descriptorpb.FileDescriptorProto{
+		Name:    proto.String("learning_profile.proto"),
+		Package: proto.String("learning.v1"),
+		Syntax:  proto.String("proto3"),
+		MessageType: []*descriptorpb.DescriptorProto{
+			{
+				Name: proto.String("Profile"),
+				Field: []*descriptorpb.FieldDescriptorProto{
+					int32Field("total_points", 1),
+					stringField("name", 2),
+				},
+			},
+			{
+				Name: proto.String("Sibling"),
+				Field: []*descriptorpb.FieldDescriptorProto{
+					stringField("note", 1),
+				},
+			},
+			{
+				Name: proto.String("GetUserLearningProfileResponse"),
+				Field: []*descriptorpb.FieldDescriptorProto{
+					int32Field("total_points", 1),
+					stringField("user_id", 2),
+					messageField("profile", 3, ".learning.v1.Profile"),
+					messageField("sibling", 4, ".learning.v1.Sibling"),
+				},
+			},
+		},
+	}
+
+	fd, err := protodesc.NewFile(file, nil)
+	require.NoError(t, err)
+
+	desc := fd.Messages().ByName("GetUserLearningProfileResponse")
+	require.NotNil(t, desc)
+
+	return desc
+}
+
 func stringField(name string, number int32) *descriptorpb.FieldDescriptorProto {
 	return scalarField(name, number, descriptorpb.FieldDescriptorProto_TYPE_STRING)
 }
 
 func boolField(name string, number int32) *descriptorpb.FieldDescriptorProto {
 	return scalarField(name, number, descriptorpb.FieldDescriptorProto_TYPE_BOOL)
+}
+
+func int32Field(name string, number int32) *descriptorpb.FieldDescriptorProto {
+	return scalarField(name, number, descriptorpb.FieldDescriptorProto_TYPE_INT32)
 }
 
 func scalarField(name string, number int32, fieldType descriptorpb.FieldDescriptorProto_Type) *descriptorpb.FieldDescriptorProto {
