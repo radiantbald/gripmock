@@ -52,6 +52,7 @@ import (
 	protosetdom "github.com/radiantbald/gripmock/v3/internal/domain/protoset"
 	"github.com/radiantbald/gripmock/v3/internal/infra/grpccontext"
 	protosetinfra "github.com/radiantbald/gripmock/v3/internal/infra/protoset"
+	"github.com/radiantbald/gripmock/v3/internal/infra/proxycapture"
 	"github.com/radiantbald/gripmock/v3/internal/infra/proxyroutes"
 	"github.com/radiantbald/gripmock/v3/internal/infra/room"
 	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
@@ -2876,17 +2877,16 @@ func protoToJSON(msg any) []byte {
 }
 
 func protoToMap(msg any) map[string]any {
-	data := protoToJSON(msg)
-	if data == nil {
+	if msg == nil || isNilInterface(msg) {
 		return nil
 	}
 
-	var result map[string]any
-	if err := json.Unmarshal(data, &result); err != nil {
+	message, ok := msg.(proto.Message)
+	if !ok || message == nil {
 		return nil
 	}
 
-	return result
+	return proxycapture.MessageToMap(message)
 }
 
 func isNilInterface(v any) bool {
