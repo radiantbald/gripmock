@@ -148,6 +148,7 @@ type StubCreatePrefillOutput = {
 const SNIFFER_ROUTE_SOURCES_KEY = "gripmock.sniffer.routeSources";
 const SNIFFER_ROUTE_SOURCE_CHANGES_KEY = "gripmock.sniffer.routeSourceChanges";
 const SNIFFER_REFLECTION_SERVED_BY_KEY = "gripmock.sniffer.reflectionServedBy";
+const SNIFFER_CALL_TABLE_FILTERS_KEY = "gripmock.sniffer.callTableFilters";
 
 const RADIUS_PX = "10px";
 const RESIZE_HANDLE_SIZE_PX = 10;
@@ -932,6 +933,14 @@ const callTableFilterLabels: Record<CallTableFilterField, string> = {
 };
 
 const MAX_ITEMS = 500;
+const CALL_TABLE_FILTER_FIELDS: CallTableFilterField[] = [
+  "client",
+  "service",
+  "method",
+  "code",
+  "servedBy",
+  "room",
+];
 const EMPTY_CALL_TABLE_FILTERS: CallTableFilters = {
   client: { query: "", selected: [] },
   service: { query: "", selected: [] },
@@ -939,6 +948,75 @@ const EMPTY_CALL_TABLE_FILTERS: CallTableFilters = {
   code: { query: "", selected: [] },
   servedBy: { query: "", selected: [] },
   room: { query: "", selected: [] },
+};
+const parseCallTableFilterValue = (
+  value: unknown,
+): CallTableFilterValue | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const row = value as Record<string, unknown>;
+  if (typeof row.query !== "string") {
+    return null;
+  }
+  if (
+    !Array.isArray(row.selected) ||
+    row.selected.some((item) => typeof item !== "string")
+  ) {
+    return null;
+  }
+
+  return {
+    query: row.query,
+    selected: row.selected,
+  };
+};
+const readCallTableFilters = (): CallTableFilters => {
+  if (typeof window === "undefined") {
+    return EMPTY_CALL_TABLE_FILTERS;
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(SNIFFER_CALL_TABLE_FILTERS_KEY);
+    if (!raw) {
+      return EMPTY_CALL_TABLE_FILTERS;
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return EMPTY_CALL_TABLE_FILTERS;
+    }
+
+    return CALL_TABLE_FILTER_FIELDS.reduce<CallTableFilters>(
+      (acc, field) => {
+        const parsedValue = parseCallTableFilterValue(
+          (parsed as Record<string, unknown>)[field],
+        );
+        if (parsedValue) {
+          acc[field] = parsedValue;
+        }
+        return acc;
+      },
+      { ...EMPTY_CALL_TABLE_FILTERS },
+    );
+  } catch {
+    return EMPTY_CALL_TABLE_FILTERS;
+  }
+};
+const writeCallTableFilters = (filters: CallTableFilters): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(
+      SNIFFER_CALL_TABLE_FILTERS_KEY,
+      JSON.stringify(filters),
+    );
+  } catch {
+    // Ignore storage failures (private mode, quota, etc.).
+  }
 };
 const codeToChipColor = (code?: number) =>
   code === undefined || code === 0 ? "success" : "error";
@@ -1819,7 +1897,7 @@ export const SnifferPage = () => {
   const [responsePanelMode, setResponsePanelMode] =
     useState<ResponsePanelMode>("response");
   const [callTableFilters, setCallTableFilters] = useState<CallTableFilters>(
-    EMPTY_CALL_TABLE_FILTERS,
+    () => readCallTableFilters(),
   );
   const [callTableFilterMenu, setCallTableFilterMenu] =
     useState<CallTableFilterMenuState | null>(null);
@@ -2554,6 +2632,9 @@ export const SnifferPage = () => {
   const clearCallTableFilters = useCallback(() => {
     setCallTableFilters(EMPTY_CALL_TABLE_FILTERS);
   }, []);
+  useEffect(() => {
+    writeCallTableFilters(callTableFilters);
+  }, [callTableFilters]);
   const callTableTotalMinWidth = useMemo(
     () =>
       (Object.keys(callTableColumnWidths) as CallTableColumnKey[]).reduce(
