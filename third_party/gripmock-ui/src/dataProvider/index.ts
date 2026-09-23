@@ -381,6 +381,18 @@ const dataProvider: DataProvider = {
       return { data: params.id as any };
     }
 
+    if (canonical === "protofiles") {
+      const encodedName = String(params.id)
+        .split("/")
+        .map((segment) => encodeURIComponent(segment))
+        .join("/");
+      await apiClient.request<void>(`/${canonical}/${encodedName}`, {
+        method: "DELETE",
+      });
+
+      return { data: params.id as any };
+    }
+
     await apiClient.request(`/${canonical}/batchDelete`, {
       method: "POST",
       body: JSON.stringify([params.id]),
