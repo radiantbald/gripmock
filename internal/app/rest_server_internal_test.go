@@ -1887,6 +1887,36 @@ func (s *RestServerTestSuite) TestListHistory_RedactsSensitiveKeys() {
 	s.Equal("[REDACTED]", resp["token"])
 }
 
+func (s *RestServerTestSuite) TestListHistory_IncludesRequestAndResponseHeaders() {
+	store := history.NewMemoryStore(0)
+	store.Record(history.CallRecord{
+		Service: "svc",
+		Method:  "M",
+		RequestHeaders: map[string]string{
+			"x-env": "prod",
+		},
+		ResponseHeaders: map[string]string{
+			"x-trace": "abc",
+		},
+	})
+
+	server := s.newRestServerWithStore(store)
+
+	w := s.listHistory(server, nil)
+	s.Equal(http.StatusOK, w.Code)
+
+	var list []map[string]any
+	s.Require().NoError(json.Unmarshal(w.Body.Bytes(), &list))
+	s.Len(list, 1)
+
+	reqHeaders, ok := list[0]["requestHeaders"].(map[string]any)
+	s.Require().True(ok)
+	respHeaders, ok := list[0]["responseHeaders"].(map[string]any)
+	s.Require().True(ok)
+	s.Equal("prod", reqHeaders["x-env"])
+	s.Equal("abc", respHeaders["x-trace"])
+}
+
 // TestVerifyCallsWithHistory tests verify endpoint with history store.
 func (s *RestServerTestSuite) TestVerifyCallsWithHistory() {
 	server := s.newRestServerWithHistory(

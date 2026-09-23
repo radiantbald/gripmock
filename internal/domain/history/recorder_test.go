@@ -119,6 +119,33 @@ func TestMemoryStoreREcordRedactsSensitiveKeys(t *testing.T) {
 	require.Equal(t, "[REDACTED]", r.Response["secret"])
 }
 
+func TestMemoryStoreRecordRedactsHeaderKeys(t *testing.T) {
+	t.Parallel()
+
+	store := history.NewMemoryStore(0, history.WithRedactKeys([]string{"authorization", "x-token"}))
+	store.Record(history.CallRecord{
+		Service: "svc",
+		Method:  "M",
+		RequestHeaders: map[string]string{
+			"authorization": "Bearer secret",
+			"x-env":         "prod",
+		},
+		ResponseHeaders: map[string]string{
+			"X-Token":      "abc",
+			"x-request-id": "req-1",
+		},
+	})
+
+	all := store.All()
+	require.Len(t, all, 1)
+	r := all[0]
+
+	require.Equal(t, "[REDACTED]", r.RequestHeaders["authorization"])
+	require.Equal(t, "prod", r.RequestHeaders["x-env"])
+	require.Equal(t, "[REDACTED]", r.ResponseHeaders["X-Token"])
+	require.Equal(t, "req-1", r.ResponseHeaders["x-request-id"])
+}
+
 func TestMemoryStoreREcordRedactsInArrays(t *testing.T) {
 	t.Parallel()
 

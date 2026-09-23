@@ -995,6 +995,12 @@ components:
           items:
             type: object
             additionalProperties: true
+        requestHeaders:
+          type: object
+          description: Normalized incoming gRPC metadata used for matching
+          additionalProperties:
+            type: string
+          x-go-type-skip-optional-pointer: true
         responseHeaders:
           type: object
           description: Normalized gRPC response metadata (header+trailer)

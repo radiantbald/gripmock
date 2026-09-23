@@ -2693,6 +2693,9 @@ func (h *RestServer) historyCallRecordToRest(c history.CallRecord) rest.CallReco
 	} else if c.Response != nil {
 		r.Response = &c.Response
 	}
+	if len(c.RequestHeaders) > 0 {
+		r.RequestHeaders = maps.Clone(c.RequestHeaders)
+	}
 	if len(c.ResponseHeaders) > 0 {
 		r.ResponseHeaders = maps.Clone(c.ResponseHeaders)
 	}

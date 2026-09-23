@@ -26,6 +26,8 @@ type CallRecord struct {
 	Requests  []map[string]any `json:"requests,omitempty"`  // For streaming calls with multiple messages.
 	Response  map[string]any   `json:"response,omitempty"`  // Deprecated: use Responses.
 	Responses []map[string]any `json:"responses,omitempty"` // For streaming calls with multiple messages.
+	// RequestHeaders contains normalized incoming gRPC metadata used for matching.
+	RequestHeaders map[string]string `json:"requestHeaders,omitempty"`
 	// ResponseHeaders contains normalized gRPC response metadata (header+trailer).
 	ResponseHeaders map[string]string `json:"responseHeaders,omitempty"`
 	// ResponseTimestamps contains per-response send time in server clock order.
@@ -91,7 +93,7 @@ func WithMessageMaxBytes(n int64) MemoryStoreOption {
 }
 
 // WithRedactKeys replaces values for matching keys (case-insensitive) with "[REDACTED]"
-// in Request/Response. Keys are matched at any nesting level.
+// in Request/Response and request/response headers. Keys are matched at any nesting level.
 func WithRedactKeys(keys []string) MemoryStoreOption {
 	m := make(map[string]struct{}, len(keys))
 	for _, k := range keys {
@@ -184,7 +186,33 @@ func redactRecord(c CallRecord, keys map[string]struct{}) CallRecord {
 		c.Responses = redactMessages(c.Responses, keys)
 	}
 
+	if len(c.RequestHeaders) > 0 {
+		c.RequestHeaders = redactStringMap(c.RequestHeaders, keys)
+	}
+
+	if len(c.ResponseHeaders) > 0 {
+		c.ResponseHeaders = redactStringMap(c.ResponseHeaders, keys)
+	}
+
 	return c
+}
+
+func redactStringMap(m map[string]string, keys map[string]struct{}) map[string]string {
+	if len(m) == 0 || len(keys) == 0 {
+		return m
+	}
+
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		if _, ok := keys[strings.ToLower(k)]; ok {
+			out[k] = redactedValue
+			continue
+		}
+
+		out[k] = v
+	}
+
+	return out
 }
 
 func redactMessages(messages []map[string]any, keys map[string]struct{}) []map[string]any {

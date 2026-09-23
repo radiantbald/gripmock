@@ -200,6 +200,7 @@ type bidiRecordingStream struct {
 
 	requests           []map[string]any
 	responses          []map[string]any
+	responseHeaders    map[string]string
 	responseTimestamps []time.Time
 	stubID             uint64
 	maxItems           int
@@ -242,6 +243,12 @@ func (s *bidiRecordingStream) setStubID(id uint64) { s.stubID = id }
 
 func (s *bidiRecordingStream) getStubID() uint64 { return s.stubID }
 
+func (s *bidiRecordingStream) setResponseHeaders(headers map[string]string) {
+	s.responseHeaders = cloneStringMap(headers)
+}
+
+func (s *bidiRecordingStream) getResponseHeaders() map[string]string { return s.responseHeaders }
+
 func (m *grpcMocker) shouldSkipFallbackStubMissHistory(ctx context.Context, stubID uint64, code uint32) bool {
 	if stubID != 0 || code != uint32(codes.NotFound) {
 		return false
@@ -262,6 +269,7 @@ func (m *grpcMocker) recordCall(
 	timestamp time.Time,
 	requests []map[string]any,
 	responses []map[string]any,
+	responseHeaders map[string]string,
 	responseTimestamps []time.Time,
 	errMsg string,
 ) {
@@ -285,6 +293,8 @@ func (m *grpcMocker) recordCall(
 		Client:             clientFromContext(ctx),
 		Requests:           requests,
 		Responses:          responses,
+		RequestHeaders:     requestHeadersFromContext(ctx),
+		ResponseHeaders:    cloneStringMap(responseHeaders),
 		ResponseTimestamps: responseTimestamps,
 		Error:              errMsg,
 		Code:               code,
@@ -318,6 +328,45 @@ func processHeaders(md metadata.MD) map[string]any {
 	}
 
 	return headers
+}
+
+func requestHeadersFromContext(ctx context.Context) map[string]string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil
+	}
+
+	return stringHeadersFromAny(processHeaders(md))
+}
+
+func stringHeadersFromAny(headers map[string]any) map[string]string {
+	if len(headers) == 0 {
+		return nil
+	}
+
+	out := make(map[string]string, len(headers))
+	for key, value := range headers {
+		text, ok := value.(string)
+		if !ok || text == "" {
+			continue
+		}
+
+		out[key] = text
+	}
+
+	if len(out) == 0 {
+		return nil
+	}
+
+	return out
+}
+
+func cloneStringMap(headers map[string]string) map[string]string {
+	if len(headers) == 0 {
+		return nil
+	}
+
+	return maps.Clone(headers)
 }
 
 func sendStreamMessage(stream grpc.ServerStream, msg *dynamicpb.Message) error {
@@ -643,6 +692,7 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 			[]map[string]any{convertToMap(inputMsg)},
 			nil,
 			nil,
+			nil,
 			err.Error(),
 		)
 
@@ -663,6 +713,7 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 				uint32(codes.NotFound),
 				requestTime,
 				[]map[string]any{convertToMap(inputMsg)},
+				nil,
 				nil,
 				nil,
 				err.Error(),
@@ -733,6 +784,7 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 				requestTime,
 				[]map[string]any{requestData},
 				streamResponses,
+				outputToUse.Headers,
 				streamResponseTimestamps,
 				"",
 			)
@@ -751,6 +803,7 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 			requestTime,
 			[]map[string]any{requestData},
 			[]map[string]any{outputToUse.Data},
+			outputToUse.Headers,
 			[]time.Time{time.Now()},
 			"",
 		)
@@ -770,6 +823,7 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 		requestTime,
 		[]map[string]any{requestData},
 		[]map[string]any{outputToUse.Data},
+		outputToUse.Headers,
 		[]time.Time{time.Now()},
 		"",
 	)
@@ -1123,6 +1177,7 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 			[]map[string]any{convertToMap(req)},
 			nil,
 			nil,
+			nil,
 			err.Error(),
 		)
 
@@ -1151,6 +1206,7 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 			[]map[string]any{convertToMap(req)},
 			nil,
 			nil,
+			nil,
 			stubMissErr.Error(),
 		)
 
@@ -1159,6 +1215,7 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 
 	found := result.Found()
 	requestData := convertToMap(req)
+	var recordedResponseHeaders map[string]string
 	recordUnaryError := func(callErr error) {
 		if callErr == nil {
 			return
@@ -1169,7 +1226,7 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 			code = uint32(st.Code())
 		}
 
-		m.recordCall(ctx, found.ID, code, requestTime, []map[string]any{requestData}, nil, nil, callErr.Error())
+		m.recordCall(ctx, found.ID, code, requestTime, []map[string]any{requestData}, nil, recordedResponseHeaders, nil, callErr.Error())
 	}
 
 	if err := m.delay(ctx, found.Output.Delay); err != nil {
@@ -1233,11 +1290,13 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 		return nil, err //nolint:wrapcheck
 	}
 
+	recordedResponseHeaders = outputToUse.Headers
+
 	m.applyEffects(ctx, found, templateData)
 
 	if err := m.handleOutputError(ctx, nil, outputToUse); err != nil {
 		code := status.Code(err)
-		m.recordCall(ctx, found.ID, uint32(code), requestTime, []map[string]any{requestData}, nil, nil, err.Error())
+		m.recordCall(ctx, found.ID, uint32(code), requestTime, []map[string]any{requestData}, nil, outputToUse.Headers, nil, err.Error())
 		outputToUse.Error = err.Error()
 
 		return nil, err //nolint:wrapcheck
@@ -1256,6 +1315,7 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 		requestTime,
 		[]map[string]any{requestData},
 		[]map[string]any{outputDataCopy},
+		outputToUse.Headers,
 		[]time.Time{time.Now()},
 		"",
 	)
@@ -1505,6 +1565,7 @@ func (m *grpcMocker) handleClientStream(stream grpc.ServerStream) error {
 			messages,
 			nil,
 			nil,
+			nil,
 			err.Error(),
 		)
 
@@ -1520,6 +1581,7 @@ func (m *grpcMocker) handleClientStream(stream grpc.ServerStream) error {
 				uint32(codes.NotFound),
 				requestTime,
 				messages,
+				nil,
 				nil,
 				nil,
 				err.Error(),
@@ -1659,6 +1721,7 @@ func (m *grpcMocker) sendClientStreamResponse(
 			requestTime,
 			messages,
 			[]map[string]any{outputDataCopy},
+			found.Output.Headers,
 			[]time.Time{time.Now()},
 			"",
 		)
@@ -1670,7 +1733,7 @@ func (m *grpcMocker) sendClientStreamResponse(
 func (m *grpcMocker) handleBidiStream(stream grpc.ServerStream) error {
 	requestTime := time.Now()
 	if err := m.ensureServiceMethodAvailable(stream.Context()); err != nil {
-		m.recordCall(stream.Context(), 0, uint32(codes.Unimplemented), requestTime, nil, nil, nil, err.Error())
+		m.recordCall(stream.Context(), 0, uint32(codes.Unimplemented), requestTime, nil, nil, nil, nil, err.Error())
 
 		return err
 	}
@@ -1801,6 +1864,9 @@ func (m *grpcMocker) processBidiStreamSendResponse(
 
 	if recStream, ok := stream.(*bidiRecordingStream); ok {
 		recStream.setStubID(stub.ID)
+		if bidiResult.GetMessageIndex() == 0 {
+			recStream.setResponseHeaders(outputToUse.Headers)
+		}
 	}
 
 	return m.sendBidiResponses(stream, outputToUse, stub, bidiResult.GetMessageIndex(), requestTime)
@@ -1833,6 +1899,8 @@ func (m *grpcMocker) recordBidiStream(
 		Client:             clientFromContext(stream.Context()),
 		Requests:           requests,
 		Responses:          responses,
+		RequestHeaders:     requestHeadersFromContext(stream.Context()),
+		ResponseHeaders:    cloneStringMap(stream.getResponseHeaders()),
 		ResponseTimestamps: responseTimestamps,
 		Code:               code,
 		Error:              errMsg,
@@ -2338,16 +2406,17 @@ func (s *GRPCServer) recordUnknownCall(ctx context.Context, serviceName string, 
 	}
 
 	s.recorder.Record(history.CallRecord{
-		CallID:    uuid.NewString(),
-		Transport: "mock",
-		Source:    "proto",
-		Service:   serviceName,
-		Method:    methodName,
-		Room:      roomFromContext(ctx),
-		Client:    clientFromContext(ctx),
-		Code:      code,
-		Error:     errorMessage,
-		Timestamp: time.Now(),
+		CallID:         uuid.NewString(),
+		Transport:      "mock",
+		Source:         "proto",
+		Service:        serviceName,
+		Method:         methodName,
+		Room:           roomFromContext(ctx),
+		Client:         clientFromContext(ctx),
+		RequestHeaders: requestHeadersFromContext(ctx),
+		Code:           code,
+		Error:          errorMessage,
+		Timestamp:      time.Now(),
 	})
 }
 

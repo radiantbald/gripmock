@@ -440,6 +440,24 @@ func TestReceiveStreamMessageError(t *testing.T) {
 	require.Contains(t, err.Error(), "failed to receive message")
 }
 
+func TestRequestHeadersFromContextFiltersTransportKeys(t *testing.T) {
+	t.Parallel()
+
+	md := metadata.New(map[string]string{
+		"authorization": "Bearer secret",
+		"content-type":  "application/grpc",
+		"user-agent":    "test",
+		"x-env":         "prod",
+	})
+	ctx := metadata.NewIncomingContext(t.Context(), md)
+
+	result := requestHeadersFromContext(ctx)
+	require.Equal(t, map[string]string{
+		"authorization": "Bearer secret",
+		"x-env":         "prod",
+	}, result)
+}
+
 func TestProcessHeadersEmptyMetadata(t *testing.T) {
 	t.Parallel()
 
