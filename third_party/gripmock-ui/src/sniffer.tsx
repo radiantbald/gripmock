@@ -3841,11 +3841,7 @@ export const SnifferPage = () => {
   );
 
   const handleClearCurrentRoomRequests = useCallback(() => {
-    const room = activeRoom.trim();
-    if (!room) {
-      notify("Global room requests cannot be cleared.", { type: "warning" });
-      return;
-    }
+    const room = activeRoom.trim() || "global";
 
     apiClient
       .request<{ deletedCount?: number }>("/history/room", { method: "DELETE" })
@@ -4268,17 +4264,15 @@ export const SnifferPage = () => {
         }}
       >
         <Box sx={panelHeaderSx}>
-          {activeRoom.trim() ? (
-            <IconButton
-              size="small"
-              aria-label={`Clear requests in room ${activeRoom}`}
-              onClick={handleClearCurrentRoomRequests}
-              disabled={records.length === 0}
-              sx={clearRequestsButtonSx}
-            >
-              <DeleteOutlineRoundedIcon fontSize="small" />
-            </IconButton>
-          ) : null}
+          <IconButton
+            size="small"
+            aria-label={`Clear requests in room ${activeRoom.trim() || "global"}`}
+            onClick={handleClearCurrentRoomRequests}
+            disabled={records.length === 0}
+            sx={clearRequestsButtonSx}
+          >
+            <DeleteOutlineRoundedIcon fontSize="small" />
+          </IconButton>
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
             <Chip
               size="small"

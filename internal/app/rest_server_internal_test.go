@@ -1816,15 +1816,43 @@ func (s *RestServerTestSuite) TestDeleteHistoryRoom_OnlyCurrentRoom() {
 	s.Len(roomBRecords, 2) // global + room B remain untouched
 }
 
-func (s *RestServerTestSuite) TestDeleteHistoryRoom_RejectsGlobalRoom() {
+func (s *RestServerTestSuite) TestDeleteHistoryRoom_ClearsOnlyGlobalRoom() {
 	server := s.newRestServerWithRoomHistory()
 
 	resp := s.deleteHistoryRoom(server, nil)
-	s.Equal(http.StatusBadRequest, resp.Code)
+	s.Equal(http.StatusOK, resp.Code)
 
-	var payload map[string]string
+	var payload map[string]any
 	s.Require().NoError(json.Unmarshal(resp.Body.Bytes(), &payload))
-	s.Contains(payload["error"], "global room cannot be cleared")
+	s.Equal("", payload["room"])
+	s.Equal(float64(1), payload["deletedCount"])
+
+	allList := s.listHistory(server, nil)
+	s.Equal(http.StatusOK, allList.Code)
+	var allRecords []map[string]any
+	s.Require().NoError(json.Unmarshal(allList.Body.Bytes(), &allRecords))
+	s.Len(allRecords, 2)
+	for _, record := range allRecords {
+		s.NotEmpty(record["room"])
+	}
+
+	roomAList := s.listHistory(server, func(req *http.Request) {
+		req.Header.Set(muxmiddleware.HeaderName, "A")
+	})
+	s.Equal(http.StatusOK, roomAList.Code)
+	var roomARecords []map[string]any
+	s.Require().NoError(json.Unmarshal(roomAList.Body.Bytes(), &roomARecords))
+	s.Len(roomARecords, 1)
+	s.Equal("A", roomARecords[0]["room"])
+
+	roomBList := s.listHistory(server, func(req *http.Request) {
+		req.Header.Set(muxmiddleware.HeaderName, "B")
+	})
+	s.Equal(http.StatusOK, roomBList.Code)
+	var roomBRecords []map[string]any
+	s.Require().NoError(json.Unmarshal(roomBList.Body.Bytes(), &roomBRecords))
+	s.Len(roomBRecords, 1)
+	s.Equal("B", roomBRecords[0]["room"])
 }
 
 func (s *RestServerTestSuite) TestStreamHistorySendsLiveEvents() {

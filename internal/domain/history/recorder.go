@@ -388,12 +388,8 @@ func (s *MemoryStore) FilterByMethod(service, method string) []CallRecord {
 }
 
 // DeleteRoom removes records that belong strictly to the provided room.
-// Global records (Room == "") are not affected.
+// Empty room deletes only global records (Room == "").
 func (s *MemoryStore) DeleteRoom(room string) int {
-	if room == "" {
-		return 0
-	}
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
