@@ -29,6 +29,11 @@ import { useFormContext, useWatch } from "react-hook-form";
 
 import { FloatingEditorModal } from "./FloatingEditorModal";
 import {
+  emptyJsonTextAreaValue,
+  jsonTextAreaValueFromText,
+  prettyJson,
+} from "./jsonTextAreaValue";
+import {
   buildSearchRegex,
   collectMatchRanges,
   type TextMatchRange,
@@ -210,18 +215,6 @@ const headerIconButtonSx = {
     bgcolor: "transparent",
   },
 } as const;
-
-const prettyJson = (value: unknown) => {
-  if (value === undefined || value === null) {
-    return "";
-  }
-
-  if (typeof value === "string" && value.trim().length === 0) {
-    return "";
-  }
-
-  return JSON.stringify(value, null, 2);
-};
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -452,17 +445,14 @@ export const JsonTextAreaInput = (props: JsonTextAreaInputProps) => {
   }, [expanded, showSearch]);
 
   const updateValueFromText = (nextText: string) => {
-    const trimmed = nextText.trim();
-    if (trimmed.length === 0) {
-      setParseError(null);
-      onChange(undefined);
-      return;
-    }
-
     try {
-      const parsed = JSON.parse(nextText);
+      const parsed = jsonTextAreaValueFromText(nextText);
       setParseError(null);
-      onChange(mergeVisibleValue(value, parsed, visibleKeys));
+      onChange(
+        parsed === emptyJsonTextAreaValue
+          ? parsed
+          : mergeVisibleValue(value, parsed, visibleKeys),
+      );
     } catch {
       setParseError("Invalid JSON. Fix syntax and try again.");
     }

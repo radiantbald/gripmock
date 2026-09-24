@@ -440,14 +440,13 @@ export const StubFormLayout = ({
   }, [outputData, outputStream, outputTypeInitialized]);
 
   const handleOutputPayloadTypeChange = (nextType: OutputPayloadType) => {
-    const unsetValue = mode === "edit" ? null : undefined;
     setOutputPayloadType(nextType);
     if (nextType === "data") {
-      setValue("output.stream", unsetValue, { shouldDirty: true });
+      setValue("output.stream", null, { shouldDirty: true });
       return;
     }
 
-    setValue("output.data", unsetValue, { shouldDirty: true });
+    setValue("output.data", null, { shouldDirty: true });
   };
 
   const openRawEditor = (target: RawPreviewTarget) => {
