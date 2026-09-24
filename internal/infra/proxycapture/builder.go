@@ -170,14 +170,15 @@ func applyStatusError(output *stuber.Output, callErr error, clearData bool) {
 
 	output.Code = &code
 	output.Error = st.Message()
-	output.Details = statusDetailsToMaps(callErr)
+	output.Details = StatusDetailsToMaps(callErr)
 
 	if clearData {
 		output.Data = nil
 	}
 }
 
-func statusDetailsToMaps(callErr error) []map[string]any {
+// StatusDetailsToMaps converts gRPC status details from an error into JSON maps.
+func StatusDetailsToMaps(callErr error) []map[string]any {
 	if callErr == nil {
 		return nil
 	}

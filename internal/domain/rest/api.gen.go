@@ -125,6 +125,9 @@ type CallRecord struct {
 	// ResponseHeaders Normalized gRPC response metadata (header+trailer)
 	ResponseHeaders map[string]string `json:"responseHeaders,omitempty"`
 
+	// ResponseDetails gRPC status details (google.protobuf.Any payloads)
+	ResponseDetails *[]map[string]any `json:"responseDetails,omitempty"`
+
 	// ResponseTimestamps Per-response server send timestamp (same order as responses)
 	ResponseTimestamps *[]time.Time `json:"responseTimestamps,omitempty"`
 

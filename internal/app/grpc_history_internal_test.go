@@ -254,11 +254,23 @@ func TestHistoryServerStreamWithError(t *testing.T) {
 	mocker.serviceName = testServiceName
 	mocker.methodName = testMethodName
 
+	code := codes.InvalidArgument
 	stub := &stuber.Stub{
 		Service: testServiceName,
 		Method:  testMethodName,
 		Input:   stuber.InputData{Contains: map[string]any{}},
-		Output:  stuber.Output{Data: map[string]any{"result": 100}, Error: "stub error"},
+		Output: stuber.Output{
+			Data:  map[string]any{"result": 100},
+			Error: "stub error",
+			Code:  &code,
+			Details: []map[string]any{
+				{
+					"type":   "type.googleapis.com/google.rpc.ErrorInfo",
+					"reason": "API_DISABLED",
+					"domain": "example.local",
+				},
+			},
+		},
 	}
 	mocker.budgerigar.PutMany(stub)
 
@@ -275,7 +287,64 @@ func TestHistoryServerStreamWithError(t *testing.T) {
 
 	recorder, ok := mocker.recorder.(*history.MemoryStore)
 	require.True(t, ok, testRecorderShouldBeMemoryStore)
-	require.Equal(t, 0, recorder.Count())
+	require.Equal(t, 1, recorder.Count())
+
+	calls := recorder.Filter(history.FilterOpts{})
+	require.Len(t, calls, 1)
+	require.Equal(t, stub.ID, calls[0].StubID)
+	require.Equal(t, uint32(codes.InvalidArgument), calls[0].Code)
+	require.Contains(t, calls[0].Error, "stub error")
+	require.Len(t, calls[0].ResponseDetails, 1)
+	require.Equal(t, "type.googleapis.com/google.rpc.ErrorInfo", calls[0].ResponseDetails[0]["type"])
+	require.Equal(t, "API_DISABLED", calls[0].ResponseDetails[0]["reason"])
+}
+
+func TestHistoryUnaryWithDetails(t *testing.T) {
+	t.Parallel()
+
+	mocker := createTestMockerWithRecorder(t)
+	mocker.fullMethod = testServiceName + "/" + testMethodName
+	mocker.fullServiceName = testServiceName
+	mocker.serviceName = testServiceName
+	mocker.methodName = testMethodName
+
+	code := codes.InvalidArgument
+	stub := &stuber.Stub{
+		Service: testServiceName,
+		Method:  testMethodName,
+		Input:   stuber.InputData{Contains: map[string]any{}},
+		Output: stuber.Output{
+			Error: "validation failed",
+			Code:  &code,
+			Details: []map[string]any{
+				{
+					"type":   "type.googleapis.com/google.rpc.ErrorInfo",
+					"reason": "API_DISABLED",
+					"domain": "example.local",
+				},
+			},
+		},
+	}
+	mocker.budgerigar.PutMany(stub)
+
+	inputMsg := dynamicpb.NewMessage(mocker.inputDesc)
+	resp, err := mocker.handleUnary(t.Context(), inputMsg)
+	require.Error(t, err)
+	require.Nil(t, resp)
+
+	recorder, ok := mocker.recorder.(*history.MemoryStore)
+	require.True(t, ok, testRecorderShouldBeMemoryStore)
+	require.Equal(t, 1, recorder.Count())
+
+	calls := recorder.Filter(history.FilterOpts{})
+	require.Len(t, calls, 1)
+	require.Equal(t, stub.ID, calls[0].StubID)
+	require.Equal(t, uint32(codes.InvalidArgument), calls[0].Code)
+	require.Contains(t, calls[0].Error, "validation failed")
+	require.Len(t, calls[0].ResponseDetails, 1)
+	require.Equal(t, "type.googleapis.com/google.rpc.ErrorInfo", calls[0].ResponseDetails[0]["type"])
+	require.Equal(t, "API_DISABLED", calls[0].ResponseDetails[0]["reason"])
+	require.Equal(t, "example.local", calls[0].ResponseDetails[0]["domain"])
 }
 
 func TestHistoryServerStreamStubMissRecorded(t *testing.T) {

@@ -1945,6 +1945,39 @@ func (s *RestServerTestSuite) TestListHistory_IncludesRequestAndResponseHeaders(
 	s.Equal("abc", respHeaders["x-trace"])
 }
 
+func (s *RestServerTestSuite) TestListHistory_IncludesResponseDetails() {
+	store := history.NewMemoryStore(0)
+	store.Record(history.CallRecord{
+		Service: "svc",
+		Method:  "M",
+		ResponseDetails: []map[string]any{
+			{
+				"type":   "type.googleapis.com/google.rpc.ErrorInfo",
+				"reason": "INVALID",
+				"domain": "example.com",
+			},
+		},
+	})
+
+	server := s.newRestServerWithStore(store)
+
+	w := s.listHistory(server, nil)
+	s.Equal(http.StatusOK, w.Code)
+
+	var list []map[string]any
+	s.Require().NoError(json.Unmarshal(w.Body.Bytes(), &list))
+	s.Len(list, 1)
+
+	details, ok := list[0]["responseDetails"].([]any)
+	s.Require().True(ok)
+	s.Len(details, 1)
+	detail, ok := details[0].(map[string]any)
+	s.Require().True(ok)
+	s.Equal("type.googleapis.com/google.rpc.ErrorInfo", detail["type"])
+	s.Equal("INVALID", detail["reason"])
+	s.Equal("example.com", detail["domain"])
+}
+
 // TestVerifyCallsWithHistory tests verify endpoint with history store.
 func (s *RestServerTestSuite) TestVerifyCallsWithHistory() {
 	server := s.newRestServerWithHistory(

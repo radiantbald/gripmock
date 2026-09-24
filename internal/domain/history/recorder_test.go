@@ -122,7 +122,7 @@ func TestMemoryStoreREcordRedactsSensitiveKeys(t *testing.T) {
 func TestMemoryStoreRecordRedactsHeaderKeys(t *testing.T) {
 	t.Parallel()
 
-	store := history.NewMemoryStore(0, history.WithRedactKeys([]string{"authorization", "x-token"}))
+	store := history.NewMemoryStore(0, history.WithRedactKeys([]string{"authorization", "x-token", "token"}))
 	store.Record(history.CallRecord{
 		Service: "svc",
 		Method:  "M",
@@ -134,6 +134,12 @@ func TestMemoryStoreRecordRedactsHeaderKeys(t *testing.T) {
 			"X-Token":      "abc",
 			"x-request-id": "req-1",
 		},
+		ResponseDetails: []map[string]any{
+			{
+				"type":  "type.googleapis.com/google.rpc.ErrorInfo",
+				"token": "secret-detail",
+			},
+		},
 	})
 
 	all := store.All()
@@ -144,6 +150,8 @@ func TestMemoryStoreRecordRedactsHeaderKeys(t *testing.T) {
 	require.Equal(t, "prod", r.RequestHeaders["x-env"])
 	require.Equal(t, "[REDACTED]", r.ResponseHeaders["X-Token"])
 	require.Equal(t, "req-1", r.ResponseHeaders["x-request-id"])
+	require.Equal(t, "[REDACTED]", r.ResponseDetails[0]["token"])
+	require.Equal(t, "type.googleapis.com/google.rpc.ErrorInfo", r.ResponseDetails[0]["type"])
 }
 
 func TestMemoryStoreREcordRedactsInArrays(t *testing.T) {

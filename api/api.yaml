@@ -1007,6 +1007,12 @@ components:
           additionalProperties:
             type: string
           x-go-type-skip-optional-pointer: true
+        responseDetails:
+          type: array
+          description: gRPC status details (google.protobuf.Any payloads)
+          items:
+            type: object
+            additionalProperties: true
         responseTimestamps:
           type: array
           description: Per-response server send timestamp (same order as responses)

@@ -30,6 +30,8 @@ type CallRecord struct {
 	RequestHeaders map[string]string `json:"requestHeaders,omitempty"`
 	// ResponseHeaders contains normalized gRPC response metadata (header+trailer).
 	ResponseHeaders map[string]string `json:"responseHeaders,omitempty"`
+	// ResponseDetails contains gRPC status details (google.protobuf.Any payloads).
+	ResponseDetails []map[string]any `json:"responseDetails,omitempty"`
 	// ResponseTimestamps contains per-response send time in server clock order.
 	ResponseTimestamps []time.Time `json:"responseTimestamps,omitempty"`
 	Code               uint32      `json:"code,omitempty"` // gRPC status code (e.g., codes.OK, codes.NotFound).
@@ -93,7 +95,7 @@ func WithMessageMaxBytes(n int64) MemoryStoreOption {
 }
 
 // WithRedactKeys replaces values for matching keys (case-insensitive) with "[REDACTED]"
-// in Request/Response and request/response headers. Keys are matched at any nesting level.
+// in Request/Response, request/response headers, and response details. Keys are matched at any nesting level.
 func WithRedactKeys(keys []string) MemoryStoreOption {
 	m := make(map[string]struct{}, len(keys))
 	for _, k := range keys {
@@ -192,6 +194,10 @@ func redactRecord(c CallRecord, keys map[string]struct{}) CallRecord {
 
 	if len(c.ResponseHeaders) > 0 {
 		c.ResponseHeaders = redactStringMap(c.ResponseHeaders, keys)
+	}
+
+	if len(c.ResponseDetails) > 0 {
+		c.ResponseDetails = redactMessages(c.ResponseDetails, keys)
 	}
 
 	return c
@@ -309,6 +315,10 @@ func truncateRecord(c CallRecord, maxBytes int64) CallRecord {
 
 	if len(c.Responses) > 0 {
 		c.Responses = truncateMessages(c.Responses, maxBytes)
+	}
+
+	if len(c.ResponseDetails) > 0 {
+		c.ResponseDetails = truncateMessages(c.ResponseDetails, maxBytes)
 	}
 
 	return c

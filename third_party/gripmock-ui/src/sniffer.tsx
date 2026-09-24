@@ -106,8 +106,8 @@ type CallTableColumnKey =
 type SnifferSource = "proto" | "reflection";
 type ReflectionServedBy = "stub" | "proxy";
 const defaultReflectionServedBy: ReflectionServedBy = "proxy";
-type RequestPanelMode = "request" | "metadata";
-type ResponsePanelMode = "response" | "nextResponse" | "metadata";
+type RequestPanelTab = "header" | "body";
+type ResponsePanelTab = "header" | "body" | "details";
 type ReflectionHostRecord = {
   id?: string | number;
   host?: string;
@@ -191,57 +191,39 @@ const panelHeaderSx = {
   overflow: "hidden",
 };
 
-const postmanLikeSelectSx = {
-  width: "auto",
+const panelTabRowSx = {
+  display: "flex",
+  alignItems: "center",
+  gap: 0.25,
   minWidth: 0,
-  "& .MuiInputBase-root": {
-    width: "auto",
-    color: "#FF6C37",
+  flexShrink: 0,
+};
+
+const panelTabButtonSx = (active: boolean) => ({
+  minWidth: 0,
+  px: 1,
+  py: 0.25,
+  color: active ? "#FF6C37" : "#D7DCE2",
+  opacity: active ? 1 : 0.62,
+  fontSize: 13,
+  fontWeight: 700,
+  letterSpacing: 0.15,
+  lineHeight: 1.4,
+  textTransform: "none" as const,
+  borderRadius: 0,
+  "&:hover": {
     backgroundColor: "transparent",
-    borderRadius: 0,
-    fontSize: 13,
-    fontWeight: 700,
-    letterSpacing: 0.15,
-    lineHeight: 1.4,
-    transition: "color 120ms ease",
-  },
-  "& .MuiInputBase-root:hover": {
     color: "#FF6C37",
-    backgroundColor: "transparent !important",
+    opacity: 1,
   },
-  "& .Mui-focused": {
-    color: "#FF6C37",
-    backgroundColor: "transparent !important",
-  },
-  "& .MuiInputBase-root::before, & .MuiInputBase-root::after": {
-    borderBottom: "none !important",
-  },
-  "& .MuiInputBase-root:hover:not(.Mui-disabled)::before": {
-    borderBottom: "none !important",
-  },
-  "& .MuiOutlinedInput-notchedOutline": {
-    border: "none",
-  },
-  "& .MuiSelect-select": {
-    width: "auto",
-    minWidth: "unset !important",
-    padding: "0 20px 0 0 !important",
-    display: "inline-flex",
-    alignItems: "center",
-    backgroundColor: "transparent !important",
-    boxShadow: "none",
-  },
-  "& .MuiSelect-select:focus": {
-    backgroundColor: "transparent !important",
-  },
-  "& .MuiSelect-icon": {
-    right: 0,
-    color: "#FF6C37",
-    fontSize: 16,
-    transition: "color 120ms ease, transform 120ms ease",
-  },
-  "& .MuiSelect-iconOpen": { transform: "rotate(180deg)" },
-} as const;
+});
+
+const nextResponseHeaderButtonSx = (active: boolean) => ({
+  ...panelTabButtonSx(active),
+  ml: 0.5,
+  whiteSpace: "nowrap" as const,
+});
+
 const compactSearchBarSx = {
   display: "flex",
   alignItems: "center",
@@ -1014,15 +996,17 @@ const snifferSourceLabels: Record<SnifferSource, string> = {
   proto: "proto",
   reflection: "reflection",
 };
-const requestPanelModeLabels: Record<RequestPanelMode, string> = {
-  request: "Request",
-  metadata: "Metadata",
+const requestPanelTabLabels: Record<RequestPanelTab, string> = {
+  header: "Header",
+  body: "Body",
 };
-const responsePanelModeLabels: Record<ResponsePanelMode, string> = {
-  response: "Response",
-  nextResponse: "Set next response",
-  metadata: "Metadata",
+const responsePanelTabLabels: Record<ResponsePanelTab, string> = {
+  header: "Header",
+  body: "Body",
+  details: "Details",
 };
+const requestPanelTabs: RequestPanelTab[] = ["header", "body"];
+const responsePanelTabs: ResponsePanelTab[] = ["header", "body", "details"];
 const servedByLabels = {
   proxy: "proxy",
   stub: "stub",
@@ -1832,10 +1816,11 @@ export const SnifferPage = () => {
   const [callTableColumnWidths, setCallTableColumnWidths] = useState<
     Record<CallTableColumnKey, number>
   >(CALL_TABLE_DEFAULT_COLUMN_WIDTHS);
-  const [requestPanelMode, setRequestPanelMode] =
-    useState<RequestPanelMode>("request");
-  const [responsePanelMode, setResponsePanelMode] =
-    useState<ResponsePanelMode>("response");
+  const [requestPanelTab, setRequestPanelTab] =
+    useState<RequestPanelTab>("body");
+  const [responsePanelTab, setResponsePanelTab] =
+    useState<ResponsePanelTab>("body");
+  const [isNextResponseMode, setIsNextResponseMode] = useState(false);
   const [callTableFilters, setCallTableFilters] = useState<CallTableFilters>(
     () => readCallTableFilters(),
   );
@@ -2207,7 +2192,8 @@ export const SnifferPage = () => {
   const shouldShowInvalidStubBlock =
     !shouldHideResponsePayload && showResponseSchemaHint;
   const shouldShowProxyNextResponseBlock =
-    responsePanelMode === "response" &&
+    !isNextResponseMode &&
+    responsePanelTab === "body" &&
     selectedNextResponseSource === "reflection" &&
     selectedReflectionServedBy === "proxy" &&
     !shouldHideResponsePayload &&
@@ -2702,8 +2688,8 @@ export const SnifferPage = () => {
     () => formatJsonPayload(requestMetadata),
     [requestMetadata],
   );
-  const isRequestMetadataMode = requestPanelMode === "metadata";
-  const displayedRequestText = isRequestMetadataMode
+  const isRequestHeaderTab = requestPanelTab === "header";
+  const displayedRequestText = isRequestHeaderTab
     ? requestMetadataText
     : requestPayloadText;
   const hasRequestSearchablePayload = useMemo(() => {
@@ -2711,7 +2697,7 @@ export const SnifferPage = () => {
       return false;
     }
 
-    if (isRequestMetadataMode) {
+    if (isRequestHeaderTab) {
       return hasSearchableContent(requestMetadata);
     }
 
@@ -2722,7 +2708,7 @@ export const SnifferPage = () => {
     }
 
     return hasSearchableContent(unwrapRootPayload(selected.request));
-  }, [isRequestMetadataMode, requestMetadata, selected]);
+  }, [isRequestHeaderTab, requestMetadata, selected]);
   const requestSearchRegex = useMemo(
     () => buildSearchRegex(requestSearchQuery, requestSearchOptions),
     [requestSearchOptions, requestSearchQuery],
@@ -2820,19 +2806,39 @@ export const SnifferPage = () => {
       orderedResponseEntries.map((entry) => entry.payload),
     );
   }, [isSingleResponseView, orderedResponseEntries, singleResponseEntry]);
-  const isResponseViewMode = responsePanelMode === "response";
-  const isResponseMetadataMode = responsePanelMode === "metadata";
+  const isResponseHeaderTab = !isNextResponseMode && responsePanelTab === "header";
+  const isResponseBodyTab = !isNextResponseMode && responsePanelTab === "body";
+  const isResponseDetailsTab =
+    !isNextResponseMode && responsePanelTab === "details";
+  const isResponseInspectMode = !isNextResponseMode;
+  const responseDetails = useMemo(
+    () => (Array.isArray(selected?.responseDetails) ? selected.responseDetails : []),
+    [selected],
+  );
+  const responseDetailsText = useMemo(
+    () => formatJsonPayload(responseDetails),
+    [responseDetails],
+  );
   const hasResponseMetadataSearchable = hasSearchableContent(responseMetadata);
-  const displayedResponseTextToCopy = isResponseMetadataMode
+  const hasResponseDetailsSearchable = hasSearchableContent(responseDetails);
+  const displayedResponseTextToCopy = isResponseHeaderTab
     ? responseMetadataText
-    : responsePayloadTextToCopy;
+    : isResponseDetailsTab
+      ? responseDetailsText
+      : responsePayloadTextToCopy;
   const responseMetadataMatchRanges = useMemo(
     () => collectMatchRanges(responseMetadataText, responseSearchRegex),
     [responseMetadataText, responseSearchRegex],
   );
-  const displayedResponseMatchCount = isResponseMetadataMode
+  const responseDetailsMatchRanges = useMemo(
+    () => collectMatchRanges(responseDetailsText, responseSearchRegex),
+    [responseDetailsText, responseSearchRegex],
+  );
+  const displayedResponseMatchCount = isResponseHeaderTab
     ? responseMetadataMatchRanges.length
-    : responseMatchData.totalMatches;
+    : isResponseDetailsTab
+      ? responseDetailsMatchRanges.length
+      : responseMatchData.totalMatches;
 
   useEffect(() => {
     setExpandedResponseKeys(() => {
@@ -2848,8 +2854,9 @@ export const SnifferPage = () => {
     setResponseSearchQuery("");
     setRequestActiveMatch(-1);
     setResponseActiveMatch(-1);
-    setRequestPanelMode("request");
-    setResponsePanelMode("response");
+    setRequestPanelTab("body");
+    setResponsePanelTab("body");
+    setIsNextResponseMode(false);
   }, [selected?.callId, selected?.id]);
 
   useEffect(() => {
@@ -3920,8 +3927,15 @@ export const SnifferPage = () => {
   }, []);
 
   const openResponseSearch = useCallback(() => {
-    if (isResponseMetadataMode) {
+    if (isResponseHeaderTab) {
       if (!hasResponseMetadataSearchable) {
+        return;
+      }
+      setShowResponseSearch(true);
+      return;
+    }
+    if (isResponseDetailsTab) {
+      if (!hasResponseDetailsSearchable) {
         return;
       }
       setShowResponseSearch(true);
@@ -3932,9 +3946,11 @@ export const SnifferPage = () => {
     }
     setShowResponseSearch(true);
   }, [
+    hasResponseDetailsSearchable,
     hasResponseMetadataSearchable,
     hasResponseSearchablePayload,
-    isResponseMetadataMode,
+    isResponseDetailsTab,
+    isResponseHeaderTab,
     shouldShowResponsePayloadBlock,
   ]);
 
@@ -3953,18 +3969,18 @@ export const SnifferPage = () => {
         });
         return;
       }
-      notify(isRequestMetadataMode ? "Metadata copied." : "Request copied.", {
+      notify(isRequestHeaderTab ? "Headers copied." : "Request copied.", {
         type: "success",
       });
     } catch {
       notify(
-        isRequestMetadataMode
-          ? "Failed to copy request metadata."
+        isRequestHeaderTab
+          ? "Failed to copy request headers."
           : "Failed to copy request payload.",
         { type: "warning" },
       );
     }
-  }, [displayedRequestText, isRequestMetadataMode, notify]);
+  }, [displayedRequestText, isRequestHeaderTab, notify]);
 
   const copyResponsePayload = useCallback(async () => {
     try {
@@ -3975,18 +3991,32 @@ export const SnifferPage = () => {
         });
         return;
       }
-      notify(isResponseMetadataMode ? "Metadata copied." : "Response copied.", {
-        type: "success",
-      });
+      notify(
+        isResponseHeaderTab
+          ? "Headers copied."
+          : isResponseDetailsTab
+            ? "Details copied."
+            : "Response copied.",
+        {
+          type: "success",
+        },
+      );
     } catch {
       notify(
-        isResponseMetadataMode
-          ? "Failed to copy response metadata."
-          : "Failed to copy response payload.",
+        isResponseHeaderTab
+          ? "Failed to copy response headers."
+          : isResponseDetailsTab
+            ? "Failed to copy response details."
+            : "Failed to copy response payload.",
         { type: "warning" },
       );
     }
-  }, [displayedResponseTextToCopy, isResponseMetadataMode, notify]);
+  }, [
+    displayedResponseTextToCopy,
+    isResponseDetailsTab,
+    isResponseHeaderTab,
+    notify,
+  ]);
 
   useEffect(() => {
     if (!showRequestSearch) {
@@ -4032,8 +4062,9 @@ export const SnifferPage = () => {
       if (event.key.toLowerCase() === "a") {
         const selectedText =
           targetPanel === "response"
-            ? isResponseMetadataMode ||
-              (shouldShowResponsePayloadBlock && isResponseViewMode)
+            ? isResponseHeaderTab ||
+              isResponseDetailsTab ||
+              (shouldShowResponsePayloadBlock && isResponseBodyTab)
               ? selectElementText(responseSearchContainerRef.current)
               : false
             : selectElementText(requestSearchContainerRef.current);
@@ -4050,8 +4081,11 @@ export const SnifferPage = () => {
       const preferredTarget = activeSearchTarget;
       const canOpenRequest = hasRequestSearchablePayload;
       const canOpenResponse =
-        (isResponseMetadataMode && hasResponseMetadataSearchable) ||
-        (shouldShowResponsePayloadBlock && hasResponseSearchablePayload);
+        (isResponseHeaderTab && hasResponseMetadataSearchable) ||
+        (isResponseDetailsTab && hasResponseDetailsSearchable) ||
+        (isResponseBodyTab &&
+          shouldShowResponsePayloadBlock &&
+          hasResponseSearchablePayload);
       if (!canOpenRequest && !canOpenResponse) {
         return;
       }
@@ -4096,10 +4130,12 @@ export const SnifferPage = () => {
     closeRequestSearch,
     closeResponseSearch,
     hasRequestSearchablePayload,
+    hasResponseDetailsSearchable,
     hasResponseMetadataSearchable,
     hasResponseSearchablePayload,
-    isResponseMetadataMode,
-    isResponseViewMode,
+    isResponseBodyTab,
+    isResponseDetailsTab,
+    isResponseHeaderTab,
     openRequestSearch,
     openResponseSearch,
     showRequestSearch,
@@ -4900,28 +4936,21 @@ export const SnifferPage = () => {
             }}
           >
             <Box sx={panelHeaderSx}>
-              <FormControl size="small" sx={postmanLikeSelectSx}>
-                <Select
-                  value={requestPanelMode}
-                  sx={{
-                    "& .MuiSelect-icon": {
-                      color: "#D7DCE2",
-                    },
-                  }}
-                  onChange={(event) => {
-                    setRequestPanelMode(event.target.value as RequestPanelMode);
-                    closeRequestSearch();
-                  }}
-                  variant="outlined"
-                >
-                  <MenuItem value="request">
-                    {requestPanelModeLabels.request}
-                  </MenuItem>
-                  <MenuItem value="metadata">
-                    {requestPanelModeLabels.metadata}
-                  </MenuItem>
-                </Select>
-              </FormControl>
+              <Box sx={panelTabRowSx}>
+                {requestPanelTabs.map((tab) => (
+                  <Button
+                    key={tab}
+                    size="small"
+                    onClick={() => {
+                      setRequestPanelTab(tab);
+                      closeRequestSearch();
+                    }}
+                    sx={panelTabButtonSx(requestPanelTab === tab)}
+                  >
+                    {requestPanelTabLabels[tab]}
+                  </Button>
+                ))}
+              </Box>
               <Box
                 sx={{
                   display: "flex",
@@ -4972,8 +5001,8 @@ export const SnifferPage = () => {
                   }}
                   sx={searchHeaderButtonSx}
                   aria-label={
-                    isRequestMetadataMode
-                      ? "Copy request metadata"
+                    isRequestHeaderTab
+                      ? "Copy request headers"
                       : "Copy request payload"
                   }
                 >
@@ -5113,36 +5142,35 @@ export const SnifferPage = () => {
             }}
           >
             <Box sx={panelHeaderSx}>
-              <FormControl size="small" sx={postmanLikeSelectSx}>
-                <Select
-                  value={responsePanelMode}
-                  sx={{
-                    "& .MuiSelect-icon": {
-                      color: "#D7DCE2",
-                    },
-                  }}
-                  onChange={(event) => {
-                    setResponsePanelMode(
-                      event.target.value as ResponsePanelMode,
-                    );
+              <Box sx={panelTabRowSx}>
+                {responsePanelTabs.map((tab) => (
+                  <Button
+                    key={tab}
+                    size="small"
+                    onClick={() => {
+                      setResponsePanelTab(tab);
+                      setIsNextResponseMode(false);
+                      closeResponseSearch();
+                    }}
+                    sx={panelTabButtonSx(
+                      !isNextResponseMode && responsePanelTab === tab,
+                    )}
+                  >
+                    {responsePanelTabLabels[tab]}
+                  </Button>
+                ))}
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setIsNextResponseMode(true);
                     closeResponseSearch();
                   }}
-                  variant="outlined"
+                  sx={nextResponseHeaderButtonSx(isNextResponseMode)}
                 >
-                  <MenuItem value="response">
-                    {isSingleResponseView
-                      ? responsePanelModeLabels.response
-                      : "Responses"}
-                  </MenuItem>
-                  <MenuItem value="metadata">
-                    {responsePanelModeLabels.metadata}
-                  </MenuItem>
-                  <MenuItem value="nextResponse">
-                    {responsePanelModeLabels.nextResponse}
-                  </MenuItem>
-                </Select>
-              </FormControl>
-              {isResponseViewMode || isResponseMetadataMode ? (
+                  Set next response
+                </Button>
+              </Box>
+              {isResponseInspectMode ? (
                 <Box
                   sx={{
                     display: "flex",
@@ -5184,7 +5212,7 @@ export const SnifferPage = () => {
                         : undefined
                     }
                   />
-                  {isResponseViewMode && isSingleResponseView ? (
+                  {isResponseBodyTab && isSingleResponseView ? (
                     <Typography
                       variant="caption"
                       color="text.secondary"
@@ -5192,17 +5220,18 @@ export const SnifferPage = () => {
                     >
                       {responseHeaderTimestamp}
                     </Typography>
-                  ) : isResponseViewMode ? (
+                  ) : isResponseBodyTab ? (
                     <Chip
                       size="small"
                       variant="outlined"
                       label={`${orderedResponseEntries.length} items`}
                     />
                   ) : null}
-                  {(isResponseMetadataMode && hasResponseMetadataSearchable) ||
+                  {(isResponseHeaderTab && hasResponseMetadataSearchable) ||
+                  (isResponseDetailsTab && hasResponseDetailsSearchable) ||
                   (shouldShowResponsePayloadBlock &&
                     hasResponseSearchablePayload &&
-                    isResponseViewMode) ? (
+                    isResponseBodyTab) ? (
                     <IconButton
                       size="small"
                       onClick={() => {
@@ -5217,8 +5246,9 @@ export const SnifferPage = () => {
                       <SearchRoundedIcon fontSize="small" />
                     </IconButton>
                   ) : null}
-                  {isResponseMetadataMode ||
-                  (shouldShowResponsePayloadBlock && isResponseViewMode) ? (
+                  {isResponseHeaderTab ||
+                  isResponseDetailsTab ||
+                  (shouldShowResponsePayloadBlock && isResponseBodyTab) ? (
                     <IconButton
                       size="small"
                       onClick={() => {
@@ -5226,9 +5256,11 @@ export const SnifferPage = () => {
                       }}
                       sx={searchHeaderButtonSx}
                       aria-label={
-                        isResponseMetadataMode
-                          ? "Copy response metadata"
-                          : "Copy response payload"
+                        isResponseHeaderTab
+                          ? "Copy response headers"
+                          : isResponseDetailsTab
+                            ? "Copy response details"
+                            : "Copy response payload"
                       }
                     >
                       <ContentCopyOutlinedIcon fontSize="small" />
@@ -5272,9 +5304,9 @@ export const SnifferPage = () => {
               style={{ display: "none" }}
               onChange={handleProtoSelect}
             />
-            {responsePanelMode === "nextResponse" ? (
+            {isNextResponseMode ? (
               nextResponseSetupBlock
-            ) : isResponseMetadataMode ? (
+            ) : isResponseHeaderTab || isResponseDetailsTab ? (
               <Box
                 sx={{
                   display: "flex",
@@ -5283,7 +5315,9 @@ export const SnifferPage = () => {
                   flex: 1,
                 }}
               >
-                {showResponseSearch && hasResponseMetadataSearchable ? (
+                {showResponseSearch &&
+                ((isResponseHeaderTab && hasResponseMetadataSearchable) ||
+                  (isResponseDetailsTab && hasResponseDetailsSearchable)) ? (
                   <Box sx={compactSearchBarSx}>
                     <TextField
                       inputRef={responseSearchInputRef}
@@ -5369,8 +5403,16 @@ export const SnifferPage = () => {
                   sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.25 }}
                 >
                   <FoldableJsonText
-                    text={responseMetadataText}
-                    matchRanges={responseMetadataMatchRanges}
+                    text={
+                      isResponseHeaderTab
+                        ? responseMetadataText
+                        : responseDetailsText
+                    }
+                    matchRanges={
+                      isResponseHeaderTab
+                        ? responseMetadataMatchRanges
+                        : responseDetailsMatchRanges
+                    }
                     activeMatchIndex={responseActiveMatch}
                   />
                 </Box>
