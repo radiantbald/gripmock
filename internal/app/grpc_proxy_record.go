@@ -76,7 +76,9 @@ func (m *grpcMocker) recordProxyCall(
 		Client:             clientFromContext(ctx),
 		Requests:           requests,
 		Responses:          responses,
-		ResponseHeaders:    responseHeaders,
+		RequestHeaders:     requestHeadersFromContext(ctx),
+		ResponseHeaders:    cloneStringMap(responseHeaders),
+		ResponseDetails:    proxycapture.CaptureStatusDetails(callErr, responseHeaders),
 		ResponseTimestamps: responseTimestamps,
 		Timestamp:          timestamp,
 	}

@@ -36,6 +36,12 @@ up: env ui-build
 reset-db:
 	docker compose down --volumes --remove-orphans
 
+# Export stubs from Postgres (works when the gripmock container is down).
+# Usage: make export-stubs
+#        make export-stubs OUT=./my_backup
+export-stubs:
+	./scripts/export-stubs.sh $(OUT)
+
 reup-clean: reset-db up
 
 up-proxy: env ui-build

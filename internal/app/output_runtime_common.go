@@ -11,6 +11,18 @@ import (
 	"github.com/radiantbald/gripmock/v3/internal/infra/types"
 )
 
+func statusErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	if st, ok := status.FromError(err); ok && st.Message() != "" {
+		return st.Message()
+	}
+
+	return err.Error()
+}
+
 func outputStatusBase(output stuber.Output) *status.Status {
 	if output.Error == "" && output.Code == nil {
 		return nil

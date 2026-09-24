@@ -69,16 +69,29 @@ func attachDetails(st *status.Status, details []map[string]any, resolver protode
 	return status.FromProto(stProto), nil
 }
 
-//nolint:cyclop,ireturn
-func detailMessage(detail map[string]any, resolver protodesc.Resolver) (proto.Message, error) {
-	typeURLRaw, ok := detail["type"]
-	if !ok {
-		return nil, errDetailTypeRequired
+func detailTypeURL(detail map[string]any) (string, error) {
+	for _, key := range []string{"type", "@type"} {
+		raw, ok := detail[key]
+		if !ok {
+			continue
+		}
+
+		typeURL, ok := raw.(string)
+		if !ok || strings.TrimSpace(typeURL) == "" {
+			return "", errDetailTypeNonEmpty
+		}
+
+		return typeURL, nil
 	}
 
-	typeURL, ok := typeURLRaw.(string)
-	if !ok || strings.TrimSpace(typeURL) == "" {
-		return nil, errDetailTypeNonEmpty
+	return "", errDetailTypeRequired
+}
+
+//nolint:cyclop,ireturn
+func detailMessage(detail map[string]any, resolver protodesc.Resolver) (proto.Message, error) {
+	typeURL, err := detailTypeURL(detail)
+	if err != nil {
+		return nil, err
 	}
 
 	desc, err := resolveMessageDescriptor(typeURL, resolver)
@@ -88,6 +101,7 @@ func detailMessage(detail map[string]any, resolver protodesc.Resolver) (proto.Me
 
 	payload := deepCopyMapAny(detail)
 	delete(payload, "type")
+	delete(payload, "@type")
 
 	data, err := json.Marshal(payload)
 	if err != nil {

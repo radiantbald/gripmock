@@ -202,6 +202,9 @@ type CallRecord struct {
 	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Request *map[string]any `json:"request,omitempty"`
 
+	// RequestHeaders Normalized incoming gRPC metadata used for matching
+	RequestHeaders map[string]string `json:"requestHeaders,omitempty"`
+
 	// Requests Request messages for streaming calls (client stream, bidi stream)
 	Requests *[]map[string]any `json:"requests,omitempty"`
 
@@ -211,6 +214,9 @@ type CallRecord struct {
 
 	// ResponseHeaders Normalized gRPC response metadata (header+trailer)
 	ResponseHeaders map[string]string `json:"responseHeaders,omitempty"`
+
+	// ResponseDetails gRPC status details (google.protobuf.Any payloads)
+	ResponseDetails *[]map[string]any `json:"responseDetails,omitempty"`
 
 	// ResponseTimestamps Per-response server send timestamp (same order as responses)
 	ResponseTimestamps *[]time.Time `json:"responseTimestamps,omitempty"`

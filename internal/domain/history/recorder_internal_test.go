@@ -30,19 +30,23 @@ func TestMemoryStoreDeleteRoomRemovesOnlyRoomRecords(t *testing.T) {
 	require.Empty(t, all[1].Room)
 }
 
-func TestMemoryStoreDeleteRoomEmptyRoomNop(t *testing.T) {
+func TestMemoryStoreDeleteRoomEmptyRoomRemovesOnlyGlobal(t *testing.T) {
 	t.Parallel()
 
 	// Arrange
 	store := &history.MemoryStore{}
 	store.Record(history.CallRecord{Service: "svc", Method: "A", Room: "s1"})
+	store.Record(history.CallRecord{Service: "svc", Method: "B", Room: ""})
 
 	// Act
 	deleted := store.DeleteRoom("")
 
 	// Assert
-	require.Equal(t, 0, deleted)
-	require.Len(t, store.All(), 1)
+	require.Equal(t, 1, deleted)
+
+	all := store.All()
+	require.Len(t, all, 1)
+	require.Equal(t, "s1", all[0].Room)
 }
 
 func TestMemoryStoreRecordSetsDefaults(t *testing.T) {

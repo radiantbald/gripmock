@@ -1,12 +1,14 @@
 import {
   Datagrid,
   DateField,
+  DeleteButton,
   List,
   NumberField,
   SearchInput,
   TextField,
   TopToolbar,
   ExportButton,
+  useNotify,
 } from "react-admin";
 
 import { listContentSx } from "./components/table/listStyles";
@@ -17,6 +19,33 @@ const ProtofilesListActions = () => (
     <ExportButton />
   </TopToolbar>
 );
+
+const ProtofileDeleteField = () => {
+  const notify = useNotify();
+
+  const formatDeleteError = (error: unknown): string => {
+    const message = error instanceof Error ? error.message : "";
+    if (message.toLowerCase().includes("not found")) {
+      return "Protofile not found or already removed";
+    }
+
+    return message || "Unable to delete protofile";
+  };
+
+  return (
+    <DeleteButton
+      mutationMode="pessimistic"
+      confirmTitle="Delete protofile"
+      confirmContent="Delete this protofile, its runtime descriptor, and stubs for its methods"
+      mutationOptions={{
+        onError: (error: unknown) =>
+          notify(formatDeleteError(error), {
+            type: "error",
+          }),
+      }}
+    />
+  );
+};
 
 const protofilesFilters = [
   <SearchInput key="search" source="q" placeholder="Search proto files..." alwaysOn />,
@@ -45,6 +74,7 @@ export const ProtofilesList = () => {
         <TextField source="hash" sortable />
         <DateField source="updatedAt" showTime sortable />
         <DateField source="createdAt" showTime sortable />
+        <ProtofileDeleteField />
       </Datagrid>
     </List>
   );

@@ -1,9 +1,7 @@
 import {
   ChangeEvent,
-  Fragment,
   MouseEvent,
   PointerEvent as ReactPointerEvent,
-  ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -57,6 +55,7 @@ import {
 import { Link as RouterLink, useLocation } from "react-router-dom";
 
 import { API_CONFIG } from "./constants/api";
+import { FoldableJsonText } from "./components/json/FoldableJsonText";
 import { reflectionHostInputSx } from "./components/inputs/reflectionHostInputSx";
 import { apiClient } from "./dataProvider/apiClient";
 import { resolveRoomRow, type RoomRow } from "./features/room/model";
@@ -107,7 +106,8 @@ type CallTableColumnKey =
 type SnifferSource = "proto" | "reflection";
 type ReflectionServedBy = "stub" | "proxy";
 const defaultReflectionServedBy: ReflectionServedBy = "proxy";
-type ResponsePanelMode = "response" | "nextResponse";
+type RequestPanelTab = "header" | "body";
+type ResponsePanelTab = "header" | "body" | "details";
 type ReflectionHostRecord = {
   id?: string | number;
   host?: string;
@@ -143,11 +143,13 @@ type StubCreatePrefillOutput = {
   code: number;
   data?: unknown;
   stream?: unknown[];
+  details?: unknown[];
 };
 
 const SNIFFER_ROUTE_SOURCES_KEY = "gripmock.sniffer.routeSources";
 const SNIFFER_ROUTE_SOURCE_CHANGES_KEY = "gripmock.sniffer.routeSourceChanges";
 const SNIFFER_REFLECTION_SERVED_BY_KEY = "gripmock.sniffer.reflectionServedBy";
+const SNIFFER_CALL_TABLE_FILTERS_KEY = "gripmock.sniffer.callTableFilters";
 
 const RADIUS_PX = "10px";
 const RESIZE_HANDLE_SIZE_PX = 10;
@@ -190,87 +192,39 @@ const panelHeaderSx = {
   overflow: "hidden",
 };
 
-const panelTitleSx = { fontSize: 13, fontWeight: 700, letterSpacing: 0.15 };
-const postmanLikeSelectSx = {
-  width: "auto",
+const panelTabRowSx = {
+  display: "flex",
+  alignItems: "center",
+  gap: 0.25,
   minWidth: 0,
-  "& .MuiInputBase-root": {
-    width: "auto",
-    color: "#FF6C37",
-    backgroundColor: "transparent",
-    borderRadius: 0,
-    fontSize: 13,
-    fontWeight: 700,
-    letterSpacing: 0.15,
-    lineHeight: 1.4,
-    transition: "color 120ms ease",
-  },
-  "& .MuiInputBase-root:hover": {
-    color: "#FF6C37",
-    backgroundColor: "transparent !important",
-  },
-  "& .Mui-focused": {
-    color: "#FF6C37",
-    backgroundColor: "transparent !important",
-  },
-  "& .MuiInputBase-root::before, & .MuiInputBase-root::after": {
-    borderBottom: "none !important",
-  },
-  "& .MuiInputBase-root:hover:not(.Mui-disabled)::before": {
-    borderBottom: "none !important",
-  },
-  "& .MuiOutlinedInput-notchedOutline": {
-    border: "none",
-  },
-  "& .MuiSelect-select": {
-    width: "auto",
-    minWidth: "unset !important",
-    padding: "0 20px 0 0 !important",
-    display: "inline-flex",
-    alignItems: "center",
-    backgroundColor: "transparent !important",
-    boxShadow: "none",
-  },
-  "& .MuiSelect-select:focus": {
-    backgroundColor: "transparent !important",
-  },
-  "& .MuiSelect-icon": {
-    right: 0,
-    color: "#FF6C37",
-    fontSize: 16,
-    transition: "color 120ms ease, transform 120ms ease",
-  },
-  "& .MuiSelect-iconOpen": { transform: "rotate(180deg)" },
-} as const;
-const jsonTextSx = {
-  m: 0,
-  p: 0,
-  whiteSpace: "pre",
-  fontFamily:
-    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  flexShrink: 0,
+};
+
+const panelTabButtonSx = (active: boolean) => ({
+  minWidth: 0,
+  px: 1,
+  py: 0.25,
+  color: active ? "#FF6C37" : "#D7DCE2",
+  opacity: active ? 1 : 0.62,
   fontSize: 13,
-  lineHeight: "14px",
-  color: "text.primary",
-  tabSize: 2,
-  cursor: "text",
-  userSelect: "text",
-  "&::selection": {
-    backgroundColor: alpha("#5DA8FF", 0.46),
-    color: "#F6FAFF",
+  fontWeight: 700,
+  letterSpacing: 0.15,
+  lineHeight: 1.4,
+  textTransform: "none" as const,
+  borderRadius: 0,
+  "&:hover": {
+    backgroundColor: "transparent",
+    color: "#FF6C37",
+    opacity: 1,
   },
-  "& *::selection": {
-    backgroundColor: alpha("#5DA8FF", 0.46),
-    color: "#F6FAFF",
-  },
-  "&::-moz-selection": {
-    backgroundColor: alpha("#5DA8FF", 0.46),
-    color: "#F6FAFF",
-  },
-  "& *::-moz-selection": {
-    backgroundColor: alpha("#5DA8FF", 0.46),
-    color: "#F6FAFF",
-  },
-} as const;
+});
+
+const nextResponseHeaderButtonSx = (active: boolean) => ({
+  ...panelTabButtonSx(active),
+  ml: 0.5,
+  whiteSpace: "nowrap" as const,
+});
+
 const compactSearchBarSx = {
   display: "flex",
   alignItems: "center",
@@ -932,6 +886,14 @@ const callTableFilterLabels: Record<CallTableFilterField, string> = {
 };
 
 const MAX_ITEMS = 500;
+const CALL_TABLE_FILTER_FIELDS: CallTableFilterField[] = [
+  "client",
+  "service",
+  "method",
+  "code",
+  "servedBy",
+  "room",
+];
 const EMPTY_CALL_TABLE_FILTERS: CallTableFilters = {
   client: { query: "", selected: [] },
   service: { query: "", selected: [] },
@@ -939,6 +901,75 @@ const EMPTY_CALL_TABLE_FILTERS: CallTableFilters = {
   code: { query: "", selected: [] },
   servedBy: { query: "", selected: [] },
   room: { query: "", selected: [] },
+};
+const parseCallTableFilterValue = (
+  value: unknown,
+): CallTableFilterValue | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const row = value as Record<string, unknown>;
+  if (typeof row.query !== "string") {
+    return null;
+  }
+  if (
+    !Array.isArray(row.selected) ||
+    row.selected.some((item) => typeof item !== "string")
+  ) {
+    return null;
+  }
+
+  return {
+    query: row.query,
+    selected: row.selected,
+  };
+};
+const readCallTableFilters = (): CallTableFilters => {
+  if (typeof window === "undefined") {
+    return EMPTY_CALL_TABLE_FILTERS;
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(SNIFFER_CALL_TABLE_FILTERS_KEY);
+    if (!raw) {
+      return EMPTY_CALL_TABLE_FILTERS;
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return EMPTY_CALL_TABLE_FILTERS;
+    }
+
+    return CALL_TABLE_FILTER_FIELDS.reduce<CallTableFilters>(
+      (acc, field) => {
+        const parsedValue = parseCallTableFilterValue(
+          (parsed as Record<string, unknown>)[field],
+        );
+        if (parsedValue) {
+          acc[field] = parsedValue;
+        }
+        return acc;
+      },
+      { ...EMPTY_CALL_TABLE_FILTERS },
+    );
+  } catch {
+    return EMPTY_CALL_TABLE_FILTERS;
+  }
+};
+const writeCallTableFilters = (filters: CallTableFilters): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(
+      SNIFFER_CALL_TABLE_FILTERS_KEY,
+      JSON.stringify(filters),
+    );
+  } catch {
+    // Ignore storage failures (private mode, quota, etc.).
+  }
 };
 const codeToChipColor = (code?: number) =>
   code === undefined || code === 0 ? "success" : "error";
@@ -966,10 +997,17 @@ const snifferSourceLabels: Record<SnifferSource, string> = {
   proto: "proto",
   reflection: "reflection",
 };
-const responsePanelModeLabels: Record<ResponsePanelMode, string> = {
-  response: "Response",
-  nextResponse: "Set next response",
+const requestPanelTabLabels: Record<RequestPanelTab, string> = {
+  header: "Header",
+  body: "Body",
 };
+const responsePanelTabLabels: Record<ResponsePanelTab, string> = {
+  header: "Header",
+  body: "Body",
+  details: "Details",
+};
+const requestPanelTabs: RequestPanelTab[] = ["header", "body"];
+const responsePanelTabs: ResponsePanelTab[] = ["header", "body", "details"];
 const servedByLabels = {
   proxy: "proxy",
   stub: "stub",
@@ -1397,6 +1435,21 @@ const formatJsonPayload = (value: unknown): string => {
   }
 };
 
+const normalizeHeaderMap = (value: unknown): Record<string, string> => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const headers: Record<string, string> = {};
+  for (const [key, headerValue] of Object.entries(value)) {
+    if (typeof headerValue === "string") {
+      headers[key] = headerValue;
+    }
+  }
+
+  return headers;
+};
+
 const formatJsonInlinePayload = (value: unknown, maxLength = 180): string => {
   const normalized = value ?? {};
   try {
@@ -1479,12 +1532,16 @@ const buildStubCreatePrefillOutput = (
   const responses = Array.isArray(record.responses)
     ? record.responses.map((item) => unwrapRootPayload(item))
     : [];
+  const details = Array.isArray(record.responseDetails)
+    ? record.responseDetails
+    : [];
   if (responses.length > 1) {
     return {
       code,
       error,
       headers,
       stream: responses,
+      ...(details.length > 0 ? { details } : {}),
     };
   }
 
@@ -1494,6 +1551,7 @@ const buildStubCreatePrefillOutput = (
     error,
     headers,
     data: unwrapRootPayload(dataSource),
+    ...(details.length > 0 ? { details } : {}),
   };
 };
 
@@ -1577,58 +1635,6 @@ const collectMatchRanges = (
   }
 
   return ranges;
-};
-
-const renderHighlightedJsonText = (
-  text: string,
-  ranges: MatchRange[],
-  activeMatchIndex: number,
-): ReactNode => {
-  if (!ranges.length) {
-    return text;
-  }
-
-  const nodes: ReactNode[] = [];
-  let cursor = 0;
-  ranges.forEach((range, idx) => {
-    if (range.start > cursor) {
-      nodes.push(
-        <Fragment key={`plain-${idx}`}>
-          {text.slice(cursor, range.start)}
-        </Fragment>,
-      );
-    }
-    const isActive = range.index === activeMatchIndex;
-    nodes.push(
-      <Box
-        component="mark"
-        data-match-index={range.index}
-        key={`mark-${range.index}`}
-        sx={{
-          px: 0,
-          borderRadius: 0.2,
-          bgcolor: isActive ? "#ff9800" : "warning.light",
-          color: isActive ? "#1a1a1a" : "warning.contrastText",
-          "&::selection": {
-            backgroundColor: alpha("#5DA8FF", 0.46),
-            color: "#F6FAFF",
-          },
-          "&::-moz-selection": {
-            backgroundColor: alpha("#5DA8FF", 0.46),
-            color: "#F6FAFF",
-          },
-        }}
-      >
-        {text.slice(range.start, range.end)}
-      </Box>,
-    );
-    cursor = range.end;
-  });
-  if (cursor < text.length) {
-    nodes.push(<Fragment key="plain-tail">{text.slice(cursor)}</Fragment>);
-  }
-
-  return nodes;
 };
 
 const copyTextToClipboard = async (text: string): Promise<boolean> => {
@@ -1816,10 +1822,13 @@ export const SnifferPage = () => {
   const [callTableColumnWidths, setCallTableColumnWidths] = useState<
     Record<CallTableColumnKey, number>
   >(CALL_TABLE_DEFAULT_COLUMN_WIDTHS);
-  const [responsePanelMode, setResponsePanelMode] =
-    useState<ResponsePanelMode>("response");
+  const [requestPanelTab, setRequestPanelTab] =
+    useState<RequestPanelTab>("body");
+  const [responsePanelTab, setResponsePanelTab] =
+    useState<ResponsePanelTab>("body");
+  const [isNextResponseMode, setIsNextResponseMode] = useState(false);
   const [callTableFilters, setCallTableFilters] = useState<CallTableFilters>(
-    EMPTY_CALL_TABLE_FILTERS,
+    () => readCallTableFilters(),
   );
   const [callTableFilterMenu, setCallTableFilterMenu] =
     useState<CallTableFilterMenuState | null>(null);
@@ -1864,9 +1873,9 @@ export const SnifferPage = () => {
   const rootLayoutRef = useRef<HTMLDivElement | null>(null);
   const detailsLayoutRef = useRef<HTMLDivElement | null>(null);
   const [viewportBoundHeightPx, setViewportBoundHeightPx] = useState<number>(0);
-  const activeResizeRef = useRef<"rows" | "columns" | "callTableColumns" | null>(
-    null,
-  );
+  const activeResizeRef = useRef<
+    "rows" | "columns" | "callTableColumns" | null
+  >(null);
   const activeCallTableColumnResizeRef = useRef<{
     leftKey: CallTableColumnKey;
     rightKey: CallTableColumnKey;
@@ -2190,7 +2199,8 @@ export const SnifferPage = () => {
   const shouldShowInvalidStubBlock =
     !shouldHideResponsePayload && showResponseSchemaHint;
   const shouldShowProxyNextResponseBlock =
-    responsePanelMode === "response" &&
+    !isNextResponseMode &&
+    responsePanelTab === "body" &&
     selectedNextResponseSource === "reflection" &&
     selectedReflectionServedBy === "proxy" &&
     !shouldHideResponsePayload &&
@@ -2305,8 +2315,9 @@ export const SnifferPage = () => {
   }, [availableProtofiles]);
   const selectedProtofileOption = useMemo(
     () =>
-      protofileOptions.find((option) => option.name === selectedProtofileName) ??
-      null,
+      protofileOptions.find(
+        (option) => option.name === selectedProtofileName,
+      ) ?? null,
     [protofileOptions, selectedProtofileName],
   );
   const routeStubId = String(matchingStubs[0]?.id || "").trim();
@@ -2345,12 +2356,7 @@ export const SnifferPage = () => {
       prefillMethod: selectedMethod,
       prefillOutput: createStubPrefillOutput,
     }),
-    [
-      createStubPrefillOutput,
-      selectedMethod,
-      selectedService,
-      snifferPath,
-    ],
+    [createStubPrefillOutput, selectedMethod, selectedService, snifferPath],
   );
   const latestCreatedSignalForSelectedCall = stubCreatedHistory.find(
     (item) =>
@@ -2555,6 +2561,9 @@ export const SnifferPage = () => {
   const clearCallTableFilters = useCallback(() => {
     setCallTableFilters(EMPTY_CALL_TABLE_FILTERS);
   }, []);
+  useEffect(() => {
+    writeCallTableFilters(callTableFilters);
+  }, [callTableFilters]);
   const callTableTotalMinWidth = useMemo(
     () =>
       (Object.keys(callTableColumnWidths) as CallTableColumnKey[]).reduce(
@@ -2576,19 +2585,19 @@ export const SnifferPage = () => {
   const startCallTableColumnResize = useCallback(
     (leftKey: CallTableColumnKey, rightKey: CallTableColumnKey) =>
       (event: ReactPointerEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-      activeResizeRef.current = "callTableColumns";
-      activeCallTableColumnResizeRef.current = {
-        leftKey,
-        rightKey,
-        startX: event.clientX,
-        startLeftWidth: callTableColumnWidths[leftKey],
-        startRightWidth: callTableColumnWidths[rightKey],
-      };
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-    },
+        event.preventDefault();
+        event.stopPropagation();
+        activeResizeRef.current = "callTableColumns";
+        activeCallTableColumnResizeRef.current = {
+          leftKey,
+          rightKey,
+          startX: event.clientX,
+          startLeftWidth: callTableColumnWidths[leftKey],
+          startRightWidth: callTableColumnWidths[rightKey],
+        };
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+      },
     [callTableColumnWidths],
   );
   const openCallTableFilterMenu = useCallback(
@@ -2678,9 +2687,25 @@ export const SnifferPage = () => {
     () => formatJsonPayload(requestPayload),
     [requestPayload],
   );
+  const requestMetadata = useMemo(
+    () => normalizeHeaderMap(selected?.requestHeaders),
+    [selected],
+  );
+  const requestMetadataText = useMemo(
+    () => formatJsonPayload(requestMetadata),
+    [requestMetadata],
+  );
+  const isRequestHeaderTab = requestPanelTab === "header";
+  const displayedRequestText = isRequestHeaderTab
+    ? requestMetadataText
+    : requestPayloadText;
   const hasRequestSearchablePayload = useMemo(() => {
     if (!selected) {
       return false;
+    }
+
+    if (isRequestHeaderTab) {
+      return hasSearchableContent(requestMetadata);
     }
 
     if (Array.isArray(selected.requests) && selected.requests.length > 0) {
@@ -2690,14 +2715,14 @@ export const SnifferPage = () => {
     }
 
     return hasSearchableContent(unwrapRootPayload(selected.request));
-  }, [selected]);
+  }, [isRequestHeaderTab, requestMetadata, selected]);
   const requestSearchRegex = useMemo(
     () => buildSearchRegex(requestSearchQuery, requestSearchOptions),
     [requestSearchOptions, requestSearchQuery],
   );
   const requestMatchRanges = useMemo(
-    () => collectMatchRanges(requestPayloadText, requestSearchRegex),
-    [requestPayloadText, requestSearchRegex],
+    () => collectMatchRanges(displayedRequestText, requestSearchRegex),
+    [displayedRequestText, requestSearchRegex],
   );
   const requestMatchCount = requestMatchRanges.length;
   const responseEntries = useMemo(() => {
@@ -2771,14 +2796,56 @@ export const SnifferPage = () => {
         singleResponseEntry?.timestamp || selected?.timestamp,
       )
     : undefined;
+  const responseMetadata = useMemo(
+    () => normalizeHeaderMap(selected?.responseHeaders),
+    [selected],
+  );
+  const responseMetadataText = useMemo(
+    () => formatJsonPayload(responseMetadata),
+    [responseMetadata],
+  );
   const responsePayloadTextToCopy = useMemo(() => {
     if (isSingleResponseView) {
       return singleResponseEntry?.payloadText || formatJsonPayload({});
     }
 
-    return formatJsonPayload(orderedResponseEntries.map((entry) => entry.payload));
+    return formatJsonPayload(
+      orderedResponseEntries.map((entry) => entry.payload),
+    );
   }, [isSingleResponseView, orderedResponseEntries, singleResponseEntry]);
-  const isResponseViewMode = responsePanelMode === "response";
+  const isResponseHeaderTab = !isNextResponseMode && responsePanelTab === "header";
+  const isResponseBodyTab = !isNextResponseMode && responsePanelTab === "body";
+  const isResponseDetailsTab =
+    !isNextResponseMode && responsePanelTab === "details";
+  const isResponseInspectMode = !isNextResponseMode;
+  const responseDetails = useMemo(
+    () => (Array.isArray(selected?.responseDetails) ? selected.responseDetails : []),
+    [selected],
+  );
+  const responseDetailsText = useMemo(
+    () => formatJsonPayload(responseDetails),
+    [responseDetails],
+  );
+  const hasResponseMetadataSearchable = hasSearchableContent(responseMetadata);
+  const hasResponseDetailsSearchable = hasSearchableContent(responseDetails);
+  const displayedResponseTextToCopy = isResponseHeaderTab
+    ? responseMetadataText
+    : isResponseDetailsTab
+      ? responseDetailsText
+      : responsePayloadTextToCopy;
+  const responseMetadataMatchRanges = useMemo(
+    () => collectMatchRanges(responseMetadataText, responseSearchRegex),
+    [responseMetadataText, responseSearchRegex],
+  );
+  const responseDetailsMatchRanges = useMemo(
+    () => collectMatchRanges(responseDetailsText, responseSearchRegex),
+    [responseDetailsText, responseSearchRegex],
+  );
+  const displayedResponseMatchCount = isResponseHeaderTab
+    ? responseMetadataMatchRanges.length
+    : isResponseDetailsTab
+      ? responseDetailsMatchRanges.length
+      : responseMatchData.totalMatches;
 
   useEffect(() => {
     setExpandedResponseKeys(() => {
@@ -2794,7 +2861,9 @@ export const SnifferPage = () => {
     setResponseSearchQuery("");
     setRequestActiveMatch(-1);
     setResponseActiveMatch(-1);
-    setResponsePanelMode("response");
+    setRequestPanelTab("body");
+    setResponsePanelTab("body");
+    setIsNextResponseMode(false);
   }, [selected?.callId, selected?.id]);
 
   useEffect(() => {
@@ -2816,14 +2885,14 @@ export const SnifferPage = () => {
       setResponseActiveMatch(-1);
       return;
     }
-    if (responseMatchData.totalMatches === 0) {
+    if (displayedResponseMatchCount === 0) {
       setResponseActiveMatch(-1);
       return;
     }
     setResponseActiveMatch((current) =>
-      current < 0 || current >= responseMatchData.totalMatches ? 0 : current,
+      current < 0 || current >= displayedResponseMatchCount ? 0 : current,
     );
-  }, [responseMatchData.totalMatches, showResponseSearch]);
+  }, [displayedResponseMatchCount, showResponseSearch]);
 
   useEffect(() => {
     if (!showRequestSearch || requestActiveMatch < 0) {
@@ -3102,7 +3171,7 @@ export const SnifferPage = () => {
 
     let resolvedServedBy =
       source === "reflection"
-        ? (servedBy || defaultReflectionServedBy)
+        ? servedBy || defaultReflectionServedBy
         : undefined;
     if (
       source === "reflection" &&
@@ -3263,9 +3332,13 @@ export const SnifferPage = () => {
         // Keep current snapshot on refresh failure.
       });
       setStreamRevision((current) => current + 1);
-      await handleResponseSourceChange("reflection", selectedReflectionServedBy, {
-        skipReflectionBootstrap: true,
-      });
+      await handleResponseSourceChange(
+        "reflection",
+        selectedReflectionServedBy,
+        {
+          skipReflectionBootstrap: true,
+        },
+      );
       setReflectionHostSuccessPulse((current) => current + 1);
       if (persistHost) {
         setReflectionHostSetError(false);
@@ -3311,8 +3384,8 @@ export const SnifferPage = () => {
       if (
         pending.some(
           ([routeKey]) =>
-            (reflectionServedByRoutes[routeKey] || defaultReflectionServedBy) ===
-            "proxy",
+            (reflectionServedByRoutes[routeKey] ||
+              defaultReflectionServedBy) === "proxy",
         )
       ) {
         await ensureReflectionProxyReady();
@@ -3355,11 +3428,7 @@ export const SnifferPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [
-    ensureReflectionProxyReady,
-    reflectionServedByRoutes,
-    routeSources,
-  ]);
+  }, [ensureReflectionProxyReady, reflectionServedByRoutes, routeSources]);
 
   useEffect(() => {
     if (
@@ -3384,22 +3453,23 @@ export const SnifferPage = () => {
       if (selectedReflectionServedBy === "proxy") {
         await ensureReflectionProxyReady();
       }
-      await apiClient.request("/sniffer/route-source", {
-        method: "POST",
-        body: JSON.stringify({
-          service: selectedService,
-          method: selectedMethod,
-          room: selectedRoom,
-          source: "reflection",
-          servedBy: selectedReflectionServedBy,
-        }),
-      })
+      await apiClient
+        .request("/sniffer/route-source", {
+          method: "POST",
+          body: JSON.stringify({
+            service: selectedService,
+            method: selectedMethod,
+            room: selectedRoom,
+            source: "reflection",
+            servedBy: selectedReflectionServedBy,
+          }),
+        })
         .catch(() => {
           throw new Error("Failed to sync reflection route mode");
         });
     })().catch(() => {
-        delete syncedReflectionServedByRef.current[selectedRouteKey];
-      });
+      delete syncedReflectionServedByRef.current[selectedRouteKey];
+    });
   }, [
     ensureReflectionProxyReady,
     selectedMethod,
@@ -3556,9 +3626,7 @@ export const SnifferPage = () => {
         variant="contained"
         onClick={handleSetReflection}
         disabled={
-          isSettingReflection ||
-          isCheckingReflection ||
-          !reflectionHost.trim()
+          isSettingReflection || isCheckingReflection || !reflectionHost.trim()
         }
         sx={nextResponseSetButtonSx}
       >
@@ -3796,11 +3864,7 @@ export const SnifferPage = () => {
   );
 
   const handleClearCurrentRoomRequests = useCallback(() => {
-    const room = activeRoom.trim();
-    if (!room) {
-      notify("Global room requests cannot be cleared.", { type: "warning" });
-      return;
-    }
+    const room = activeRoom.trim() || "global";
 
     apiClient
       .request<{ deletedCount?: number }>("/history/room", { method: "DELETE" })
@@ -3836,14 +3900,14 @@ export const SnifferPage = () => {
   };
 
   const stepResponseMatch = (direction: 1 | -1) => {
-    if (responseMatchData.totalMatches === 0) {
+    if (displayedResponseMatchCount === 0) {
       return;
     }
     setResponseActiveMatch((current) => {
       const safeCurrent = current < 0 ? 0 : current;
       return (
-        (safeCurrent + direction + responseMatchData.totalMatches) %
-        responseMatchData.totalMatches
+        (safeCurrent + direction + displayedResponseMatchCount) %
+        displayedResponseMatchCount
       );
     });
   };
@@ -3879,11 +3943,32 @@ export const SnifferPage = () => {
   }, []);
 
   const openResponseSearch = useCallback(() => {
+    if (isResponseHeaderTab) {
+      if (!hasResponseMetadataSearchable) {
+        return;
+      }
+      setShowResponseSearch(true);
+      return;
+    }
+    if (isResponseDetailsTab) {
+      if (!hasResponseDetailsSearchable) {
+        return;
+      }
+      setShowResponseSearch(true);
+      return;
+    }
     if (!shouldShowResponsePayloadBlock || !hasResponseSearchablePayload) {
       return;
     }
     setShowResponseSearch(true);
-  }, [hasResponseSearchablePayload, shouldShowResponsePayloadBlock]);
+  }, [
+    hasResponseDetailsSearchable,
+    hasResponseMetadataSearchable,
+    hasResponseSearchablePayload,
+    isResponseDetailsTab,
+    isResponseHeaderTab,
+    shouldShowResponsePayloadBlock,
+  ]);
 
   const closeResponseSearch = useCallback(() => {
     setShowResponseSearch(false);
@@ -3893,33 +3978,61 @@ export const SnifferPage = () => {
 
   const copyRequestPayload = useCallback(async () => {
     try {
-      const copied = await copyTextToClipboard(requestPayloadText);
+      const copied = await copyTextToClipboard(displayedRequestText);
       if (!copied) {
         notify("Clipboard is not available in this browser.", {
           type: "warning",
         });
         return;
       }
-      notify("Request copied.", { type: "success" });
+      notify(isRequestHeaderTab ? "Headers copied." : "Request copied.", {
+        type: "success",
+      });
     } catch {
-      notify("Failed to copy request payload.", { type: "warning" });
+      notify(
+        isRequestHeaderTab
+          ? "Failed to copy request headers."
+          : "Failed to copy request payload.",
+        { type: "warning" },
+      );
     }
-  }, [notify, requestPayloadText]);
+  }, [displayedRequestText, isRequestHeaderTab, notify]);
 
   const copyResponsePayload = useCallback(async () => {
     try {
-      const copied = await copyTextToClipboard(responsePayloadTextToCopy);
+      const copied = await copyTextToClipboard(displayedResponseTextToCopy);
       if (!copied) {
         notify("Clipboard is not available in this browser.", {
           type: "warning",
         });
         return;
       }
-      notify("Response copied.", { type: "success" });
+      notify(
+        isResponseHeaderTab
+          ? "Headers copied."
+          : isResponseDetailsTab
+            ? "Details copied."
+            : "Response copied.",
+        {
+          type: "success",
+        },
+      );
     } catch {
-      notify("Failed to copy response payload.", { type: "warning" });
+      notify(
+        isResponseHeaderTab
+          ? "Failed to copy response headers."
+          : isResponseDetailsTab
+            ? "Failed to copy response details."
+            : "Failed to copy response payload.",
+        { type: "warning" },
+      );
     }
-  }, [notify, responsePayloadTextToCopy]);
+  }, [
+    displayedResponseTextToCopy,
+    isResponseDetailsTab,
+    isResponseHeaderTab,
+    notify,
+  ]);
 
   useEffect(() => {
     if (!showRequestSearch) {
@@ -3965,7 +4078,9 @@ export const SnifferPage = () => {
       if (event.key.toLowerCase() === "a") {
         const selectedText =
           targetPanel === "response"
-            ? shouldShowResponsePayloadBlock && isResponseViewMode
+            ? isResponseHeaderTab ||
+              isResponseDetailsTab ||
+              (shouldShowResponsePayloadBlock && isResponseBodyTab)
               ? selectElementText(responseSearchContainerRef.current)
               : false
             : selectElementText(requestSearchContainerRef.current);
@@ -3982,7 +4097,11 @@ export const SnifferPage = () => {
       const preferredTarget = activeSearchTarget;
       const canOpenRequest = hasRequestSearchablePayload;
       const canOpenResponse =
-        shouldShowResponsePayloadBlock && hasResponseSearchablePayload;
+        (isResponseHeaderTab && hasResponseMetadataSearchable) ||
+        (isResponseDetailsTab && hasResponseDetailsSearchable) ||
+        (isResponseBodyTab &&
+          shouldShowResponsePayloadBlock &&
+          hasResponseSearchablePayload);
       if (!canOpenRequest && !canOpenResponse) {
         return;
       }
@@ -4027,8 +4146,12 @@ export const SnifferPage = () => {
     closeRequestSearch,
     closeResponseSearch,
     hasRequestSearchablePayload,
+    hasResponseDetailsSearchable,
+    hasResponseMetadataSearchable,
     hasResponseSearchablePayload,
-    isResponseViewMode,
+    isResponseBodyTab,
+    isResponseDetailsTab,
+    isResponseHeaderTab,
     openRequestSearch,
     openResponseSearch,
     showRequestSearch,
@@ -4081,7 +4204,8 @@ export const SnifferPage = () => {
           CALL_TABLE_MIN_COLUMN_WIDTHS[activeColumnResize.rightKey];
         const boundedDelta = Math.min(maxDelta, Math.max(minDelta, deltaX));
         const nextLeftWidth = activeColumnResize.startLeftWidth + boundedDelta;
-        const nextRightWidth = activeColumnResize.startRightWidth - boundedDelta;
+        const nextRightWidth =
+          activeColumnResize.startRightWidth - boundedDelta;
         setCallTableColumnWidths((current) => {
           if (
             current[activeColumnResize.leftKey] === nextLeftWidth &&
@@ -4144,7 +4268,9 @@ export const SnifferPage = () => {
         const rect = root.getBoundingClientRect();
         const top = Number.isFinite(rect.top) ? Math.max(rect.top, 0) : 0;
         const next = Math.max(0, Math.floor(window.innerHeight - top));
-        setViewportBoundHeightPx((current) => (current === next ? current : next));
+        setViewportBoundHeightPx((current) =>
+          current === next ? current : next,
+        );
       });
     };
 
@@ -4171,7 +4297,8 @@ export const SnifferPage = () => {
         p: 0,
         pb: 0,
         mb: 0,
-        height: viewportBoundHeightPx > 0 ? `${viewportBoundHeightPx}px` : "100%",
+        height:
+          viewportBoundHeightPx > 0 ? `${viewportBoundHeightPx}px` : "100%",
         maxHeight:
           viewportBoundHeightPx > 0 ? `${viewportBoundHeightPx}px` : "100%",
         minHeight: 0,
@@ -4189,17 +4316,15 @@ export const SnifferPage = () => {
         }}
       >
         <Box sx={panelHeaderSx}>
-          {activeRoom.trim() ? (
-            <IconButton
-              size="small"
-              aria-label={`Clear requests in room ${activeRoom}`}
-              onClick={handleClearCurrentRoomRequests}
-              disabled={records.length === 0}
-              sx={clearRequestsButtonSx}
-            >
-              <DeleteOutlineRoundedIcon fontSize="small" />
-            </IconButton>
-          ) : null}
+          <IconButton
+            size="small"
+            aria-label={`Clear requests in room ${activeRoom.trim() || "global"}`}
+            onClick={handleClearCurrentRoomRequests}
+            disabled={records.length === 0}
+            sx={clearRequestsButtonSx}
+          >
+            <DeleteOutlineRoundedIcon fontSize="small" />
+          </IconButton>
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
             <Chip
               size="small"
@@ -4327,7 +4452,10 @@ export const SnifferPage = () => {
                   <Box
                     role="separator"
                     aria-label="Resize service column"
-                    onPointerDown={startCallTableColumnResize("client", "service")}
+                    onPointerDown={startCallTableColumnResize(
+                      "client",
+                      "service",
+                    )}
                     sx={{
                       position: "absolute",
                       top: 0,
@@ -4351,7 +4479,10 @@ export const SnifferPage = () => {
                   <Box
                     role="separator"
                     aria-label="Resize method column"
-                    onPointerDown={startCallTableColumnResize("service", "method")}
+                    onPointerDown={startCallTableColumnResize(
+                      "service",
+                      "method",
+                    )}
                     sx={{
                       position: "absolute",
                       top: 0,
@@ -4457,7 +4588,10 @@ export const SnifferPage = () => {
                   <Box
                     role="separator"
                     aria-label="Resize served by column"
-                    onPointerDown={startCallTableColumnResize("source", "servedBy")}
+                    onPointerDown={startCallTableColumnResize(
+                      "source",
+                      "servedBy",
+                    )}
                     sx={{
                       position: "absolute",
                       top: 0,
@@ -4818,9 +4952,21 @@ export const SnifferPage = () => {
             }}
           >
             <Box sx={panelHeaderSx}>
-              <Typography variant="subtitle2" sx={panelTitleSx}>
-                Request
-              </Typography>
+              <Box sx={panelTabRowSx}>
+                {requestPanelTabs.map((tab) => (
+                  <Button
+                    key={tab}
+                    size="small"
+                    onClick={() => {
+                      setRequestPanelTab(tab);
+                      closeRequestSearch();
+                    }}
+                    sx={panelTabButtonSx(requestPanelTab === tab)}
+                  >
+                    {requestPanelTabLabels[tab]}
+                  </Button>
+                ))}
+              </Box>
               <Box
                 sx={{
                   display: "flex",
@@ -4870,7 +5016,11 @@ export const SnifferPage = () => {
                     void copyRequestPayload();
                   }}
                   sx={searchHeaderButtonSx}
-                  aria-label="Copy request payload"
+                  aria-label={
+                    isRequestHeaderTab
+                      ? "Copy request headers"
+                      : "Copy request payload"
+                  }
                 >
                   <ContentCopyOutlinedIcon fontSize="small" />
                 </IconButton>
@@ -4960,13 +5110,11 @@ export const SnifferPage = () => {
               ref={requestSearchContainerRef}
               sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.25 }}
             >
-              <Box component="pre" sx={jsonTextSx}>
-                {renderHighlightedJsonText(
-                  requestPayloadText,
-                  requestMatchRanges,
-                  requestActiveMatch,
-                )}
-              </Box>
+              <FoldableJsonText
+                text={displayedRequestText}
+                matchRanges={requestMatchRanges}
+                activeMatchIndex={requestActiveMatch}
+              />
             </Box>
           </Paper>
           <Box
@@ -5010,117 +5158,131 @@ export const SnifferPage = () => {
             }}
           >
             <Box sx={panelHeaderSx}>
-              <FormControl size="small" sx={postmanLikeSelectSx}>
-                <Select
-                  value={responsePanelMode}
-                  sx={{
-                    "& .MuiSelect-icon": {
-                      color: "#D7DCE2",
-                    },
-                  }}
-                  onChange={(event) => {
-                    setResponsePanelMode(event.target.value as ResponsePanelMode);
-                    if (event.target.value === "nextResponse") {
+              <Box sx={panelTabRowSx}>
+                {responsePanelTabs.map((tab) => (
+                  <Button
+                    key={tab}
+                    size="small"
+                    onClick={() => {
+                      setResponsePanelTab(tab);
+                      setIsNextResponseMode(false);
                       closeResponseSearch();
-                    }
-                  }}
-                  variant="outlined"
-                >
-                  <MenuItem value="response">
-                    {isSingleResponseView
-                      ? responsePanelModeLabels.response
-                      : "Responses"}
-                  </MenuItem>
-                  <MenuItem value="nextResponse">
-                    {responsePanelModeLabels.nextResponse}
-                  </MenuItem>
-                </Select>
-              </FormControl>
-              {isResponseViewMode ? (
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 0.75,
-                  minWidth: 0,
-                  flex: 1,
-                  justifyContent: "flex-end",
-                  overflowX: "auto",
-                  overflowY: "hidden",
-                }}
-              >
-                <Chip
-                  size="small"
-                  color={codeToChipColor(selectedCode)}
-                  variant="outlined"
-                  label={`Code: ${selectedCode ?? 0}`}
-                />
-                <Chip
-                  size="small"
-                  color={sourceChipColor(selectedHistorySource)}
-                  variant="outlined"
-                  label={`Source: ${snifferSourceLabels[selectedHistorySource]}`}
-                />
-                <Chip
-                  size="small"
-                  color={servedByChipDisplayColor}
-                  variant="outlined"
-                  label={servedByChipLabel}
-                  clickable={isServedByToggleEnabled}
-                  onClick={
-                    isServedByToggleEnabled ? handleServedByChipClick : undefined
-                  }
-                  sx={
-                    isServedByToggleEnabled
-                      ? { cursor: "pointer" }
-                      : undefined
-                  }
-                />
-                {isResponseViewMode && isSingleResponseView ? (
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ whiteSpace: "nowrap" }}
+                    }}
+                    sx={panelTabButtonSx(
+                      !isNextResponseMode && responsePanelTab === tab,
+                    )}
                   >
-                    {responseHeaderTimestamp}
-                  </Typography>
-                ) : isResponseViewMode ? (
+                    {responsePanelTabLabels[tab]}
+                  </Button>
+                ))}
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setIsNextResponseMode(true);
+                    closeResponseSearch();
+                  }}
+                  sx={nextResponseHeaderButtonSx(isNextResponseMode)}
+                >
+                  Set next response
+                </Button>
+              </Box>
+              {isResponseInspectMode ? (
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.75,
+                    minWidth: 0,
+                    flex: 1,
+                    justifyContent: "flex-end",
+                    overflowX: "auto",
+                    overflowY: "hidden",
+                  }}
+                >
                   <Chip
                     size="small"
+                    color={codeToChipColor(selectedCode)}
                     variant="outlined"
-                    label={`${orderedResponseEntries.length} items`}
+                    label={`Code: ${selectedCode ?? 0}`}
                   />
-                ) : null}
-                {shouldShowResponsePayloadBlock &&
-                hasResponseSearchablePayload &&
-                isResponseViewMode ? (
-                  <IconButton
+                  <Chip
                     size="small"
-                    onClick={() => {
-                      if (showResponseSearch) {
-                        closeResponseSearch();
-                      } else {
-                        openResponseSearch();
+                    color={sourceChipColor(selectedHistorySource)}
+                    variant="outlined"
+                    label={`Source: ${snifferSourceLabels[selectedHistorySource]}`}
+                  />
+                  <Chip
+                    size="small"
+                    color={servedByChipDisplayColor}
+                    variant="outlined"
+                    label={servedByChipLabel}
+                    clickable={isServedByToggleEnabled}
+                    onClick={
+                      isServedByToggleEnabled
+                        ? handleServedByChipClick
+                        : undefined
+                    }
+                    sx={
+                      isServedByToggleEnabled
+                        ? { cursor: "pointer" }
+                        : undefined
+                    }
+                  />
+                  {isResponseBodyTab && isSingleResponseView ? (
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ whiteSpace: "nowrap" }}
+                    >
+                      {responseHeaderTimestamp}
+                    </Typography>
+                  ) : isResponseBodyTab ? (
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={`${orderedResponseEntries.length} items`}
+                    />
+                  ) : null}
+                  {(isResponseHeaderTab && hasResponseMetadataSearchable) ||
+                  (isResponseDetailsTab && hasResponseDetailsSearchable) ||
+                  (shouldShowResponsePayloadBlock &&
+                    hasResponseSearchablePayload &&
+                    isResponseBodyTab) ? (
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        if (showResponseSearch) {
+                          closeResponseSearch();
+                        } else {
+                          openResponseSearch();
+                        }
+                      }}
+                      sx={searchHeaderButtonSx}
+                    >
+                      <SearchRoundedIcon fontSize="small" />
+                    </IconButton>
+                  ) : null}
+                  {isResponseHeaderTab ||
+                  isResponseDetailsTab ||
+                  (shouldShowResponsePayloadBlock && isResponseBodyTab) ? (
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        void copyResponsePayload();
+                      }}
+                      sx={searchHeaderButtonSx}
+                      aria-label={
+                        isResponseHeaderTab
+                          ? "Copy response headers"
+                          : isResponseDetailsTab
+                            ? "Copy response details"
+                            : "Copy response payload"
                       }
-                    }}
-                    sx={searchHeaderButtonSx}
-                  >
-                    <SearchRoundedIcon fontSize="small" />
-                  </IconButton>
-                ) : null}
-                {shouldShowResponsePayloadBlock && isResponseViewMode ? (
-                  <IconButton
-                    size="small"
-                    onClick={() => {
-                      void copyResponsePayload();
-                    }}
-                    sx={searchHeaderButtonSx}
-                    aria-label="Copy response payload"
-                  >
-                    <ContentCopyOutlinedIcon fontSize="small" />
-                  </IconButton>
-                ) : null}
-              </Box>
+                    >
+                      <ContentCopyOutlinedIcon fontSize="small" />
+                    </IconButton>
+                  ) : null}
+                </Box>
               ) : null}
             </Box>
             <Divider />
@@ -5158,12 +5320,126 @@ export const SnifferPage = () => {
               style={{ display: "none" }}
               onChange={handleProtoSelect}
             />
-            {responsePanelMode === "nextResponse" ? (
+            {isNextResponseMode ? (
               nextResponseSetupBlock
+            ) : isResponseHeaderTab || isResponseDetailsTab ? (
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  minHeight: 0,
+                  flex: 1,
+                }}
+              >
+                {showResponseSearch &&
+                ((isResponseHeaderTab && hasResponseMetadataSearchable) ||
+                  (isResponseDetailsTab && hasResponseDetailsSearchable)) ? (
+                  <Box sx={compactSearchBarSx}>
+                    <TextField
+                      inputRef={responseSearchInputRef}
+                      value={responseSearchQuery}
+                      onChange={(event) =>
+                        setResponseSearchQuery(event.target.value)
+                      }
+                      size="small"
+                      fullWidth
+                      placeholder="Find"
+                      sx={compactSearchInputSx}
+                    />
+                    <Button
+                      size="small"
+                      variant={
+                        responseSearchOptions.caseSensitive
+                          ? "contained"
+                          : "text"
+                      }
+                      onClick={() =>
+                        toggleSearchOption("response", "caseSensitive")
+                      }
+                      sx={compactSearchToggleButtonSx}
+                    >
+                      Aa
+                    </Button>
+                    <Button
+                      size="small"
+                      variant={
+                        responseSearchOptions.wholeWord ? "contained" : "text"
+                      }
+                      onClick={() =>
+                        toggleSearchOption("response", "wholeWord")
+                      }
+                      sx={compactSearchToggleButtonSx}
+                    >
+                      ab
+                    </Button>
+                    <Button
+                      size="small"
+                      variant={
+                        responseSearchOptions.useRegex ? "contained" : "text"
+                      }
+                      onClick={() => toggleSearchOption("response", "useRegex")}
+                      sx={compactSearchToggleButtonSx}
+                    >
+                      .*
+                    </Button>
+                    <Typography variant="body2" sx={compactSearchCounterSx}>
+                      {displayedResponseMatchCount > 0
+                        ? `${responseActiveMatch + 1} of ${displayedResponseMatchCount}`
+                        : "0 of 0"}
+                    </Typography>
+                    <IconButton
+                      size="small"
+                      onClick={() => stepResponseMatch(-1)}
+                      disabled={displayedResponseMatchCount === 0}
+                      sx={compactSearchIconButtonSx}
+                    >
+                      <KeyboardArrowUpRoundedIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => stepResponseMatch(1)}
+                      disabled={displayedResponseMatchCount === 0}
+                      sx={compactSearchIconButtonSx}
+                    >
+                      <KeyboardArrowDownRoundedIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        closeResponseSearch();
+                      }}
+                      sx={compactSearchIconButtonSx}
+                    >
+                      <CloseRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ) : null}
+                <Box
+                  ref={responseSearchContainerRef}
+                  sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.25 }}
+                >
+                  <FoldableJsonText
+                    text={
+                      isResponseHeaderTab
+                        ? responseMetadataText
+                        : responseDetailsText
+                    }
+                    matchRanges={
+                      isResponseHeaderTab
+                        ? responseMetadataMatchRanges
+                        : responseDetailsMatchRanges
+                    }
+                    activeMatchIndex={responseActiveMatch}
+                  />
+                </Box>
+              </Box>
             ) : shouldPromptEnterRoomToSetup ? (
               <Box sx={stateBlockContainerSx}>
                 <Box
-                  sx={[responseStateCardSx, { maxWidth: { xs: "100%", sm: 540 } }]}
+                  sx={[
+                    responseStateCardSx,
+                    { maxWidth: { xs: "100%", sm: 540 } },
+                  ]}
                 >
                   <LockOutlinedIcon
                     sx={{
@@ -5383,7 +5659,8 @@ export const SnifferPage = () => {
                     Proxy mode is selected for this route.
                   </Typography>
                   <Typography variant="body1" sx={nextResponseBodySx}>
-                    The next request will be forwarded to the server and served by its response.
+                    The next request will be forwarded to the server and served
+                    by its response.
                   </Typography>
                 </Box>
               </Box>
@@ -5655,17 +5932,19 @@ export const SnifferPage = () => {
                     </Alert>
                   ) : null}
                   {isSingleResponseView ? (
-                    <Box component="pre" sx={jsonTextSx}>
-                      {singleResponseEntry
-                        ? renderHighlightedJsonText(
-                            singleResponseEntry.payloadText,
-                            responseMatchData.rangesByEntry.get(
-                              singleResponseEntry.key,
-                            ) || [],
-                            responseActiveMatch,
-                          )
-                        : "No response payload"}
-                    </Box>
+                    singleResponseEntry ? (
+                      <FoldableJsonText
+                        text={singleResponseEntry.payloadText}
+                        matchRanges={
+                          responseMatchData.rangesByEntry.get(
+                            singleResponseEntry.key,
+                          ) || []
+                        }
+                        activeMatchIndex={responseActiveMatch}
+                      />
+                    ) : (
+                      "No response payload"
+                    )
                   ) : (
                     <Box
                       sx={{ display: "flex", flexDirection: "column", gap: 1 }}
@@ -5764,15 +6043,15 @@ export const SnifferPage = () => {
                               bgcolor: "background.paper",
                             }}
                           >
-                            <Box component="pre" sx={jsonTextSx}>
-                              {renderHighlightedJsonText(
-                                entry.payloadText,
+                            <FoldableJsonText
+                              text={entry.payloadText}
+                              matchRanges={
                                 responseMatchData.rangesByEntry.get(
                                   entry.key,
-                                ) || [],
-                                responseActiveMatch,
-                              )}
-                            </Box>
+                                ) || []
+                              }
+                              activeMatchIndex={responseActiveMatch}
+                            />
                           </AccordionDetails>
                         </Accordion>
                       ))}

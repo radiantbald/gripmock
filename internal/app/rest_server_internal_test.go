@@ -1816,15 +1816,43 @@ func (s *RestServerTestSuite) TestDeleteHistoryRoom_OnlyCurrentRoom() {
 	s.Len(roomBRecords, 2) // global + room B remain untouched
 }
 
-func (s *RestServerTestSuite) TestDeleteHistoryRoom_RejectsGlobalRoom() {
+func (s *RestServerTestSuite) TestDeleteHistoryRoom_ClearsOnlyGlobalRoom() {
 	server := s.newRestServerWithRoomHistory()
 
 	resp := s.deleteHistoryRoom(server, nil)
-	s.Equal(http.StatusBadRequest, resp.Code)
+	s.Equal(http.StatusOK, resp.Code)
 
-	var payload map[string]string
+	var payload map[string]any
 	s.Require().NoError(json.Unmarshal(resp.Body.Bytes(), &payload))
-	s.Contains(payload["error"], "global room cannot be cleared")
+	s.Equal("", payload["room"])
+	s.Equal(float64(1), payload["deletedCount"])
+
+	allList := s.listHistory(server, nil)
+	s.Equal(http.StatusOK, allList.Code)
+	var allRecords []map[string]any
+	s.Require().NoError(json.Unmarshal(allList.Body.Bytes(), &allRecords))
+	s.Len(allRecords, 2)
+	for _, record := range allRecords {
+		s.NotEmpty(record["room"])
+	}
+
+	roomAList := s.listHistory(server, func(req *http.Request) {
+		req.Header.Set(muxmiddleware.HeaderName, "A")
+	})
+	s.Equal(http.StatusOK, roomAList.Code)
+	var roomARecords []map[string]any
+	s.Require().NoError(json.Unmarshal(roomAList.Body.Bytes(), &roomARecords))
+	s.Len(roomARecords, 1)
+	s.Equal("A", roomARecords[0]["room"])
+
+	roomBList := s.listHistory(server, func(req *http.Request) {
+		req.Header.Set(muxmiddleware.HeaderName, "B")
+	})
+	s.Equal(http.StatusOK, roomBList.Code)
+	var roomBRecords []map[string]any
+	s.Require().NoError(json.Unmarshal(roomBList.Body.Bytes(), &roomBRecords))
+	s.Len(roomBRecords, 1)
+	s.Equal("B", roomBRecords[0]["room"])
 }
 
 func (s *RestServerTestSuite) TestStreamHistorySendsLiveEvents() {
@@ -1885,6 +1913,69 @@ func (s *RestServerTestSuite) TestListHistory_RedactsSensitiveKeys() {
 	s.Equal("alice", req["user"])
 	s.Equal("[REDACTED]", req["password"])
 	s.Equal("[REDACTED]", resp["token"])
+}
+
+func (s *RestServerTestSuite) TestListHistory_IncludesRequestAndResponseHeaders() {
+	store := history.NewMemoryStore(0)
+	store.Record(history.CallRecord{
+		Service: "svc",
+		Method:  "M",
+		RequestHeaders: map[string]string{
+			"x-env": "prod",
+		},
+		ResponseHeaders: map[string]string{
+			"x-trace": "abc",
+		},
+	})
+
+	server := s.newRestServerWithStore(store)
+
+	w := s.listHistory(server, nil)
+	s.Equal(http.StatusOK, w.Code)
+
+	var list []map[string]any
+	s.Require().NoError(json.Unmarshal(w.Body.Bytes(), &list))
+	s.Len(list, 1)
+
+	reqHeaders, ok := list[0]["requestHeaders"].(map[string]any)
+	s.Require().True(ok)
+	respHeaders, ok := list[0]["responseHeaders"].(map[string]any)
+	s.Require().True(ok)
+	s.Equal("prod", reqHeaders["x-env"])
+	s.Equal("abc", respHeaders["x-trace"])
+}
+
+func (s *RestServerTestSuite) TestListHistory_IncludesResponseDetails() {
+	store := history.NewMemoryStore(0)
+	store.Record(history.CallRecord{
+		Service: "svc",
+		Method:  "M",
+		ResponseDetails: []map[string]any{
+			{
+				"type":   "type.googleapis.com/google.rpc.ErrorInfo",
+				"reason": "INVALID",
+				"domain": "example.com",
+			},
+		},
+	})
+
+	server := s.newRestServerWithStore(store)
+
+	w := s.listHistory(server, nil)
+	s.Equal(http.StatusOK, w.Code)
+
+	var list []map[string]any
+	s.Require().NoError(json.Unmarshal(w.Body.Bytes(), &list))
+	s.Len(list, 1)
+
+	details, ok := list[0]["responseDetails"].([]any)
+	s.Require().True(ok)
+	s.Len(details, 1)
+	detail, ok := details[0].(map[string]any)
+	s.Require().True(ok)
+	s.Equal("type.googleapis.com/google.rpc.ErrorInfo", detail["type"])
+	s.Equal("INVALID", detail["reason"])
+	s.Equal("example.com", detail["domain"])
 }
 
 // TestVerifyCallsWithHistory tests verify endpoint with history store.

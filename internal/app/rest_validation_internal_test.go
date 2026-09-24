@@ -348,6 +348,39 @@ func (s *RestValidationTestSuite) TestAddStubValidConfigurations() {
 			}]`,
 		},
 		{
+			name: "valid server streaming stub with error and code",
+			jsonData: `[{
+				"service": "test.Service",
+				"method": "TestServerStream",
+				"input": {"contains": {"key": "value"}},
+				"output": {
+					"stream": [{"result": "response1"}],
+					"error": "context.cancelled",
+					"code": 1
+				}
+			}]`,
+		},
+		{
+			name: "valid server streaming stub with details",
+			jsonData: `[{
+				"service": "test.Service",
+				"method": "TestServerStream",
+				"input": {"contains": {"key": "value"}},
+				"output": {
+					"stream": [{"result": "response1"}],
+					"code": 3,
+					"error": "Validation failed",
+					"details": [
+						{
+							"type": "type.googleapis.com/google.rpc.ErrorInfo",
+							"reason": "STREAM_INVALID",
+							"domain": "example.local"
+						}
+					]
+				}
+			}]`,
+		},
+		{
 			name: "valid bidirectional streaming stub",
 			jsonData: `[{
 				"service": "test.Service",

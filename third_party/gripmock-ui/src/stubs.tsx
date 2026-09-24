@@ -183,6 +183,7 @@ type StubCreatePrefillOutput = {
   code?: number;
   data?: unknown;
   stream?: unknown[];
+  details?: unknown[];
 };
 const resolveReturnPathFromLocationState = (state: unknown, fallbackPath: string): string =>
   typeof state === "object" &&
@@ -225,6 +226,9 @@ const resolvePrefillOutputFromLocationState = (
   }
   if (Array.isArray(rawPrefillOutput.stream)) {
     output.stream = rawPrefillOutput.stream;
+  }
+  if (Array.isArray(rawPrefillOutput.details)) {
+    output.details = rawPrefillOutput.details;
   }
 
   return Object.keys(output).length > 0 ? output : undefined;

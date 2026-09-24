@@ -64,9 +64,11 @@ export type HistoryRecord = {
   error?: string;
   request?: unknown;
   requests?: unknown[];
+  requestHeaders?: Record<string, string>;
   response?: unknown;
   responses?: unknown[];
   responseHeaders?: Record<string, string>;
+  responseDetails?: unknown[];
   responseTimestamps?: string[];
   source?: "proto" | "reflection";
 };

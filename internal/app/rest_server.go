@@ -3076,7 +3076,8 @@ func (h *RestServer) ListHistory(w http.ResponseWriter, r *http.Request) {
 	h.writeResponse(r.Context(), w, out)
 }
 
-// DeleteHistoryRoom removes only records scoped to the current non-global room.
+// DeleteHistoryRoom removes records scoped to the current room.
+// Empty room (no X-Gripmock-Room header) deletes only global records.
 func (h *RestServer) DeleteHistoryRoom(w http.ResponseWriter, r *http.Request) {
 	if h.history == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -3092,11 +3093,6 @@ func (h *RestServer) DeleteHistoryRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	roomID := strings.TrimSpace(muxmiddleware.FromRequest(r))
-	if roomID == "" {
-		h.validationError(r.Context(), w, errors.New("room id is required and global room cannot be cleared"))
-		return
-	}
-
 	deletedCount := cleaner.DeleteRoom(roomID)
 	h.writeResponse(r.Context(), w, map[string]any{
 		"room":         roomID,
@@ -3247,8 +3243,15 @@ func (h *RestServer) historyCallRecordToRest(c history.CallRecord) rest.CallReco
 	} else if c.Response != nil {
 		r.Response = &c.Response
 	}
+	if len(c.RequestHeaders) > 0 {
+		r.RequestHeaders = maps.Clone(c.RequestHeaders)
+	}
 	if len(c.ResponseHeaders) > 0 {
 		r.ResponseHeaders = maps.Clone(c.ResponseHeaders)
+	}
+	if len(c.ResponseDetails) > 0 {
+		responseDetails := append([]map[string]any(nil), c.ResponseDetails...)
+		r.ResponseDetails = &responseDetails
 	}
 	if len(c.ResponseTimestamps) > 0 {
 		responseTimestamps := append([]time.Time(nil), c.ResponseTimestamps...)
