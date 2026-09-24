@@ -143,6 +143,7 @@ type StubCreatePrefillOutput = {
   code: number;
   data?: unknown;
   stream?: unknown[];
+  details?: unknown[];
 };
 
 const SNIFFER_ROUTE_SOURCES_KEY = "gripmock.sniffer.routeSources";
@@ -1531,12 +1532,16 @@ const buildStubCreatePrefillOutput = (
   const responses = Array.isArray(record.responses)
     ? record.responses.map((item) => unwrapRootPayload(item))
     : [];
+  const details = Array.isArray(record.responseDetails)
+    ? record.responseDetails
+    : [];
   if (responses.length > 1) {
     return {
       code,
       error,
       headers,
       stream: responses,
+      ...(details.length > 0 ? { details } : {}),
     };
   }
 
@@ -1546,6 +1551,7 @@ const buildStubCreatePrefillOutput = (
     error,
     headers,
     data: unwrapRootPayload(dataSource),
+    ...(details.length > 0 ? { details } : {}),
   };
 };
 

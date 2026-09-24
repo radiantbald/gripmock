@@ -201,6 +201,39 @@ func TestHandleOutputErrorWithDetails(t *testing.T) {
 	assert.Equal(t, "example.local", info.GetMetadata()["service"])
 }
 
+func TestHandleOutputErrorWithAtTypeDetails(t *testing.T) {
+	t.Parallel()
+
+	output := stuber.Output{
+		Error: "Validation failed",
+		Code:  &[]codes.Code{codes.InvalidArgument}[0],
+		Details: []map[string]any{
+			{
+				"@type":  "type.googleapis.com/google.rpc.ErrorInfo",
+				"reason": "API_DISABLED",
+				"domain": "example.local",
+			},
+		},
+	}
+
+	mocker := &grpcMocker{}
+
+	err := mocker.handleOutputError(t.Context(), nil, output)
+	require.Error(t, err)
+
+	st := status.Convert(err)
+	require.Equal(t, codes.InvalidArgument, st.Code())
+	require.Equal(t, "Validation failed", st.Message())
+
+	details := st.Details()
+	require.Len(t, details, 1)
+
+	info, ok := details[0].(*errdetails.ErrorInfo)
+	require.True(t, ok)
+	assert.Equal(t, "API_DISABLED", info.GetReason())
+	assert.Equal(t, "example.local", info.GetDomain())
+}
+
 func TestHandleOutputErrorWithInvalidDetails(t *testing.T) {
 	t.Parallel()
 

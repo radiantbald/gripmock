@@ -703,7 +703,7 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 			nil,
 			nil,
 			nil,
-			err.Error(),
+			statusErrorMessage(err),
 			nil,
 		)
 
@@ -727,7 +727,7 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 				nil,
 				nil,
 				nil,
-				err.Error(),
+				statusErrorMessage(err),
 				nil,
 			)
 
@@ -795,7 +795,7 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 					streamResponses,
 					outputToUse.Headers,
 					streamResponseTimestamps,
-					err.Error(),
+					statusErrorMessage(err),
 					outputToUse.Details,
 				)
 
@@ -828,7 +828,7 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 				nil,
 				outputToUse.Headers,
 				nil,
-				err.Error(),
+				statusErrorMessage(err),
 				outputToUse.Details,
 			)
 
@@ -862,7 +862,7 @@ func (m *grpcMocker) handleServerStream(stream grpc.ServerStream) error {
 			nil,
 			outputToUse.Headers,
 			nil,
-			err.Error(),
+			statusErrorMessage(err),
 			outputToUse.Details,
 		)
 
@@ -1232,7 +1232,7 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 			nil,
 			nil,
 			nil,
-			err.Error(),
+			statusErrorMessage(err),
 			nil,
 		)
 
@@ -1262,7 +1262,7 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 			nil,
 			nil,
 			nil,
-			stubMissErr.Error(),
+			statusErrorMessage(stubMissErr),
 			nil,
 		)
 
@@ -1282,7 +1282,7 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 			code = uint32(st.Code())
 		}
 
-		m.recordCall(ctx, found.ID, code, requestTime, []map[string]any{requestData}, nil, recordedResponseHeaders, nil, callErr.Error(), nil)
+		m.recordCall(ctx, found.ID, code, requestTime, []map[string]any{requestData}, nil, recordedResponseHeaders, nil, statusErrorMessage(callErr), nil)
 	}
 
 	if err := m.delay(ctx, found.Output.Delay); err != nil {
@@ -1352,8 +1352,8 @@ func (m *grpcMocker) handleUnary(ctx context.Context, req *dynamicpb.Message) (*
 
 	if err := m.handleOutputError(ctx, nil, outputToUse); err != nil {
 		code := status.Code(err)
-		m.recordCall(ctx, found.ID, uint32(code), requestTime, []map[string]any{requestData}, nil, outputToUse.Headers, nil, err.Error(), outputToUse.Details)
-		outputToUse.Error = err.Error()
+		m.recordCall(ctx, found.ID, uint32(code), requestTime, []map[string]any{requestData}, nil, outputToUse.Headers, nil, statusErrorMessage(err), outputToUse.Details)
+		outputToUse.Error = statusErrorMessage(err)
 
 		return nil, err //nolint:wrapcheck
 	}
@@ -1623,7 +1623,7 @@ func (m *grpcMocker) handleClientStream(stream grpc.ServerStream) error {
 			nil,
 			nil,
 			nil,
-			err.Error(),
+			statusErrorMessage(err),
 			nil,
 		)
 
@@ -1642,7 +1642,7 @@ func (m *grpcMocker) handleClientStream(stream grpc.ServerStream) error {
 				nil,
 				nil,
 				nil,
-				err.Error(),
+				statusErrorMessage(err),
 				nil,
 			)
 
@@ -1739,7 +1739,7 @@ func (m *grpcMocker) sendClientStreamResponse(
 			nil,
 			found.Output.Headers,
 			nil,
-			err.Error(),
+			statusErrorMessage(err),
 			found.Output.Details,
 		)
 
@@ -1806,7 +1806,7 @@ func (m *grpcMocker) sendClientStreamResponse(
 func (m *grpcMocker) handleBidiStream(stream grpc.ServerStream) error {
 	requestTime := time.Now()
 	if err := m.ensureServiceMethodAvailable(stream.Context()); err != nil {
-		m.recordCall(stream.Context(), 0, uint32(codes.Unimplemented), requestTime, nil, nil, nil, nil, err.Error(), nil)
+		m.recordCall(stream.Context(), 0, uint32(codes.Unimplemented), requestTime, nil, nil, nil, nil, statusErrorMessage(err), nil)
 
 		return err
 	}
@@ -1974,7 +1974,7 @@ func (m *grpcMocker) recordBidiStream(
 	responseTimestamps := stream.getResponseTimestamps()
 	responseDetails := stream.getResponseDetails()
 	if len(responseDetails) == 0 {
-		responseDetails = proxycapture.StatusDetailsToMaps(callErr)
+		responseDetails = proxycapture.CaptureStatusDetails(callErr, stream.getResponseHeaders())
 	}
 
 	rec := history.CallRecord{

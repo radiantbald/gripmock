@@ -1,14 +1,20 @@
 package proxycapture
 
 import (
+	"encoding/base64"
 	"strings"
 
+	_ "google.golang.org/genproto/googleapis/rpc/errdetails"
+	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/radiantbald/gripmock/v3/internal/infra/stuber"
 )
+
+const grpcStatusDetailsBinHeader = "grpc-status-details-bin"
 
 func ResponseHeaders(head metadata.MD, tail metadata.MD) map[string]string {
 	if len(head) == 0 && len(tail) == 0 {
@@ -170,11 +176,21 @@ func applyStatusError(output *stuber.Output, callErr error, clearData bool) {
 
 	output.Code = &code
 	output.Error = st.Message()
-	output.Details = StatusDetailsToMaps(callErr)
+	output.Details = CaptureStatusDetails(callErr, output.Headers)
 
 	if clearData {
 		output.Data = nil
 	}
+}
+
+// CaptureStatusDetails converts gRPC status details from an error, falling back
+// to grpc-status-details-bin in response headers/trailers when the error has no details.
+func CaptureStatusDetails(callErr error, headers map[string]string) []map[string]any {
+	if details := StatusDetailsToMaps(callErr); len(details) > 0 {
+		return details
+	}
+
+	return StatusDetailsFromHeaders(headers)
 }
 
 // StatusDetailsToMaps converts gRPC status details from an error into JSON maps.
@@ -183,27 +199,39 @@ func StatusDetailsToMaps(callErr error) []map[string]any {
 		return nil
 	}
 
-	st := status.Convert(callErr)
+	return mapsFromAnyDetails(status.Convert(callErr).Proto().GetDetails())
+}
 
-	details := st.Details()
+// StatusDetailsFromHeaders extracts gRPC status details from grpc-status-details-bin.
+func StatusDetailsFromHeaders(headers map[string]string) []map[string]any {
+	if len(headers) == 0 {
+		return nil
+	}
+
+	raw, ok := headers[grpcStatusDetailsBinHeader]
+	if !ok || raw == "" {
+		return nil
+	}
+
+	stProto := &spb.Status{}
+	if err := proto.Unmarshal([]byte(raw), stProto); err != nil {
+		return nil
+	}
+
+	return mapsFromAnyDetails(stProto.GetDetails())
+}
+
+func mapsFromAnyDetails(details []*anypb.Any) []map[string]any {
 	if len(details) == 0 {
 		return nil
 	}
 
 	out := make([]map[string]any, 0, len(details))
-	for _, detail := range details {
-		msg, ok := detail.(proto.Message)
-		if !ok {
-			continue
-		}
-
-		mapped := MessageToMap(msg)
+	for _, anyDetail := range details {
+		mapped := anyDetailToMap(anyDetail)
 		if mapped == nil {
 			continue
 		}
-
-		typeURL := "type.googleapis.com/" + string(msg.ProtoReflect().Descriptor().FullName())
-		mapped["type"] = typeURL
 
 		out = append(out, mapped)
 	}
@@ -213,4 +241,32 @@ func StatusDetailsToMaps(callErr error) []map[string]any {
 	}
 
 	return out
+}
+
+func anyDetailToMap(anyDetail *anypb.Any) map[string]any {
+	if anyDetail == nil {
+		return nil
+	}
+
+	typeURL := anyDetail.GetTypeUrl()
+	if typeURL == "" {
+		return nil
+	}
+
+	msg, err := anyDetail.UnmarshalNew()
+	if err == nil {
+		mapped := MessageToMap(msg)
+		if mapped == nil {
+			mapped = map[string]any{}
+		}
+
+		mapped["type"] = typeURL
+
+		return mapped
+	}
+
+	return map[string]any{
+		"type":  typeURL,
+		"value": base64.StdEncoding.EncodeToString(anyDetail.GetValue()),
+	}
 }
